@@ -3,7 +3,7 @@ import numpy as np
 
 
 def read_evt(filename):
-  """Read an EVT binary file and return a pandas DataFrame"""
+    """Read an EVT binary file and return a pandas DataFrame"""
     colnames = ["time", "pulse_width", "D1", "D2",
                 "fsc_small", "fsc_perp", "fsc_big",
                 "pe", "chl_small", "chl_big"]
