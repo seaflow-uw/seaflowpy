@@ -1,5 +1,6 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+import sys
 
 
 class EVT(object):
@@ -14,24 +15,22 @@ class EVT(object):
 
         self.read_evt()
 
-
     def read_evt(self):
         """Read an EVT binary file and return a pandas DataFrame."""
         cols = ["time", "pulse_width", "D1", "D2",
-                    "fsc_small", "fsc_perp", "fsc_big",
-                    "pe", "chl_small", "chl_big"]
+                "fsc_small", "fsc_perp", "fsc_big",
+                "pe", "chl_small", "chl_big"]
         with open(self.file_name) as fh:
             try:
                 rowcnt = np.fromfile(fh, dtype="uint32", count=1)
                 particles = np.fromfile(fh, dtype="uint16", count=rowcnt*12)
                 particles = np.reshape(particles, [rowcnt, 12])
-                self.evt = pd.DataFrame(np.delete(particles, [0,1], 1),
+                self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
                                         columns=cols)
-                self.evt = self.evt.astype("float64") # sqlite3 schema compat
+                self.evt = self.evt.astype("float64")  # sqlite3 schema compat
                 self.evtcnt = len(self.evt.index)
-            except:
+            except Exception:
                 sys.stderr.write("Could not parse file %s\n" % self.file_name)
-
 
     def filter_evt(self, notch=1, width=0.5, slope=1):
         """Filter EVT data.
@@ -79,30 +78,25 @@ class EVT(object):
         self.opp = opp
         self.oppcnt = len(self.opp.index)
 
-
     def add_extra_columns(self, cruise_name, particles_seen):
         """Add columns for cruise name, file name, and particle ID to OPP."""
         if self.opp is None:
-            sys.stderr.write("EVT must be filtered before calling this method\n")
+            sys.stderr.write("EVT must be filtered before this method\n")
         else:
             ids = range(particles_seen, particles_seen+self.oppcnt)
             self.opp.insert(0, "cruise", cruise_name)
             self.opp.insert(1, "file", self.file_name)
             self.opp.insert(2, "particle", ids)
 
-
     def write_opp_csv(self, outfile):
         self.opp.to_csv(outfile, sep=",", index=False)
-
 
     def write_evt_csv(self, outfile):
         self.evt.to_csv(outfile, sep=",", index=False)
 
-
     def write_opp_sqlite3(self, con):
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
         con.executemany(sql, self.opp.itertuples(index=False))
-
 
     def write_opp_hdf5(self, store):
         """Save OPP data to pandas HDFStore storage"""
