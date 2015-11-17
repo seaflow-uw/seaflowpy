@@ -1,4 +1,4 @@
-"""Functions manage SeaFlow sqlite3 DBs"""
+"""Functions manage SeaFlow sqlite3 DBs."""
 import sqlite3 as sq
 
 
@@ -6,8 +6,8 @@ def opendb(dbpath):
     return sq.connect(dbpath)
 
 
-def create_opp_table(con):
-    """Create sqlite3 opp table"""
+def ensure_opp_table(con):
+    """Ensure opp table exists."""
     con.execute("""CREATE TABLE IF NOT EXISTS opp (
       -- First three columns are the EVT, OPP, VCT composite key
       cruise TEXT NOT NULL,

@@ -32,8 +32,8 @@ class EVT(object):
             except Exception:
                 sys.stderr.write("Could not parse file %s\n" % self.file_name)
 
-    def filter_evt(self, notch=1, width=0.5, slope=1):
-        """Filter EVT data.
+    def filter_particles(self, notch=1, width=0.5, slope=1):
+        """Filter EVT particle data.
 
         Args:
             notch: filter notch (default 1)
