@@ -6,8 +6,9 @@ def opendb(dbpath):
     return sq.connect(dbpath)
 
 
-def ensure_opp_table(con):
+def ensure_opp_table(dbpath):
     """Ensure opp table exists."""
+    con = sq.connect(dbpath)
     con.execute("""CREATE TABLE IF NOT EXISTS opp (
       -- First three columns are the EVT, OPP, VCT composite key
       cruise TEXT NOT NULL,
@@ -29,3 +30,4 @@ def ensure_opp_table(con):
       PRIMARY KEY (cruise, file, particle)
     )""")
     con.commit()
+    con.close()

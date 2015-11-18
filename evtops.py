@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import sqlite3 as sq
 import sys
 
 
@@ -94,9 +95,12 @@ class EVT(object):
     def write_evt_csv(self, outfile):
         self.evt.to_csv(outfile, sep=",", index=False)
 
-    def write_opp_sqlite3(self, con):
+    def write_opp_sqlite3(self, dbpath):
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
+        con = sq.connect(dbpath)
         con.executemany(sql, self.opp.itertuples(index=False))
+        con.commit()
+        con.close()
 
     def write_opp_hdf5(self, store):
         """Save OPP data to pandas HDFStore storage"""
