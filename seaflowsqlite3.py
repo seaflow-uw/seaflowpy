@@ -28,3 +28,4 @@ def ensure_opp_table(con):
       chl_big REAL NOT NULL,
       PRIMARY KEY (cruise, file, particle)
     )""")
+    con.commit()
