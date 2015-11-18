@@ -2,10 +2,6 @@
 import sqlite3 as sq
 
 
-def opendb(dbpath):
-    return sq.connect(dbpath)
-
-
 def ensure_opp_table(dbpath):
     """Ensure opp table exists."""
     con = sq.connect(dbpath)
