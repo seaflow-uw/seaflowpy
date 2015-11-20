@@ -11,6 +11,7 @@ class EVT(object):
         self.file_name = file_name
         self.evtcnt = 0
         self.oppcnt = 0
+        self.opp_evt_ratio = 0.0
         self.evt = None
         self.opp = None
 
@@ -78,6 +79,7 @@ class EVT(object):
 
         self.opp = opp
         self.oppcnt = len(self.opp.index)
+        self.opp_evt_ratio = float(self.oppcnt) / self.evtcnt
 
     def add_extra_columns(self, cruise_name, particles_seen):
         """Add columns for cruise name, file name, and particle ID to OPP."""
@@ -99,6 +101,13 @@ class EVT(object):
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
         con = sq.connect(dbpath)
         con.executemany(sql, self.opp.itertuples(index=False))
+        con.commit()
+        con.close()
+
+    def write_opp_evt_ratio_sqlite3(self, cruise_name, dbpath):
+        sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
+        con = sq.connect(dbpath)
+        con.execute(sql, (cruise_name, self.file_name, self.opp_evt_ratio))
         con.commit()
         con.close()
 

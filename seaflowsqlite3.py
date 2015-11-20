@@ -27,3 +27,15 @@ def ensure_opp_table(dbpath):
     )""")
     con.commit()
     con.close()
+
+def ensure_opp_evt_ratio_table(dbpath):
+    """Ensure opp_evt_ratio table exists."""
+    con = sq.connect(dbpath)
+    con.execute("""CREATE TABLE IF NOT EXISTS opp_evt_ratio (
+      cruise TEXT NOT NULL,
+      file TEXT NOT NULL,
+      ratio REAL,
+      PRIMARY KEY (cruise, file)
+    )""")
+    con.commit()
+    con.close()

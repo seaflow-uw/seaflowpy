@@ -8,7 +8,9 @@ import seaflowsqlite3 as ssq
 
 def main():
     p = ArgumentParser(description="Filter EVT data.")
-    p.add_argument("-f", "--files", required=True,
+    p.add_argument("-f", "--files", required=True, nargs="+",
+                   help="EVT file paths. - to read from stdin.")
+    p.add_argument("-i", "--input",
                    help="file listing EVT file paths. - to read from stdin.")
     p.add_argument("-d", "--db", required=True, help="sqlite3 db file")
     p.add_argument("-c", "--cruise", required=True, help="cruise name")
@@ -27,13 +29,11 @@ def main():
 
 def parse_file_list(files):
     files_list = []
-    if files == "-":
+    if len(files) and files[0] == "-":
         for line in sys.stdin:
             files_list.append(line.rstrip())
     else:
-        with open(files) as fh:
-            for line in fh:
-                files_list.append(line.rstrip())
+        files_list = files
     exists = []
     for f in files_list:
         if not os.path.isfile(f):
@@ -45,6 +45,7 @@ def parse_file_list(files):
 
 def filter_files(files, db, cruise, notch, width, slope):
     ssq.ensure_opp_table(db)
+    ssq.ensure_opp_evt_ratio_table(db)
     evtcnt = 0
     oppcnt = 0
     for f in files:
@@ -52,16 +53,16 @@ def filter_files(files, db, cruise, notch, width, slope):
         evt.filter_particles(notch, width=width, slope=slope)
         evt.add_extra_columns(cruise, oppcnt)
         evt.write_opp_sqlite3(db)
+        evt.write_opp_evt_ratio_sqlite3(cruise, db)
         evtcnt += evt.evtcnt
         oppcnt += evt.oppcnt
-        print("%s: %i => %i" % (f, evt.evtcnt, evt.oppcnt))
-    print("")
+        print "%s: %i => %i (%.06f)" % (f, evt.evtcnt, evt.oppcnt,
+                                        evt.opp_evt_ratio)
     try:
-        opp_evt_percent = oppcnt*100.0/evtcnt
+        opp_evt_ratio = float(oppcnt) / evtcnt
     except ZeroDivisionError:
-        opp_evt_percent = 0.0
-    print(evtcnt, oppcnt, "%.04f" % opp_evt_percent)
-    sys.stdout.flush()
+        opp_evt_ratio = 0.0
+    print "%s => %s (%.06f)\n" % (evtcnt, oppcnt, opp_evt_ratio)
 
 
 if __name__ == "__main__":
