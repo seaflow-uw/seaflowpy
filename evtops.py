@@ -1,3 +1,4 @@
+import apsw
 import numpy as np
 import pandas as pd
 import sqlite3 as sq
@@ -79,7 +80,53 @@ class EVT(object):
 
         self.opp = opp
         self.oppcnt = len(self.opp.index)
-        self.opp_evt_ratio = float(self.oppcnt) / self.evtcnt
+        try:
+            self.opp_evt_ratio = float(self.oppcnt) / self.evtcnt
+        except ZeroDivisionError:
+            self.opp_evt_ratio = 0.0
+
+    def filter_particles_new(self, notch=None, width=0.5, origin=None,
+                             offset=0):
+        """Filter EVT particle data."""
+        if origin is None:
+            origin = (self.evt["D2"] - self.evt["D1"]).median()
+
+        # Only keep particles detected by fsc_small
+        opp = self.evt[self.evt["fsc_small"] > 1].copy()
+
+        # Filter aligned particles (D1 = D2), with correction for D1 D2
+        # sensitivity difference
+        alignedD1 = (opp["D1"] + origin) < (opp["D2"] + (width * 10**4))
+        alignedD2 = opp["D2"] < (opp["D1"] + origin + (width * 10**4))
+        aligned = opp[alignedD1 & alignedD2]
+
+        if notch is None:
+            notch = []
+            fsc_small_max = aligned["fsc_small"].max()
+
+            min1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
+            max1 = aligned[aligned["D1"] == min1]["fsc_small"].max()
+            notch.append(max1 / (min1 + 10000))
+
+            min2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
+            max2 = aligned[aligned["D2"] == min2]["fsc_small"].max()
+            notch.append(max2 / (min2 + 10000))
+
+        # Filtering focused particles (fsc_small > D + notch)
+        oppD1 = aligned["fsc_small"] > ((aligned["D1"] * notch[0]) - (offset * 10**4))
+        oppD2 = aligned["fsc_small"] > ((aligned["D2"] * notch[1]) - (offset * 10**4))
+        opp = aligned[oppD1 & oppD2].copy()
+
+        notwant = ["time", "pulse_width"]
+        cols = [x for x in opp.columns if not x in notwant]
+        opp[cols] = opp[cols] / 2**16 * 3.5
+
+        self.opp = opp
+        self.oppcnt = len(self.opp.index)
+        try:
+            self.opp_evt_ratio = float(self.oppcnt) / self.evtcnt
+        except ZeroDivisionError:
+            self.opp_evt_ratio = 0.0
 
     def add_extra_columns(self, cruise_name, particles_seen):
         """Add columns for cruise name, file name, and particle ID to OPP."""
@@ -92,7 +139,7 @@ class EVT(object):
             self.opp.insert(2, "particle", ids)
 
     def write_opp_csv(self, outfile):
-        self.opp.to_csv(outfile, sep=",", index=False)
+        self.opp.to_csv(outfile, sep=",", index=False, header=False)
 
     def write_evt_csv(self, outfile):
         self.evt.to_csv(outfile, sep=",", index=False)
@@ -100,16 +147,27 @@ class EVT(object):
     def write_opp_sqlite3(self, dbpath):
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
         con = sq.connect(dbpath)
-        con.executemany(sql, self.opp.itertuples(index=False))
+        cur = con.cursor()
+        cur.execute("PRAGMA synchronous=OFF")
+        cur.execute("PRAGMA cache_size=500000")
+        cur.execute("PRAGMA journal_mode=memory")
+        cur.executemany(sql, self.opp.itertuples(index=False))
         con.commit()
-        con.close()
+
+    def write_opp_sqlite3_apsw(self, dbpath):
+        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
+        con = apsw.Connection(dbpath)
+        cur = con.cursor()
+        cur.execute("PRAGMA synchronous=OFF")
+        cur.execute("PRAGMA cache_size=200000")
+        cur.execute("PRAGMA journal_mode=memory")
+        cur.executemany(sql, self.opp.itertuples(index=False))
 
     def write_opp_evt_ratio_sqlite3(self, cruise_name, dbpath):
         sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
         con = sq.connect(dbpath)
         con.execute(sql, (cruise_name, self.file_name, self.opp_evt_ratio))
         con.commit()
-        con.close()
 
     def write_opp_hdf5(self, store):
         """Save OPP data to pandas HDFStore storage"""
