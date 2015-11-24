@@ -145,7 +145,7 @@ class EVT(object):
 
     def write_opp_sqlite3(self, dbpath):
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
-        con = sq.connect(dbpath)
+        con = sq.connect(dbpath, timeout=30)
         cur = con.cursor()
         cur.execute("PRAGMA synchronous=OFF")
         cur.execute("PRAGMA cache_size=500000")
@@ -153,18 +153,9 @@ class EVT(object):
         cur.executemany(sql, self.opp.itertuples(index=False))
         con.commit()
 
-    def write_opp_sqlite3_apsw(self, dbpath):
-        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*self.opp.shape[1])
-        con = apsw.Connection(dbpath)
-        cur = con.cursor()
-        cur.execute("PRAGMA synchronous=OFF")
-        cur.execute("PRAGMA cache_size=200000")
-        cur.execute("PRAGMA journal_mode=memory")
-        cur.executemany(sql, self.opp.itertuples(index=False))
-
     def write_opp_evt_ratio_sqlite3(self, cruise_name, dbpath):
         sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
-        con = sq.connect(dbpath)
+        con = sq.connect(dbpath, timeout=30)
         con.execute(sql, (cruise_name, self.file_name, self.opp_evt_ratio))
         con.commit()
 
