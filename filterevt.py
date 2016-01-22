@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import datetime
 import numpy as np
 import pandas as pd
+import pprint
 import os
 import re
 import sqlite3 as sq
@@ -38,7 +39,12 @@ def main():
     else:
         files = find_evt_files(args.evt_dir)
 
-    print args
+    v = dict(vars(args))
+    to_delete = [k for k in v if v[k] is None]
+    for k in to_delete:
+        v.pop(k, None)
+    print "Filtering with these defined parameters:"
+    pprint.pprint(v, indent=2)
 
 
     filter_files(files, args.cruise, args.notch1, args.notch2, args.width,
