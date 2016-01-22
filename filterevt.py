@@ -44,7 +44,7 @@ def main():
     to_delete = [k for k in v if v[k] is None]
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
-    print "Filtering with these defined parameters:"
+    print "Defined parameters:"
     pprint.pprint(v, indent=2)
 
 
@@ -90,7 +90,7 @@ def filter_files(files, cruise, notch1, notch2, width, origin, offset, dbpath):
     t0 = datetime.datetime.now()
 
     print ""
-    print "Filtering EVT %i files" % len(files)
+    print "Filtering %i EVT files" % len(files)
 
     ensure_opp_table(dbpath)
     ensure_opp_evt_ratio_table(dbpath)
