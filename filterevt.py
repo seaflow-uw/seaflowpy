@@ -15,18 +15,21 @@ def main():
 
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--files", nargs="+",
-                   help="EVT file paths. - to read from stdin.")
-    g.add_argument("--evt_dir", help="EVT directory path.")
+                   help="""EVT file paths. - to read from stdin.
+                        (required unless --evt_dir)""")
+    g.add_argument("--evt_dir",
+                   help="EVT directory path (required unless --files)")
 
-    p.add_argument("--db", required=True, help="sqlite3 db file")
-    p.add_argument("--cruise", required=True, help="cruise name")
-    p.add_argument("--notch1", type=float, help="notch 1")
-    p.add_argument("--notch2", type=float, help="notch 2")
-    p.add_argument("--width", type=float, default=0.5, help="width")
-    p.add_argument("--origin", type=float, help="origin")
-    p.add_argument("--offset", type=float, default=0.0, help="offset")
+    p.add_argument("--db", required=True, help="sqlite3 db file (required)")
+    p.add_argument("--cruise", required=True, help="cruise name (required)")
+    p.add_argument("--notch1", type=float, help="notch 1 (optional)")
+    p.add_argument("--notch2", type=float, help="notch 2 (optional)")
+    p.add_argument("--width", type=float, default=0.5, help="width (optional)")
+    p.add_argument("--origin", type=float, help="origin (optional)")
+    p.add_argument("--offset", type=float, default=0.0,
+                   help="offset (optional)")
     p.add_argument("--no-index", default=False, action="store_true",
-                   help="Skip creation of opp table indexes.")
+                   help="Skip creation of opp table indexes (optional)")
 
     args = p.parse_args()
 
