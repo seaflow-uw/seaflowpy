@@ -2,6 +2,7 @@
 
 from argparse import ArgumentParser
 import datetime
+import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import pprint
@@ -21,6 +22,9 @@ def main():
     g.add_argument("--evt_dir",
                    help="EVT directory path (required unless --files)")
 
+    p.add_argument("--cpus", required=False, type=int, default=1,
+                   help="""Number of CPU cores to use in filtering. Max value of
+                   system core count. (optional)""")
     p.add_argument("--db", required=True, help="sqlite3 db file (required)")
     p.add_argument("--cruise", required=True, help="cruise name (required)")
     p.add_argument("--notch1", type=float, help="notch 1 (optional)")
@@ -34,10 +38,8 @@ def main():
 
     args = p.parse_args()
 
-    if args.files:
-        files = parse_file_list(args.files)
-    else:
-        files = find_evt_files(args.evt_dir)
+    # Check --cpus option
+    args.cpus = min(mp.cpu_count(), args.cpus)
 
     # Print defined parameters
     v = dict(vars(args))
@@ -47,9 +49,15 @@ def main():
     print "Defined parameters:"
     pprint.pprint(v, indent=2)
 
+    # Find EVT files
+    if args.files:
+        files = parse_file_list(args.files)
+    else:
+        files = find_evt_files(args.evt_dir)
 
-    filter_files(files, args.cruise, args.notch1, args.notch2, args.width,
-                 args.origin, args.offset, args.db)
+    # Filter
+    filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
+                 args.width, args.origin, args.offset, args.db)
     if not args.no_index:
         create_indexes(args.db)
 
@@ -86,7 +94,8 @@ def find_evt_files(evt_dir):
     return evt_files
 
 
-def filter_files(files, cruise, notch1, notch2, width, origin, offset, dbpath):
+def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
+                 dbpath):
     t0 = datetime.datetime.now()
 
     print ""
@@ -99,22 +108,28 @@ def filter_files(files, cruise, notch1, notch2, width, origin, offset, dbpath):
     oppcnt = 0
     files_ok = 0
 
+    # Create a pool of N worker processes
+    pool = mp.Pool(cpus)
+
+    # Construct worker inputs
+    inputs = []
     for f in files:
-        evt = EVT(f)
+        inputs.append({
+            "file": f,
+            "cruise": cruise,
+            "notch1": notch1,
+            "notch2": notch2,
+            "width": width,
+            "origin": origin,
+            "offset": offset,
+            "dbpath": dbpath})
 
-        if not evt.ok:
-            continue
+    for i, res in enumerate(pool.imap_unordered(filter_one_file, inputs, 1)):
+        sys.stderr.write("%i / %i\n" % (i+1, len(files)))
+        evtcnt += res["evtcnt"]
+        oppcnt += res["oppcnt"]
+        files_ok += 1 if res["ok"] else 0
 
-        evt.filter_particles(notch1=notch1, notch2=notch2, origin=origin,
-                             offset=offset, width=width)
-
-        evt.save_opp_to_db(cruise, oppcnt, dbpath)
-
-        evtcnt += evt.evtcnt
-        oppcnt += evt.oppcnt
-        files_ok += 1
-        print "%s: %i / %i = %.06f" % (f, evt.oppcnt, evt.evtcnt,
-                                       evt.opp_evt_ratio)
     try:
         opp_evt_ratio = float(oppcnt) / evtcnt
     except ZeroDivisionError:
@@ -131,6 +146,23 @@ def filter_files(files, cruise, notch1, notch2, width, origin, offset, dbpath):
     print "OPP particles = %s" % oppcnt
     print "OPP/EVT ratio = %.06f" % opp_evt_ratio
     print "Filtering completed in %.02f seconds" % delta_s
+
+
+def filter_one_file(params):
+    # Keys to pull from params for filter and save methods parameters
+    filter_keys = ("notch1", "notch2", "offset", "origin", "width")
+    save_keys = ("cruise", "dbpath")
+    # Make methods parameter keyword dictionaries
+    filter_kwargs = {k: params[k] for k in filter_keys}
+    save_kwargs = {k: params[k] for k in save_keys}
+
+    evt = EVT(params["file"])
+    if evt.ok:
+        evt.filter_particles(**filter_kwargs)
+        evt.save_opp_to_db(**save_kwargs)
+
+    return {"ok": evt.ok, "evtcnt": evt.evtcnt,
+             "oppcnt": evt.oppcnt, "opp_evt_ratio": evt.opp_evt_ratio}
 
 
 def ensure_opp_table(dbpath):
@@ -327,21 +359,21 @@ class EVT(object):
         except ZeroDivisionError:
             self.opp_evt_ratio = 0.0
 
-    def add_extra_columns(self, cruise_name, particles_seen):
+    def add_extra_columns(self, cruise_name):
         """Add columns for cruise name, file name, and particle ID to OPP."""
         if self.opp is None:
             return
 
-        ids = range(particles_seen, particles_seen + self.oppcnt)
+        ids = range(1, self.oppcnt+1)
         self.opp.insert(0, "cruise", cruise_name)
         self.opp.insert(1, "file", self.db_file_name)
         self.opp.insert(2, "particle", ids)
 
-    def save_opp_to_db(self, cruise, oppcnt, dbpath):
+    def save_opp_to_db(self, cruise, dbpath):
         if self.opp is None:
             return
 
-        self.add_extra_columns(cruise, oppcnt)
+        self.add_extra_columns(cruise)
         self.insert_opp_particles_sqlite3(dbpath)
         self.insert_opp_evt_ratio_sqlite3(cruise, dbpath)
 
