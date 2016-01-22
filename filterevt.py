@@ -211,7 +211,10 @@ class EVT(object):
         self.opp = None
         self.ok = False  # Could EVT file be parsed
 
-        self.read_evt()
+        try:
+            self.read_evt()
+        except Exception as e:
+            print "Could not parse file %s: %s" % (self.file_path, repr(e))
 
         # Set a flag to indicate if EVT file could be parsed
         if not self.evt is None:
@@ -234,21 +237,43 @@ class EVT(object):
 
     def read_evt(self):
         """Read an EVT binary file and return a pandas DataFrame."""
+        # Data columns
         cols = ["time", "pulse_width", "D1", "D2",
                 "fsc_small", "fsc_perp", "fsc_big",
                 "pe", "chl_small", "chl_big"]
+
+        # Check for empty file
+        file_size = os.stat(self.file_path).st_size
+        if file_size == 0:
+            raise Exception("File is empty")
+
         with open(self.file_path) as fh:
-            try:
-                rowcnt = np.fromfile(fh, dtype="uint32", count=1)
-                particles = np.fromfile(fh, dtype="uint16", count=rowcnt*12)
-                particles = np.reshape(particles, [rowcnt, 12])
-                # Remove first 4 bytes of zero padding from each row
-                self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
-                                        columns=cols)
-                self.evt = self.evt.astype("float64")  # sqlite3 schema compat
-                self.evtcnt = len(self.evt.index)
-            except Exception:
-                sys.stderr.write("Could not parse file %s\n" % self.file_path)
+            # Particle count (rows of data) is stored in an initial 32-bit
+            # unsigned int
+            rowcnt = np.fromfile(fh, dtype="uint32", count=1)
+            # Make sure the file is the expected size based on particle count
+            expected_size = 4 + (rowcnt * (2 * 12))
+            if file_size != expected_size:
+                raise Exception(
+                    "Incorrect file size. Expected %i, saw %i." % (expected_size,
+                                                                   file_size))
+            # Read the rest of the data. Each particle has 12 unsigned
+            # 16-bit ints in a row.
+            particles = np.fromfile(fh, dtype="uint16", count=rowcnt*12)
+            # Reshape into a matrix of 12 columns and one row per particle
+            particles = np.reshape(particles, [rowcnt, 12])
+            # Create a Pandas DataFrame. The first two zeroed uint16s from
+            # start of each row are left out. These empty ints are an
+            # idiosyncrasy of LabVIEW's binary output format. Label each
+            # column with a descriptive name.
+            self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
+                                    columns=cols)
+            # Cast as 64-bit floats. Could do 32-bit except SQLite 3 only
+            # has 64-bit floats.
+            self.evt = self.evt.astype("float64")
+
+            # Record the original number of particles
+            self.evtcnt = len(self.evt.index)
 
     def filter_particles(self, notch1=None, notch2=None, offset=None,
                          origin=None, width=None):
