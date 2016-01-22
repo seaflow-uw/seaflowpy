@@ -29,7 +29,7 @@ def main():
     p.add_argument("--origin", type=float, help="origin (optional)")
     p.add_argument("--offset", type=float, default=0.0,
                    help="offset (optional)")
-    p.add_argument("--no-index", default=False, action="store_true",
+    p.add_argument("--no_index", default=False, action="store_true",
                    help="Skip creation of opp table indexes (optional)")
 
     args = p.parse_args()
