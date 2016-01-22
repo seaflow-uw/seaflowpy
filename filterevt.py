@@ -39,10 +39,11 @@ def main():
     else:
         files = find_evt_files(args.evt_dir)
 
+    # Print defined parameters
     v = dict(vars(args))
     to_delete = [k for k in v if v[k] is None]
     for k in to_delete:
-        v.pop(k, None)
+        v.pop(k, None)  # Remove undefined parameters
     print "Filtering with these defined parameters:"
     pprint.pprint(v, indent=2)
 
