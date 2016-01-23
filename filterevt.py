@@ -98,8 +98,11 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
                  dbpath):
     t0 = datetime.datetime.now()
 
+    every = 10  # Progress every N%
+
     print ""
-    print "Filtering %i EVT files" % len(files)
+    print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
+        (len(files), every)
 
     ensure_opp_table(dbpath)
     ensure_opp_evt_ratio_table(dbpath)
@@ -124,10 +127,29 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             "offset": offset,
             "dbpath": dbpath})
 
+    last = 0  # Last progress milestone in increments of every
+    evtcnt_block = 0  # EVT particles in this block (between milestones)
+    oppcnt_block = 0  # OPP particles in this block
     for i, res in enumerate(pool.imap_unordered(filter_one_file, inputs, 1)):
-        sys.stderr.write("%i / %i\n" % (i+1, len(files)))
-        evtcnt += res["evtcnt"]
-        oppcnt += res["oppcnt"]
+        evtcnt_block += res["evtcnt"]
+        oppcnt_block += res["oppcnt"]
+
+        # Print progress periodically
+        perc = float(i + 1) / len(files) * 100
+        milestone = int(perc / every) * every
+        if milestone > last:
+            evtcnt += evtcnt_block
+            oppcnt += oppcnt_block
+            ratio_block = float(oppcnt_block) / evtcnt_block
+            msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
+            msg += " Particles this block: %i / %i (%.06f)" % \
+                (oppcnt_block, evtcnt_block, ratio_block)
+            print msg
+            last = milestone
+            evtcnt_block = 0
+            oppcnt_block = 0
+        evtcnt_block += res["evtcnt"]
+        oppcnt_block += res["oppcnt"]
         files_ok += 1 if res["ok"] else 0
 
     try:
@@ -364,10 +386,9 @@ class EVT(object):
         if self.opp is None:
             return
 
-        ids = range(1, self.oppcnt+1)
         self.opp.insert(0, "cruise", cruise_name)
         self.opp.insert(1, "file", self.db_file_name)
-        self.opp.insert(2, "particle", ids)
+        self.opp.insert(2, "particle", range(1, self.oppcnt+1))
 
     def save_opp_to_db(self, cruise, dbpath):
         if self.opp is None:
