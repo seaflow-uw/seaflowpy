@@ -130,17 +130,23 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     last = 0  # Last progress milestone in increments of every
     evtcnt_block = 0  # EVT particles in this block (between milestones)
     oppcnt_block = 0  # OPP particles in this block
+
+    # Filter particles in parallel with process pool 
     for i, res in enumerate(pool.imap_unordered(filter_one_file, inputs, 1)):
         evtcnt_block += res["evtcnt"]
         oppcnt_block += res["oppcnt"]
+        files_ok += 1 if res["ok"] else 0
 
         # Print progress periodically
-        perc = float(i + 1) / len(files) * 100
-        milestone = int(perc / every) * every
+        perc = float(i + 1) / len(files) * 100  # Percent completed
+        milestone = int(perc / every) * every   # Round down to closest every%
         if milestone > last:
             evtcnt += evtcnt_block
             oppcnt += oppcnt_block
-            ratio_block = float(oppcnt_block) / evtcnt_block
+            try:
+                ratio_block = float(oppcnt_block) / evtcnt_block
+            except ZeroDivisionError:
+                ratio_block = 0.0
             msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
             msg += " Particles this block: %i / %i (%.06f)" % \
                 (oppcnt_block, evtcnt_block, ratio_block)
@@ -148,9 +154,14 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             last = milestone
             evtcnt_block = 0
             oppcnt_block = 0
-        evtcnt_block += res["evtcnt"]
-        oppcnt_block += res["oppcnt"]
-        files_ok += 1 if res["ok"] else 0
+    # If any particle count data is left, add it to totals
+    if evtcnt_block > 0:
+        evtcnt += evtcnt_block
+        oppcnt += oppcnt_block
+        try:
+            ratio_block = float(oppcnt_block) / evtcnt_block
+        except ZeroDivisionError:
+            ratio_block = 0.0
 
     try:
         opp_evt_ratio = float(oppcnt) / evtcnt
