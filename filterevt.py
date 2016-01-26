@@ -12,7 +12,7 @@ import pprint
 import os
 import re
 import shutil
-import sqlite3 as sq
+import sqlite3
 import sys
 import tempfile
 import time
@@ -306,7 +306,7 @@ def filter_one_file(params):
 
 def ensure_tables(dbpath):
     """Ensure all popcycle tables exists."""
-    con = sq.connect(dbpath)
+    con = sqlite3.connect(dbpath)
     cur = con.cursor()
 
     con.execute("""CREATE TABLE IF NOT EXISTS opp (
@@ -402,7 +402,7 @@ def ensure_tables(dbpath):
 
 def ensure_opp_evt_ratio_table(dbpath):
     """Ensure opp_evt_ratio table exists."""
-    con = sq.connect(dbpath)
+    con = sqlite3.connect(dbpath)
     con.execute("""CREATE TABLE IF NOT EXISTS opp_evt_ratio (
       cruise TEXT NOT NULL,
       file TEXT NOT NULL,
@@ -419,7 +419,7 @@ def ensure_indexes(dbpath):
 
     print ""
     print "Creating opp table indexes"
-    con = sq.connect(dbpath)
+    con = sqlite3.connect(dbpath)
     cur = con.cursor()
     index_cmds = [
         "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
@@ -604,7 +604,7 @@ class EVT(object):
             return
 
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * self.opp.shape[1])
-        con = sq.connect(dbpath, timeout=30)
+        con = sqlite3.connect(dbpath, timeout=30)
         cur = con.cursor()
         cur.executemany(sql, self.opp.itertuples(index=False))
         con.commit()
@@ -614,7 +614,7 @@ class EVT(object):
             return
 
         sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
-        con = sq.connect(dbpath, timeout=30)
+        con = sqlite3.connect(dbpath, timeout=30)
         con.execute(sql, (cruise_name, self.file_name, self.opp_evt_ratio))
         con.commit()
 
