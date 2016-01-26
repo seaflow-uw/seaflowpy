@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
-import datetime
+import time
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
@@ -96,7 +96,7 @@ def find_evt_files(evt_dir):
 
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
                  dbpath):
-    t0 = datetime.datetime.now()
+    t0 = time.time()
 
     every = 10  # Progress every N%
 
@@ -131,7 +131,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     evtcnt_block = 0  # EVT particles in this block (between milestones)
     oppcnt_block = 0  # OPP particles in this block
 
-    # Filter particles in parallel with process pool 
+    # Filter particles in parallel with process pool
     for i, res in enumerate(pool.imap_unordered(filter_one_file, inputs, 1)):
         evtcnt_block += res["evtcnt"]
         oppcnt_block += res["oppcnt"]
@@ -158,19 +158,13 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     if evtcnt_block > 0:
         evtcnt += evtcnt_block
         oppcnt += oppcnt_block
-        try:
-            ratio_block = float(oppcnt_block) / evtcnt_block
-        except ZeroDivisionError:
-            ratio_block = 0.0
 
     try:
         opp_evt_ratio = float(oppcnt) / evtcnt
     except ZeroDivisionError:
         opp_evt_ratio = 0.0
 
-    t1 = datetime.datetime.now()
-    delta = t1 - t0
-    delta_s = delta.total_seconds()
+    t1 = time.time()
 
     print ""
     print "Input EVT files = %i" % len(files)
@@ -178,7 +172,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     print "EVT particles = %s" % evtcnt
     print "OPP particles = %s" % oppcnt
     print "OPP/EVT ratio = %.06f" % opp_evt_ratio
-    print "Filtering completed in %.02f seconds" % delta_s
+    print "Filtering completed in %.2f seconds" % (t1 - t0,)
 
 
 def filter_one_file(params):
@@ -194,8 +188,7 @@ def filter_one_file(params):
         evt.filter_particles(**filter_kwargs)
         evt.save_opp_to_db(**save_kwargs)
 
-    return {"ok": evt.ok, "evtcnt": evt.evtcnt,
-             "oppcnt": evt.oppcnt, "opp_evt_ratio": evt.opp_evt_ratio}
+    return {"ok": evt.ok, "evtcnt": evt.evtcnt, "oppcnt": evt.oppcnt}
 
 
 def ensure_opp_table(dbpath):
@@ -240,11 +233,12 @@ def ensure_opp_evt_ratio_table(dbpath):
 
 def create_indexes(dbpath):
     """Create opp table indexes."""
-    t0 = datetime.datetime.now()
+    t0 = time.time()
 
     print ""
     print "Creating opp table indexes"
     con = sq.connect(dbpath)
+    cur = con.cursor()
     index_cmds = [
         "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
         "CREATE INDEX IF NOT EXISTS oppFsc_smallIndex ON opp (fsc_small)",
@@ -253,14 +247,12 @@ def create_indexes(dbpath):
     ]
     for cmd in index_cmds:
         print cmd
-        con.execute(cmd)
+        cur.execute(cmd)
     con.commit()
     con.close()
 
-    t1 = datetime.datetime.now()
-    delta = t1 - t0
-    delta_s = delta.total_seconds()
-    print "Index creation completed in %.02f seconds" % delta_s
+    t1 = time.time()
+    print "Index creation completed in %.2f seconds" % (t1 - t0,)
 
 
 class EVT(object):
@@ -268,7 +260,7 @@ class EVT(object):
 
     def __init__(self, file_path):
         self.file_path = file_path
-        self.set_db_file_name()
+        self.set_file_name()
         self.evtcnt = 0
         self.oppcnt = 0
         self.opp_evt_ratio = 0.0
@@ -285,20 +277,20 @@ class EVT(object):
         if not self.evt is None:
             self.ok = True
 
-    def set_db_file_name(self):
+    def set_file_name(self):
         """Set the file name to be used in the sqlite3 db."""
         pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}$'
         evt_re = re.compile(pattern)
         if evt_re.match(os.path.basename(self.file_path)):
             # New style EVT name
-            self.db_file_name = os.path.basename(self.file_path)
+            self.file_name = os.path.basename(self.file_path)
         else:
             # Old style EVT name
             parts = self.file_path.split("/")
             if len(parts) < 2:
                 raise ValueError(
                     "Old style EVT file paths must contain julian day directory")
-            self.db_file_name = os.path.join(parts[-2], parts[-1])
+            self.file_name = os.path.join(parts[-2], parts[-1])
 
     def read_evt(self):
         """Read an EVT binary file and return a pandas DataFrame."""
@@ -398,7 +390,7 @@ class EVT(object):
             return
 
         self.opp.insert(0, "cruise", cruise_name)
-        self.opp.insert(1, "file", self.db_file_name)
+        self.opp.insert(1, "file", self.file_name)
         self.opp.insert(2, "particle", range(1, self.oppcnt+1))
 
     def save_opp_to_db(self, cruise, dbpath):
@@ -416,9 +408,6 @@ class EVT(object):
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * self.opp.shape[1])
         con = sq.connect(dbpath, timeout=30)
         cur = con.cursor()
-        cur.execute("PRAGMA synchronous=OFF")
-        cur.execute("PRAGMA cache_size=500000")
-        cur.execute("PRAGMA journal_mode=memory")
         cur.executemany(sql, self.opp.itertuples(index=False))
         con.commit()
 
@@ -428,7 +417,7 @@ class EVT(object):
 
         sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
         con = sq.connect(dbpath, timeout=30)
-        con.execute(sql, (cruise_name, self.db_file_name, self.opp_evt_ratio))
+        con.execute(sql, (cruise_name, self.file_name, self.opp_evt_ratio))
         con.commit()
 
     def write_opp_csv(self, outfile):
