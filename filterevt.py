@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from argparse import ArgumentParser
+import argparse
 import time
 import multiprocessing as mp
 import numpy as np
@@ -13,7 +13,9 @@ import sys
 
 
 def main():
-    p = ArgumentParser(description="Filter EVT data.")
+    p = argparse.ArgumentParser(
+        description="Filter EVT data.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--files", nargs="+",
@@ -35,6 +37,8 @@ def main():
                    help="offset (optional)")
     p.add_argument("--no_index", default=False, action="store_true",
                    help="Skip creation of opp table indexes (optional)")
+    p.add_argument("--progress", type=float, default=10.0,
+                   help="Progress update %% resolution (optional)")
 
     args = p.parse_args()
 
@@ -57,7 +61,7 @@ def main():
 
     # Filter
     filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
-                 args.width, args.origin, args.offset, args.db)
+                 args.width, args.origin, args.offset, args.progress, args.db)
     if not args.no_index:
         create_indexes(args.db)
 
@@ -95,10 +99,8 @@ def find_evt_files(evt_dir):
 
 
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 dbpath):
+                 every, dbpath):
     t0 = time.time()
-
-    every = 10  # Progress every N%
 
     print ""
     print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
@@ -141,6 +143,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
         perc = float(i + 1) / len(files) * 100  # Percent completed
         milestone = int(perc / every) * every   # Round down to closest every%
         if milestone > last:
+            now = time.time()
             evtcnt += evtcnt_block
             oppcnt += oppcnt_block
             try:
@@ -148,8 +151,8 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             except ZeroDivisionError:
                 ratio_block = 0.0
             msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
-            msg += " Particles this block: %i / %i (%.06f)" % \
-                (oppcnt_block, evtcnt_block, ratio_block)
+            msg += " Particles this block: %i / %i (%.06f) elapsed: %.2fs" % \
+                (oppcnt_block, evtcnt_block, ratio_block, now - t0)
             print msg
             last = milestone
             evtcnt_block = 0
