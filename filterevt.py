@@ -1,15 +1,28 @@
 #!/usr/bin/env python
 
 import argparse
-import time
+from boto.s3.connection import S3Connection
+from boto.s3.resumable_download_handler import ResumableDownloadHandler
+import errno
+import getpass
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import pprint
 import os
 import re
+import shutil
 import sqlite3 as sq
 import sys
+import tempfile
+import time
+
+# Global configuration variables for AWS
+# ######################################
+# Default name of Seaflow bucket
+SEAFLOW_BUCKET = "seaflowdata"
+# Default AWS region
+AWS_REGION = "us-west-2"
 
 
 def main():
@@ -20,13 +33,17 @@ def main():
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--files", nargs="+",
                    help="""EVT file paths. - to read from stdin.
-                        (required unless --evt_dir)""")
+                        (required unless --evt_dir or --s3)""")
     g.add_argument("--evt_dir",
-                   help="EVT directory path (required unless --files)")
+                   help="EVT directory path (required unless --files or --s3)")
+    g.add_argument("--s3", default=False, action="store_true",
+                   help="""Read EVT files from s3://seaflowdata/CRUISE where
+                        cruise is provided by --cruise (required unless --files
+                        or --evt_dir)""")
 
     p.add_argument("--cpus", required=False, type=int, default=1,
-                   help="""Number of CPU cores to use in filtering. Max value of
-                   system core count. (optional)""")
+                   help="""Number of CPU cores to use in filtering.
+                        (optional)""")
     p.add_argument("--db", required=True, help="sqlite3 db file (required)")
     p.add_argument("--cruise", required=True, help="cruise name (required)")
     p.add_argument("--notch1", type=float, help="notch 1 (optional)")
@@ -39,11 +56,11 @@ def main():
                    help="Skip creation of opp table indexes (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
+    p.add_argument("--limit", type=int, default=None,
+                   help="""Limit how many files to process. Useful for testing.
+                        (optional)""")
 
     args = p.parse_args()
-
-    # Check --cpus option
-    args.cpus = min(mp.cpu_count(), args.cpus)
 
     # Print defined parameters
     v = dict(vars(args))
@@ -56,14 +73,97 @@ def main():
     # Find EVT files
     if args.files:
         files = parse_file_list(args.files)
-    else:
+    elif args.evt_dir:
         files = find_evt_files(args.evt_dir)
+    elif args.s3:
+        # Make sure try to access S3 up front to setup AWS credentials before
+        # launching child processes.
+        files = get_s3_files(args.cruise)
+
+    # Restrict length of file list with --limit
+    if (not args.limit is None) and (args.limit > 0):
+        files = files[:args.limit]
 
     # Filter
     filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
-                 args.width, args.origin, args.offset, args.progress, args.db)
+                 args.width, args.origin, args.offset, args.progress,
+                 args.s3, args.db)
     if not args.no_index:
-        create_indexes(args.db)
+        ensure_indexes(args.db)
+
+
+def get_aws_credentials():
+    aws_access_key_id = getpass.getpass("aws_access_key_id: ")
+    aws_secret_access_key = getpass.getpass("aws_secret_access_key: ")
+    return (aws_access_key_id, aws_secret_access_key)
+
+
+def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
+    # Make .aws config directory
+    awsdir = os.path.join(os.environ["HOME"], ".aws")
+    mkdir_p(awsdir)
+
+    flags = os.O_WRONLY | os.O_CREAT
+
+    # Make credentials file
+    credentials = os.path.join(awsdir, "credentials")
+    with os.fdopen(os.open(credentials, flags, 0600), "w") as fh:
+        fh.write("[default]\n")
+        fh.write("aws_access_key_id = %s\n" % aws_access_key_id)
+        fh.write("aws_secret_access_key = %s\n" % aws_secret_access_key)
+
+    # May as well make config file and set default region while we're at it
+    config = os.path.join(awsdir, "config")
+    with os.fdopen(os.open(config, flags, 0600), "w") as fh:
+        fh.write("[default]\n")
+        fh.write("region = %s\n" % AWS_REGION)
+
+
+def get_s3_connection():
+    try:
+        s3 = S3Connection()
+    except:
+        (aws_access_key_id, aws_secret_access_key) = get_aws_credentials()
+        s3 = S3Connection(aws_access_key_id, aws_secret_access_key)
+        # Save credentials so we don't have to do this all the time
+        # And so that any child processes have acces to AWS resources
+        save_aws_credentials(aws_access_key_id, aws_secret_access_key)
+    return s3
+
+
+def get_s3_files(cruise):
+    s3 = get_s3_connection()
+    bucket = s3.get_bucket(SEAFLOW_BUCKET, validate=True)
+    i = 0
+    files = []
+    for item in bucket.list(prefix=cruise):
+        # Only keep files for this cruise and skip SFL files
+        if str(item.key) != "%s/" % cruise and \
+                not str(item.key).endswith(".sfl"):
+            files.append(str(item.key))
+    return files
+
+
+def download_s3_file(key_str, target):
+    s3 = get_s3_connection()
+    bucket = s3.get_bucket("seaflowdata", validate=True)
+    key = bucket.get_key(key_str)
+    mkdir_p(os.path.dirname(target))
+    handler = ResumableDownloadHandler(num_retries=6)
+    key.get_contents_to_filename(target, res_download_handler=handler)
+
+
+def mkdir_p(path):
+    """From
+    http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 
 def parse_file_list(files):
@@ -99,15 +199,14 @@ def find_evt_files(evt_dir):
 
 
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 every, dbpath):
+                 every, s3_flag, dbpath):
     t0 = time.time()
 
     print ""
     print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
         (len(files), every)
 
-    ensure_opp_table(dbpath)
-    ensure_opp_evt_ratio_table(dbpath)
+    ensure_tables(dbpath)
 
     evtcnt = 0
     oppcnt = 0
@@ -127,6 +226,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             "width": width,
             "origin": origin,
             "offset": offset,
+            "s3": s3_flag,
             "dbpath": dbpath})
 
     last = 0  # Last progress milestone in increments of every
@@ -186,17 +286,29 @@ def filter_one_file(params):
     filter_kwargs = {k: params[k] for k in filter_keys}
     save_kwargs = {k: params[k] for k in save_keys}
 
-    evt = EVT(params["file"])
+    evt_file = params["file"]
+
+    if params["s3"]:
+        tmpdir = tempfile.mkdtemp()
+        evt_file = os.path.join(tmpdir, params["file"])
+        download_s3_file(params["file"], evt_file)
+
+    evt = EVT(evt_file)
     if evt.ok:
         evt.filter_particles(**filter_kwargs)
         evt.save_opp_to_db(**save_kwargs)
 
+    if params["s3"]:
+        shutil.rmtree(tmpdir)
+
     return {"ok": evt.ok, "evtcnt": evt.evtcnt, "oppcnt": evt.oppcnt}
 
 
-def ensure_opp_table(dbpath):
-    """Ensure opp table exists."""
+def ensure_tables(dbpath):
+    """Ensure all popcycle tables exists."""
     con = sq.connect(dbpath)
+    cur = con.cursor()
+
     con.execute("""CREATE TABLE IF NOT EXISTS opp (
       -- First three columns are the EVT, OPP, VCT composite key
       cruise TEXT NOT NULL,
@@ -217,6 +329,73 @@ def ensure_opp_table(dbpath):
       chl_big REAL NOT NULL,
       PRIMARY KEY (cruise, file, particle)
     )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS vct (
+        -- First three columns are the EVT, OPP, VCT, SDS composite key
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
+        particle INTEGER NOT NULL,
+        -- Next we have the classification
+        pop TEXT NOT NULL,
+        method TEXT NOT NULL,
+        PRIMARY KEY (cruise, file, particle)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS opp_evt_ratio (
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,
+        ratio REAL,
+        PRIMARY KEY (cruise, file)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
+        --First two columns are the SDS composite key
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
+        date TEXT,
+        file_duration REAL,
+        lat REAL,
+        lon REAL,
+        conductivity REAL,
+        salinity REAL,
+        ocean_tmp REAL,
+        par REAL,
+        bulk_red REAL,
+        stream_pressure REAL,
+        flow_rate REAL,
+        event_rate REAL,
+        PRIMARY KEY (cruise, file)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS stats (
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,
+        time TEXT,
+        lat REAL,
+        lon REAL,
+        opp_evt_ratio REAL,
+        flow_rate REAL,
+        file_duration REAL,
+        pop TEXT NOT NULL,
+        n_count INTEGER,
+        abundance REAL,
+        fsc_small REAL,
+        chl_small REAL,
+        pe REAL,
+        PRIMARY KEY (cruise, file, pop)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS cytdiv (
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,
+        N0 INTEGER,
+        N1 REAL,
+        H REAL,
+        J REAL,
+        opp_red REAL,
+        PRIMARY KEY (cruise, file)
+    )""")
+
     con.commit()
     con.close()
 
@@ -234,7 +413,7 @@ def ensure_opp_evt_ratio_table(dbpath):
     con.close()
 
 
-def create_indexes(dbpath):
+def ensure_indexes(dbpath):
     """Create opp table indexes."""
     t0 = time.time()
 
@@ -246,7 +425,9 @@ def create_indexes(dbpath):
         "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
         "CREATE INDEX IF NOT EXISTS oppFsc_smallIndex ON opp (fsc_small)",
         "CREATE INDEX IF NOT EXISTS oppPeIndex ON opp (pe)",
-        "CREATE INDEX IF NOT EXISTS oppChl_smallIndex ON opp (chl_small)"
+        "CREATE INDEX IF NOT EXISTS oppChl_smallIndex ON opp (chl_small)",
+        "CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file)",
+        "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)"
     ]
     for cmd in index_cmds:
         print cmd
@@ -270,6 +451,14 @@ class EVT(object):
         self.evt = None
         self.opp = None
         self.ok = False  # Could EVT file be parsed
+
+        # Set filter params to None
+        # Should be set in filter_particles()
+        self.notch1 = None
+        self.notch2 = None
+        self.offset = None
+        self.origin = None
+        self.width = None
 
         try:
             self.read_evt()
@@ -386,6 +575,12 @@ class EVT(object):
             self.opp_evt_ratio = float(self.oppcnt) / self.evtcnt
         except ZeroDivisionError:
             self.opp_evt_ratio = 0.0
+
+        self.notch1 = notch1
+        self.notch2 = notch2
+        self.offset = offset
+        self.origin = origin
+        self.width = width
 
     def add_extra_columns(self, cruise_name):
         """Add columns for cruise name, file name, and particle ID to OPP."""
