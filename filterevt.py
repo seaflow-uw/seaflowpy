@@ -234,7 +234,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     oppcnt_block = 0  # OPP particles in this block
 
     # Filter particles in parallel with process pool
-    for i, res in enumerate(pool.imap_unordered(filter_one_file, inputs, 1)):
+    for i, res in enumerate(pool.imap_unordered(do_work, inputs, 1)):
         evtcnt_block += res["evtcnt"]
         oppcnt_block += res["oppcnt"]
         files_ok += 1 if res["ok"] else 0
@@ -276,6 +276,13 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     print "OPP particles = %s" % oppcnt
     print "OPP/EVT ratio = %.06f" % opp_evt_ratio
     print "Filtering completed in %.2f seconds" % (t1 - t0,)
+
+
+def do_work(params):
+    try:
+        return filter_one_file(params)
+    except KeyboardInterrupt as e:
+        pass
 
 
 def filter_one_file(params):
