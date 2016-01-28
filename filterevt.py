@@ -92,102 +92,9 @@ def main():
     if not args.no_index:
         ensure_indexes(args.db)
 
-
-def get_aws_credentials():
-    aws_access_key_id = getpass.getpass("aws_access_key_id: ")
-    aws_secret_access_key = getpass.getpass("aws_secret_access_key: ")
-    return (aws_access_key_id, aws_secret_access_key)
-
-
-def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
-    # Make .aws config directory
-    awsdir = os.path.join(os.environ["HOME"], ".aws")
-    mkdir_p(awsdir)
-
-    flags = os.O_WRONLY | os.O_CREAT
-
-    # Make credentials file
-    credentials = os.path.join(awsdir, "credentials")
-    with os.fdopen(os.open(credentials, flags, 0600), "w") as fh:
-        fh.write("[default]\n")
-        fh.write("aws_access_key_id = %s\n" % aws_access_key_id)
-        fh.write("aws_secret_access_key = %s\n" % aws_secret_access_key)
-
-    # May as well make config file and set default region while we're at it
-    config = os.path.join(awsdir, "config")
-    with os.fdopen(os.open(config, flags, 0600), "w") as fh:
-        fh.write("[default]\n")
-        fh.write("region = %s\n" % AWS_REGION)
-
-
-def get_s3_connection():
-    try:
-        s3 = S3Connection()
-    except:
-        (aws_access_key_id, aws_secret_access_key) = get_aws_credentials()
-        s3 = S3Connection(aws_access_key_id, aws_secret_access_key)
-        # Save credentials so we don't have to do this all the time
-        # And so that any child processes have acces to AWS resources
-        save_aws_credentials(aws_access_key_id, aws_secret_access_key)
-    return s3
-
-
-def get_s3_files(cruise):
-    s3 = get_s3_connection()
-    bucket = s3.get_bucket(SEAFLOW_BUCKET, validate=True)
-    i = 0
-    files = []
-    for item in bucket.list(prefix=cruise + "/"):
-        # Only keep files for this cruise and skip SFL files
-        if str(item.key) != "%s/" % cruise:
-            # Make sure this looks like an EVT file
-            if EVT.is_evt(str(item.key)):
-                files.append(str(item.key))
-    return files
-
-
-def download_s3_file_memory(key_str, retries=5):
-    """Return S3 file contents in io.BytesIO file-like object"""
-    tries = 0
-    while True:
-        try:
-            s3 = get_s3_connection()
-            bucket = s3.get_bucket("seaflowdata", validate=True)
-            key = bucket.get_key(key_str)
-            data = io.BytesIO(key.get_contents_as_string())
-            return data
-        except:
-            tries += 1
-            if tries == retries:
-                raise
-            sleep = (2**(tries-1)) + random.random()
-            time.sleep(sleep)
-
-
-def parse_file_list(files):
-    files_list = []
-    if len(files) and files[0] == "-":
-        for line in sys.stdin:
-            if EVT.is_evt(f):
-                files_list.append(line.rstrip())
-    else:
-        for f in files:
-            if EVT.is_evt(f):
-                files_list.append(f)
-    return files_list
-
-
-def find_evt_files(evt_dir):
-    evt_files = []
-
-    for root, dirs, files in os.walk(evt_dir):
-        for f in files:
-            if EVT.is_evt(f):
-                evt_files.append(os.path.join(root, f))
-
-    return evt_files
-
-
+# ----------------------------------------------------------------------------
+# Functions and classes to manage filter workflows
+# ----------------------------------------------------------------------------
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
                  every, s3_flag, dbpath):
     t0 = time.time()
@@ -269,6 +176,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
 
 
 def do_work(params):
+    """multiprocessing pool worker function"""
     try:
         return filter_one_file(params)
     except KeyboardInterrupt as e:
@@ -276,7 +184,10 @@ def do_work(params):
 
 
 def filter_one_file(params):
-    result = {"ok": False, "evtcnt": 0, "oppcnt": 0}
+    """Filter one EVT file, save to sqlite3, return filter stats"""
+    result_keys = [
+        "ok", "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
+        "width", "path"]
 
     # Keys to pull from params for filter and save methods parameters
     filter_keys = ("notch1", "notch2", "offset", "origin", "width")
@@ -297,140 +208,8 @@ def filter_one_file(params):
         evt.filter_particles(**filter_kwargs)
         evt.save_opp_to_db(**save_kwargs)
 
-    result["ok"] = evt.ok
-    result["evtcnt"] = evt.evtcnt
-    result["oppcnt"] = evt.oppcnt
-
+    result = { k: getattr(evt, k) for k in result_keys }
     return result
-
-
-def ensure_tables(dbpath):
-    """Ensure all popcycle tables exists."""
-    con = sqlite3.connect(dbpath)
-    cur = con.cursor()
-
-    con.execute("""CREATE TABLE IF NOT EXISTS opp (
-      -- First three columns are the EVT, OPP, VCT composite key
-      cruise TEXT NOT NULL,
-      file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
-      particle INTEGER NOT NULL,
-      -- Next we have the measurements. For these, see
-      -- https://github.com/fribalet/flowPhyto/blob/master/R/Globals.R and look
-      -- at version 3 of the evt header
-      time INTEGER NOT NULL,
-      pulse_width INTEGER NOT NULL,
-      D1 REAL NOT NULL,
-      D2 REAL NOT NULL,
-      fsc_small REAL NOT NULL,
-      fsc_perp REAL NOT NULL,
-      fsc_big REAL NOT NULL,
-      pe REAL NOT NULL,
-      chl_small REAL NOT NULL,
-      chl_big REAL NOT NULL,
-      PRIMARY KEY (cruise, file, particle)
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS vct (
-        -- First three columns are the EVT, OPP, VCT, SDS composite key
-        cruise TEXT NOT NULL,
-        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
-        particle INTEGER NOT NULL,
-        -- Next we have the classification
-        pop TEXT NOT NULL,
-        method TEXT NOT NULL,
-        PRIMARY KEY (cruise, file, particle)
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS filter (
-        cruise TEXT NOT NULL,
-        file TEXT NOT NULL,
-        opp_count INTEGER NOT NULL,
-        evt_count INTEGER NOT NULL,
-        opp_evt_ratio REAL NOT NULL,
-        notch1 REAL NOT NULL,
-        notch2 REAL NOT NULL,
-        offset REAL NOT NULL,
-        origin REAL NOT NULL,
-        width REAL NOT NULL,
-        PRIMARY KEY (cruise, file)
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
-        --First two columns are the SFL composite key
-        cruise TEXT NOT NULL,
-        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
-        date TEXT,
-        file_duration REAL,
-        lat REAL,
-        lon REAL,
-        conductivity REAL,
-        salinity REAL,
-        ocean_tmp REAL,
-        par REAL,
-        bulk_red REAL,
-        stream_pressure REAL,
-        flow_rate REAL,
-        event_rate REAL,
-        PRIMARY KEY (cruise, file)
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS stats (
-        cruise TEXT NOT NULL,
-        file TEXT NOT NULL,
-        time TEXT,
-        lat REAL,
-        lon REAL,
-        opp_evt_ratio REAL,
-        flow_rate REAL,
-        file_duration REAL,
-        pop TEXT NOT NULL,
-        n_count INTEGER,
-        abundance REAL,
-        fsc_small REAL,
-        chl_small REAL,
-        pe REAL,
-        PRIMARY KEY (cruise, file, pop)
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS cytdiv (
-        cruise TEXT NOT NULL,
-        file TEXT NOT NULL,
-        N0 INTEGER,
-        N1 REAL,
-        H REAL,
-        J REAL,
-        opp_red REAL,
-        PRIMARY KEY (cruise, file)
-    )""")
-
-    con.commit()
-    con.close()
-
-
-def ensure_indexes(dbpath):
-    """Create opp table indexes."""
-    t0 = time.time()
-
-    print ""
-    print "Creating opp table indexes"
-    con = sqlite3.connect(dbpath)
-    cur = con.cursor()
-    index_cmds = [
-        "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
-        "CREATE INDEX IF NOT EXISTS oppFsc_smallIndex ON opp (fsc_small)",
-        "CREATE INDEX IF NOT EXISTS oppPeIndex ON opp (pe)",
-        "CREATE INDEX IF NOT EXISTS oppChl_smallIndex ON opp (chl_small)",
-        "CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file)",
-        "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)"
-    ]
-    for cmd in index_cmds:
-        print cmd
-        cur.execute(cmd)
-    con.commit()
-    con.close()
-
-    t1 = time.time()
-    print "Index creation completed in %.2f seconds" % (t1 - t0,)
 
 
 class EVT(object):
@@ -644,17 +423,6 @@ class EVT(object):
         cur.executemany(sql, self.opp.itertuples(index=False))
         con.commit()
 
-    def insert_opp_evt_ratio_sqlite3(self, cruise_name, dbpath):
-        if self.opp is None:
-            return
-
-        sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
-        con = sqlite3.connect(dbpath, timeout=30)
-        con.execute(
-            sql,
-            (cruise_name, self.get_db_file_name(), self.opp_evt_ratio))
-        con.commit()
-
     def insert_filter_sqlite3(self, cruise_name, dbpath):
         if self.opp is None:
             return
@@ -684,6 +452,239 @@ class EVT(object):
 class EVTFileError(Exception):
     """Custom exception class for EVT file format errors"""
     pass
+
+
+# ----------------------------------------------------------------------------
+# Functions to manage lists of local EVT files
+# ----------------------------------------------------------------------------
+def parse_file_list(files):
+    files_list = []
+    if len(files) and files[0] == "-":
+        for line in sys.stdin:
+            if EVT.is_evt(f):
+                files_list.append(line.rstrip())
+    else:
+        for f in files:
+            if EVT.is_evt(f):
+                files_list.append(f)
+    return files_list
+
+
+def find_evt_files(evt_dir):
+    evt_files = []
+
+    for root, dirs, files in os.walk(evt_dir):
+        for f in files:
+            if EVT.is_evt(f):
+                evt_files.append(os.path.join(root, f))
+
+    return evt_files
+
+
+# ----------------------------------------------------------------------------
+# AWS functions
+# ----------------------------------------------------------------------------
+def get_aws_credentials():
+    aws_access_key_id = getpass.getpass("aws_access_key_id: ")
+    aws_secret_access_key = getpass.getpass("aws_secret_access_key: ")
+    return (aws_access_key_id, aws_secret_access_key)
+
+
+def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
+    # Make ~/.aws config directory
+    awsdir = os.path.join(os.environ["HOME"], ".aws")
+    mkdir_p(awsdir)
+
+    flags = os.O_WRONLY | os.O_CREAT
+
+    # Make credentials file
+    credentials = os.path.join(awsdir, "credentials")
+    with os.fdopen(os.open(credentials, flags, 0600), "w") as fh:
+        fh.write("[default]\n")
+        fh.write("aws_access_key_id = %s\n" % aws_access_key_id)
+        fh.write("aws_secret_access_key = %s\n" % aws_secret_access_key)
+
+    # May as well make config file and set default region while we're at it
+    config = os.path.join(awsdir, "config")
+    with os.fdopen(os.open(config, flags, 0600), "w") as fh:
+        fh.write("[default]\n")
+        fh.write("region = %s\n" % AWS_REGION)
+
+
+def get_s3_connection():
+    try:
+        s3 = S3Connection()
+    except:
+        (aws_access_key_id, aws_secret_access_key) = get_aws_credentials()
+        s3 = S3Connection(aws_access_key_id, aws_secret_access_key)
+        # Save credentials so we don't have to do this all the time
+        # And so that any child processes have acces to AWS resources
+        save_aws_credentials(aws_access_key_id, aws_secret_access_key)
+    return s3
+
+
+def get_s3_files(cruise):
+    s3 = get_s3_connection()
+    bucket = s3.get_bucket(SEAFLOW_BUCKET, validate=True)
+    i = 0
+    files = []
+    for item in bucket.list(prefix=cruise + "/"):
+        # Only keep files for this cruise and skip SFL files
+        if str(item.key) != "%s/" % cruise:
+            # Make sure this looks like an EVT file
+            if EVT.is_evt(str(item.key)):
+                files.append(str(item.key))
+    return files
+
+
+def download_s3_file_memory(key_str, retries=5):
+    """Return S3 file contents in io.BytesIO file-like object"""
+    tries = 0
+    while True:
+        try:
+            s3 = get_s3_connection()
+            bucket = s3.get_bucket("seaflowdata", validate=True)
+            key = bucket.get_key(key_str)
+            data = io.BytesIO(key.get_contents_as_string())
+            return data
+        except:
+            tries += 1
+            if tries == retries:
+                raise
+            sleep = (2**(tries-1)) + random.random()
+            time.sleep(sleep)
+
+
+# ----------------------------------------------------------------------------
+# Database functions
+# ----------------------------------------------------------------------------
+def ensure_tables(dbpath):
+    """Ensure all popcycle tables exists."""
+    con = sqlite3.connect(dbpath)
+    cur = con.cursor()
+
+    con.execute("""CREATE TABLE IF NOT EXISTS opp (
+      -- First three columns are the EVT, OPP, VCT composite key
+      cruise TEXT NOT NULL,
+      file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
+      particle INTEGER NOT NULL,
+      -- Next we have the measurements. For these, see
+      -- https://github.com/fribalet/flowPhyto/blob/master/R/Globals.R and look
+      -- at version 3 of the evt header
+      time INTEGER NOT NULL,
+      pulse_width INTEGER NOT NULL,
+      D1 REAL NOT NULL,
+      D2 REAL NOT NULL,
+      fsc_small REAL NOT NULL,
+      fsc_perp REAL NOT NULL,
+      fsc_big REAL NOT NULL,
+      pe REAL NOT NULL,
+      chl_small REAL NOT NULL,
+      chl_big REAL NOT NULL,
+      PRIMARY KEY (cruise, file, particle)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS vct (
+        -- First three columns are the EVT, OPP, VCT, SDS composite key
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
+        particle INTEGER NOT NULL,
+        -- Next we have the classification
+        pop TEXT NOT NULL,
+        method TEXT NOT NULL,
+        PRIMARY KEY (cruise, file, particle)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS filter (
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,
+        opp_count INTEGER NOT NULL,
+        evt_count INTEGER NOT NULL,
+        opp_evt_ratio REAL NOT NULL,
+        notch1 REAL NOT NULL,
+        notch2 REAL NOT NULL,
+        offset REAL NOT NULL,
+        origin REAL NOT NULL,
+        width REAL NOT NULL,
+        PRIMARY KEY (cruise, file)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
+        --First two columns are the SFL composite key
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
+        date TEXT,
+        file_duration REAL,
+        lat REAL,
+        lon REAL,
+        conductivity REAL,
+        salinity REAL,
+        ocean_tmp REAL,
+        par REAL,
+        bulk_red REAL,
+        stream_pressure REAL,
+        flow_rate REAL,
+        event_rate REAL,
+        PRIMARY KEY (cruise, file)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS stats (
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,
+        time TEXT,
+        lat REAL,
+        lon REAL,
+        opp_evt_ratio REAL,
+        flow_rate REAL,
+        file_duration REAL,
+        pop TEXT NOT NULL,
+        n_count INTEGER,
+        abundance REAL,
+        fsc_small REAL,
+        chl_small REAL,
+        pe REAL,
+        PRIMARY KEY (cruise, file, pop)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS cytdiv (
+        cruise TEXT NOT NULL,
+        file TEXT NOT NULL,
+        N0 INTEGER,
+        N1 REAL,
+        H REAL,
+        J REAL,
+        opp_red REAL,
+        PRIMARY KEY (cruise, file)
+    )""")
+
+    con.commit()
+    con.close()
+
+
+def ensure_indexes(dbpath):
+    """Create opp table indexes."""
+    t0 = time.time()
+
+    print ""
+    print "Creating opp table indexes"
+    con = sqlite3.connect(dbpath)
+    cur = con.cursor()
+    index_cmds = [
+        "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
+        "CREATE INDEX IF NOT EXISTS oppFsc_smallIndex ON opp (fsc_small)",
+        "CREATE INDEX IF NOT EXISTS oppPeIndex ON opp (pe)",
+        "CREATE INDEX IF NOT EXISTS oppChl_smallIndex ON opp (chl_small)",
+        "CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file)",
+        "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)"
+    ]
+    for cmd in index_cmds:
+        print cmd
+        cur.execute(cmd)
+    con.commit()
+    con.close()
+
+    t1 = time.time()
+    print "Index creation completed in %.2f seconds" % (t1 - t0,)
 
 
 if __name__ == "__main__":
