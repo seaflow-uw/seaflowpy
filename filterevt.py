@@ -2,19 +2,20 @@
 
 import argparse
 from boto.s3.connection import S3Connection
-from boto.s3.resumable_download_handler import ResumableDownloadHandler
 import errno
+import io
 import getpass
+import gzip
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import pprint
 import os
+import random
 import re
 import shutil
 import sqlite3
 import sys
-import tempfile
 import time
 
 # Global configuration variables for AWS
@@ -131,12 +132,13 @@ def get_s3_connection():
     return s3
 
 
+# TODO: should check file name format with regex like find_evt_files()
 def get_s3_files(cruise):
     s3 = get_s3_connection()
     bucket = s3.get_bucket(SEAFLOW_BUCKET, validate=True)
     i = 0
     files = []
-    for item in bucket.list(prefix=cruise):
+    for item in bucket.list(prefix=cruise + "/"):
         # Only keep files for this cruise and skip SFL files
         if str(item.key) != "%s/" % cruise and \
                 not str(item.key).endswith(".sfl"):
@@ -144,51 +146,37 @@ def get_s3_files(cruise):
     return files
 
 
-def download_s3_file(key_str, target):
-    s3 = get_s3_connection()
-    bucket = s3.get_bucket("seaflowdata", validate=True)
-    key = bucket.get_key(key_str)
-    mkdir_p(os.path.dirname(target))
-    handler = ResumableDownloadHandler(num_retries=6)
-    key.get_contents_to_filename(target, res_download_handler=handler)
-
-
-def mkdir_p(path):
-    """From
-    http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-    """
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
+def download_s3_file_memory(key_str, retries=5):
+    """Return S3 file contents in io.BytesIO file-like object"""
+    tries = 0
+    while True:
+        try:
+            s3 = get_s3_connection()
+            bucket = s3.get_bucket("seaflowdata", validate=True)
+            key = bucket.get_key(key_str)
+            data = io.BytesIO(key.get_contents_as_string())
+            return data
+        except:
+            tries += 1
+            if tries == retries:
+                raise
+            sleep = (2**(tries-1)) + random.random()
+            time.sleep(sleep)
 
 
 def parse_file_list(files):
     files_list = []
-
     if len(files) and files[0] == "-":
         for line in sys.stdin:
             files_list.append(line.rstrip())
     else:
         files_list = files
-
-    exists = []
-
-    for f in files_list:
-        if not os.path.isfile(f):
-            sys.stderr.write("%s does not exist\n" % f)
-        else:
-            exists.append(f)
-
-    return exists
+    return files_list
 
 
 def find_evt_files(evt_dir):
     evt_files = []
-    evt_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}$')
+    evt_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(\.gz)?$')
 
     for root, dirs, files in os.walk(evt_dir):
         for f in files:
@@ -286,6 +274,8 @@ def do_work(params):
 
 
 def filter_one_file(params):
+    result = {"ok": False, "evtcnt": 0, "oppcnt": 0}
+
     # Keys to pull from params for filter and save methods parameters
     filter_keys = ("notch1", "notch2", "offset", "origin", "width")
     save_keys = ("cruise", "dbpath")
@@ -296,19 +286,20 @@ def filter_one_file(params):
     evt_file = params["file"]
 
     if params["s3"]:
-        tmpdir = tempfile.mkdtemp()
-        evt_file = os.path.join(tmpdir, params["file"])
-        download_s3_file(params["file"], evt_file)
+        gzfile = download_s3_file_memory(params["file"])
+        evt = EVT(path=evt_file, fileobj=gzfile)
+    else:
+        evt = EVT(path=evt_file)
 
-    evt = EVT(evt_file)
     if evt.ok:
         evt.filter_particles(**filter_kwargs)
         evt.save_opp_to_db(**save_kwargs)
 
-    if params["s3"]:
-        shutil.rmtree(tmpdir)
+    result["ok"] = evt.ok
+    result["evtcnt"] = evt.evtcnt
+    result["oppcnt"] = evt.oppcnt
 
-    return {"ok": evt.ok, "evtcnt": evt.evtcnt, "oppcnt": evt.oppcnt}
+    return result
 
 
 def ensure_tables(dbpath):
@@ -449,9 +440,12 @@ def ensure_indexes(dbpath):
 class EVT(object):
     """Class for EVT data operations"""
 
-    def __init__(self, file_path):
-        self.file_path = file_path
-        self.set_file_name()
+    def __init__(self, path=None, fileobj=None):
+        # If fileobj is set, read data from this object. The path will be used
+        # to set the file name in the database and detect compression.
+        self.path = path  # EVT file path, local or in S3
+        self.fileobj = fileobj  # EVT data in file object
+
         self.evtcnt = 0
         self.oppcnt = 0
         self.opp_evt_ratio = 0.0
@@ -470,26 +464,53 @@ class EVT(object):
         try:
             self.read_evt()
         except Exception as e:
-            print "Could not parse file %s: %s" % (self.file_path, repr(e))
+            print "Could not parse file %s: %s" % (self.path, repr(e))
 
         # Set a flag to indicate if EVT file could be parsed
         if not self.evt is None:
             self.ok = True
 
-    def set_file_name(self):
-        """Set the file name to be used in the sqlite3 db."""
+    def isgz(self):
+        return self.path and self.path.endswith(".gz")
+
+    def get_db_file_name(self):
+        """Get the file name to be used in the sqlite3 db."""
+        db_file_name = None
         pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}$'
         evt_re = re.compile(pattern)
-        if evt_re.match(os.path.basename(self.file_path)):
+
+        if self.isgz():
+            path = self.path[:-3]  # remove .gz
+        else:
+            path = self.path
+
+        if evt_re.match(os.path.basename(path)):
             # New style EVT name
-            self.file_name = os.path.basename(self.file_path)
+            db_file_name = os.path.basename(path)
         else:
             # Old style EVT name
-            parts = self.file_path.split("/")
+            parts = path.split("/")
             if len(parts) < 2:
-                raise ValueError(
+                raise EVTFileError(
                     "Old style EVT file paths must contain julian day directory")
-            self.file_name = os.path.join(parts[-2], parts[-1])
+            db_file_name = os.path.join(parts[-2], parts[-1])
+
+        return db_file_name
+
+    def open(self):
+        """Return a EVT file-like object for reading."""
+        handle = None
+        if self.fileobj:
+            if self.isgz():
+                handle = gzip.GzipFile(fileobj=self.fileobj)
+            else:
+                handle = self.fileobj
+        else:
+            if self.isgz():
+                handle = gzip.GzipFile(self.path, "r")
+            else:
+                handle = open(self.path, "r")
+        return handle
 
     def read_evt(self):
         """Read an EVT binary file and return a pandas DataFrame."""
@@ -498,24 +519,24 @@ class EVT(object):
                 "fsc_small", "fsc_perp", "fsc_big",
                 "pe", "chl_small", "chl_big"]
 
-        # Check for empty file
-        file_size = os.stat(self.file_path).st_size
-        if file_size == 0:
-            raise Exception("File is empty")
-
-        with open(self.file_path) as fh:
+        with self.open() as fh:
             # Particle count (rows of data) is stored in an initial 32-bit
             # unsigned int
-            rowcnt = np.fromfile(fh, dtype="uint32", count=1)
-            # Make sure the file is the expected size based on particle count
-            expected_size = 4 + (rowcnt * (2 * 12))
-            if file_size != expected_size:
-                raise Exception(
-                    "Incorrect file size. Expected %i, saw %i." % (expected_size,
-                                                                   file_size))
+            buff = fh.read(4)
+            if len(buff) == 0:
+                raise EVTFileError("File is empty")
+            if len(buff) != 4:
+                raise EVTFileError("File has invalid particle count header")
+            rowcnt = np.fromstring(buff, dtype="uint32", count=1)[0]
             # Read the rest of the data. Each particle has 12 unsigned
             # 16-bit ints in a row.
-            particles = np.fromfile(fh, dtype="uint16", count=rowcnt*12)
+            expected_bytes = rowcnt * 12 * 2  # rowcnt * 12 columns * 2 bytes
+            buff = fh.read(expected_bytes)
+            if len(buff) != expected_bytes:
+                raise EVTFileError(
+                    "File has incorrect number of data bytes. Expected %i, saw %i" %
+                    (expected_bytes, len(buff)))
+            particles = np.fromstring(buff, dtype="uint16", count=rowcnt*12)
             # Reshape into a matrix of 12 columns and one row per particle
             particles = np.reshape(particles, [rowcnt, 12])
             # Create a Pandas DataFrame. The first two zeroed uint16s from
@@ -595,7 +616,7 @@ class EVT(object):
             return
 
         self.opp.insert(0, "cruise", cruise_name)
-        self.opp.insert(1, "file", self.file_name)
+        self.opp.insert(1, "file", self.get_db_file_name())
         self.opp.insert(2, "particle", range(1, self.oppcnt+1))
 
     def save_opp_to_db(self, cruise, dbpath):
@@ -622,7 +643,9 @@ class EVT(object):
 
         sql = "INSERT INTO opp_evt_ratio VALUES (%s)" % ",".join("?"*3)
         con = sqlite3.connect(dbpath, timeout=30)
-        con.execute(sql, (cruise_name, self.file_name, self.opp_evt_ratio))
+        con.execute(
+            sql,
+            (cruise_name, self.get_db_file_name(), self.opp_evt_ratio))
         con.commit()
 
     def write_opp_csv(self, outfile):
@@ -634,6 +657,11 @@ class EVT(object):
         if self.evt is None:
             return
         self.evt.to_csv(outfile, sep=",", index=False)
+
+
+class EVTFileError(Exception):
+    """Custom exception class for EVT file format errors"""
+    pass
 
 
 if __name__ == "__main__":
