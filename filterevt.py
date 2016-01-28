@@ -341,15 +341,22 @@ def ensure_tables(dbpath):
         PRIMARY KEY (cruise, file, particle)
     )""")
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS opp_evt_ratio (
+    cur.execute("""CREATE TABLE IF NOT EXISTS filter (
         cruise TEXT NOT NULL,
         file TEXT NOT NULL,
-        ratio REAL,
+        opp_count INTEGER NOT NULL,
+        evt_count INTEGER NOT NULL,
+        opp_evt_ratio REAL NOT NULL,
+        notch1 REAL NOT NULL,
+        notch2 REAL NOT NULL,
+        offset REAL NOT NULL,
+        origin REAL NOT NULL,
+        width REAL NOT NULL,
         PRIMARY KEY (cruise, file)
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
-        --First two columns are the SDS composite key
+        --First two columns are the SFL composite key
         cruise TEXT NOT NULL,
         file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
         date TEXT,
@@ -396,19 +403,6 @@ def ensure_tables(dbpath):
         PRIMARY KEY (cruise, file)
     )""")
 
-    con.commit()
-    con.close()
-
-
-def ensure_opp_evt_ratio_table(dbpath):
-    """Ensure opp_evt_ratio table exists."""
-    con = sqlite3.connect(dbpath)
-    con.execute("""CREATE TABLE IF NOT EXISTS opp_evt_ratio (
-      cruise TEXT NOT NULL,
-      file TEXT NOT NULL,
-      ratio REAL,
-      PRIMARY KEY (cruise, file)
-    )""")
     con.commit()
     con.close()
 
@@ -638,7 +632,7 @@ class EVT(object):
 
         self.add_extra_columns(cruise)
         self.insert_opp_particles_sqlite3(dbpath)
-        self.insert_opp_evt_ratio_sqlite3(cruise, dbpath)
+        self.insert_filter_sqlite3(cruise, dbpath)
 
     def insert_opp_particles_sqlite3(self, dbpath):
         if self.opp is None:
@@ -659,6 +653,21 @@ class EVT(object):
         con.execute(
             sql,
             (cruise_name, self.get_db_file_name(), self.opp_evt_ratio))
+        con.commit()
+
+    def insert_filter_sqlite3(self, cruise_name, dbpath):
+        if self.opp is None:
+            return
+
+        # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
+        # offset, origin, width
+        sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*10)
+        con = sqlite3.connect(dbpath, timeout=30)
+        con.execute(
+            sql,
+            (cruise_name, self.get_db_file_name(), self.oppcnt, self.evtcnt,
+                self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
+                self.origin, self.width))
         con.commit()
 
     def write_opp_csv(self, outfile):
