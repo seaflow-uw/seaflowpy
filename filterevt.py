@@ -132,7 +132,6 @@ def get_s3_connection():
     return s3
 
 
-# TODO: should check file name format with regex like find_evt_files()
 def get_s3_files(cruise):
     s3 = get_s3_connection()
     bucket = s3.get_bucket(SEAFLOW_BUCKET, validate=True)
@@ -140,9 +139,10 @@ def get_s3_files(cruise):
     files = []
     for item in bucket.list(prefix=cruise + "/"):
         # Only keep files for this cruise and skip SFL files
-        if str(item.key) != "%s/" % cruise and \
-                not str(item.key).endswith(".sfl"):
-            files.append(str(item.key))
+        if str(item.key) != "%s/" % cruise:
+            # Make sure this looks like an EVT file
+            if EVT.is_evt(str(item.key)):
+                files.append(str(item.key))
     return files
 
 
@@ -168,19 +168,21 @@ def parse_file_list(files):
     files_list = []
     if len(files) and files[0] == "-":
         for line in sys.stdin:
-            files_list.append(line.rstrip())
+            if EVT.is_evt(f):
+                files_list.append(line.rstrip())
     else:
-        files_list = files
+        for f in files:
+            if EVT.is_evt(f):
+                files_list.append(f)
     return files_list
 
 
 def find_evt_files(evt_dir):
     evt_files = []
-    evt_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(\.gz)?$')
 
     for root, dirs, files in os.walk(evt_dir):
         for f in files:
-            if evt_re.match(f):
+            if EVT.is_evt(f):
                 evt_files.append(os.path.join(root, f))
 
     return evt_files
@@ -440,6 +442,16 @@ def ensure_indexes(dbpath):
 class EVT(object):
     """Class for EVT data operations"""
 
+    # EVT file name regexes. Does not contain directory names.
+    new_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(\.gz)?$')
+    old_re = re.compile(r'^\d+\.evt(\.gz)?$')
+
+    @staticmethod
+    def is_evt(path):
+        """Does the file specified by this path look like an EVT file?"""
+        basename = os.path.basename(path)  # Don't check directories
+        return bool(EVT.new_re.match(basename) or EVT.old_re.match(basename))
+
     def __init__(self, path=None, fileobj=None):
         # If fileobj is set, read data from this object. The path will be used
         # to set the file name in the database and detect compression.
@@ -476,24 +488,25 @@ class EVT(object):
     def get_db_file_name(self):
         """Get the file name to be used in the sqlite3 db."""
         db_file_name = None
-        pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}$'
-        evt_re = re.compile(pattern)
 
         if self.isgz():
             path = self.path[:-3]  # remove .gz
         else:
             path = self.path
 
-        if evt_re.match(os.path.basename(path)):
+        if self.new_re.match(os.path.basename(path)):
             # New style EVT name
             db_file_name = os.path.basename(path)
-        else:
+        elif self.old_re.match(os.path.basename(path)):
             # Old style EVT name
             parts = path.split("/")
             if len(parts) < 2:
                 raise EVTFileError(
                     "Old style EVT file paths must contain julian day directory")
             db_file_name = os.path.join(parts[-2], parts[-1])
+        else:
+            raise EVTFileError("File name does not look like an EVT file: %s" %
+                os.path.basename(path))
 
         return db_file_name
 
