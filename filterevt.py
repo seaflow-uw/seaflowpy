@@ -379,8 +379,8 @@ class EVT(object):
         opp = aligned[oppD1 & oppD2].copy()
 
         # Scale data (unsigned 16-bit numbers) to 3.5 decades
-        discard = ["time", "pulse_width"]
-        cols = [x for x in opp.columns if not x in discard]
+        ignore = ["time", "pulse_width"]
+        cols = [x for x in opp.columns if not x in ignore]
         opp[cols] = 10**((opp[cols] / 2**16) * 3.5)
 
         self.opp = opp
