@@ -418,7 +418,7 @@ class EVT(object):
             return
 
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * self.opp.shape[1])
-        con = sqlite3.connect(dbpath, timeout=30)
+        con = sqlite3.connect(dbpath, timeout=120)
         cur = con.cursor()
         cur.executemany(sql, self.opp.itertuples(index=False))
         con.commit()
@@ -430,7 +430,7 @@ class EVT(object):
         # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
         # offset, origin, width
         sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*10)
-        con = sqlite3.connect(dbpath, timeout=30)
+        con = sqlite3.connect(dbpath, timeout=120)
         con.execute(
             sql,
             (cruise_name, self.get_db_file_name(), self.oppcnt, self.evtcnt,
