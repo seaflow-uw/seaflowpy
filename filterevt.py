@@ -511,6 +511,19 @@ def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
         fh.write("region = %s\n" % AWS_REGION)
 
 
+def mkdir_p(path):
+    """From
+    http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
 def get_s3_connection():
     try:
         s3 = S3Connection()
