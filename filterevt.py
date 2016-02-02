@@ -61,8 +61,8 @@ def main():
                    help="Don't create SQLite3 indexes (optional)")
     p.add_argument("--no_opp", default=False, action="store_true",
                    help="Don't save data to opp table (optional)")
-    p.add_argument("--no_gz", default=False, action="store_true",
-                   help="Don't gzip compress SQLite3 db file (optional)")
+    p.add_argument("--gz", default=False, action="store_true",
+                   help="gzip compress SQLite3 db file (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
     p.add_argument("--limit", type=int, default=None,
@@ -101,7 +101,7 @@ def main():
     if not args.no_index:
         ensure_indexes(args.db)
     # Compress
-    if not args.no_gz:
+    if args.gz:
         gzip_file(args.db)
 
 
