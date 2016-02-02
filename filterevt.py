@@ -15,6 +15,7 @@ import random
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -43,18 +44,25 @@ def main():
                         or --evt_dir)""")
 
     p.add_argument("--cpus", required=False, type=int, default=1,
-                   help="""Number of CPU cores to use in filtering.
+                   help="""Number of CPU cores to use in filtering
                         (optional)""")
-    p.add_argument("--db", required=True, help="sqlite3 db file (required)")
-    p.add_argument("--cruise", required=True, help="cruise name (required)")
-    p.add_argument("--notch1", type=float, help="notch 1 (optional)")
-    p.add_argument("--notch2", type=float, help="notch 2 (optional)")
-    p.add_argument("--width", type=float, default=0.5, help="width (optional)")
-    p.add_argument("--origin", type=float, help="origin (optional)")
+    p.add_argument("--db", required=True,
+                   help="""SQLite3 db file. If this file is to be compressed
+                   (i.e. --no_gz is not set), an extension of ".gz" will
+                   automatically be added to the path given here. (required)""")
+    p.add_argument("--cruise", required=True, help="Cruise name (required)")
+    p.add_argument("--notch1", type=float, help="Notch 1 (optional)")
+    p.add_argument("--notch2", type=float, help="Notch 2 (optional)")
+    p.add_argument("--width", type=float, default=0.5, help="Width (optional)")
+    p.add_argument("--origin", type=float, help="Origin (optional)")
     p.add_argument("--offset", type=float, default=0.0,
-                   help="offset (optional)")
+                   help="Offset (optional)")
     p.add_argument("--no_index", default=False, action="store_true",
-                   help="Skip creation of opp table indexes (optional)")
+                   help="Don't create SQLite3 indexes (optional)")
+    p.add_argument("--no_opp", default=False, action="store_true",
+                   help="Don't save data to opp table (optional)")
+    p.add_argument("--no_gz", default=False, action="store_true",
+                   help="Don't gzip compress SQLite3 db file (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
     p.add_argument("--limit", type=int, default=None,
@@ -88,15 +96,20 @@ def main():
     # Filter
     filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
                  args.width, args.origin, args.offset, args.progress,
-                 args.s3, args.db)
+                 args.s3, args.no_opp, args.db)
+    # Index
     if not args.no_index:
         ensure_indexes(args.db)
+    # Compress
+    if not args.no_gz:
+        gzip_file(args.db)
+
 
 # ----------------------------------------------------------------------------
 # Functions and classes to manage filter workflows
 # ----------------------------------------------------------------------------
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 every, s3_flag, dbpath):
+                 every, s3_flag, no_opp, dbpath):
     t0 = time.time()
 
     print ""
@@ -124,6 +137,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             "origin": origin,
             "offset": offset,
             "s3": s3_flag,
+            "no_opp": no_opp,
             "dbpath": dbpath})
 
     last = 0  # Last progress milestone in increments of every
@@ -131,7 +145,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     oppcnt_block = 0  # OPP particles in this block
 
     # Filter particles in parallel with process pool
-    for i, res in enumerate(pool.imap_unordered(do_work, inputs, 1)):
+    for i, res in enumerate(pool.imap_unordered(do_work, inputs)):
         evtcnt_block += res["evtcnt"]
         oppcnt_block += res["oppcnt"]
         files_ok += 1 if res["ok"] else 0
@@ -165,14 +179,23 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
         opp_evt_ratio = 0.0
 
     t1 = time.time()
+    delta = t1 - t0
+    try:
+        evtrate = float(evtcnt) / delta
+    except ZeroDivisionError:
+        evtrate = 0.0
+    try:
+        opprate = float(oppcnt) / delta
+    except ZeroDivisionError:
+        opprate = 0.0
 
     print ""
     print "Input EVT files = %i" % len(files)
     print "Parsed EVT files = %i" % files_ok
-    print "EVT particles = %s" % evtcnt
-    print "OPP particles = %s" % oppcnt
+    print "EVT particles = %s (%.2f p/s)" % (evtcnt, evtrate)
+    print "OPP particles = %s (%.2f p/s)" % (oppcnt, opprate)
     print "OPP/EVT ratio = %.06f" % opp_evt_ratio
-    print "Filtering completed in %.2f seconds" % (t1 - t0,)
+    print "Filtering completed in %.2f seconds" % (delta,)
 
 
 def do_work(params):
@@ -191,7 +214,7 @@ def filter_one_file(params):
 
     # Keys to pull from params for filter and save methods parameters
     filter_keys = ("notch1", "notch2", "offset", "origin", "width")
-    save_keys = ("cruise", "dbpath")
+    save_keys = ("cruise", "no_opp", "dbpath")
     # Make methods parameter keyword dictionaries
     filter_kwargs = {k: params[k] for k in filter_keys}
     save_kwargs = {k: params[k] for k in save_keys}
@@ -231,6 +254,7 @@ class EVT(object):
         self.path = path  # EVT file path, local or in S3
         self.fileobj = fileobj  # EVT data in file object
 
+        self.headercnt = 0
         self.evtcnt = 0
         self.oppcnt = 0
         self.opp_evt_ratio = 0.0
@@ -248,12 +272,21 @@ class EVT(object):
 
         try:
             self.read_evt()
-        except Exception as e:
+        except EVTFileError as e:
             print "Could not parse file %s: %s" % (self.path, repr(e))
 
         # Set a flag to indicate if EVT file could be parsed
         if not self.evt is None:
             self.ok = True
+
+    def __repr__(self):
+        keys = [
+            "ok", "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
+            "width", "path", "headercnt"]
+        return pprint.pformat({ k: getattr(self, k) for k in keys }, indent=2)
+
+    def __str__(self):
+        return self.__repr__()
 
     def isgz(self):
         return self.path and self.path.endswith(".gz")
@@ -314,6 +347,8 @@ class EVT(object):
             if len(buff) != 4:
                 raise EVTFileError("File has invalid particle count header")
             rowcnt = np.fromstring(buff, dtype="uint32", count=1)[0]
+            if rowcnt == 0:
+                raise EVTFileError("File has no particle data")
             # Read the rest of the data. Each particle has 12 unsigned
             # 16-bit ints in a row.
             expected_bytes = rowcnt * 12 * 2  # rowcnt * 12 columns * 2 bytes
@@ -338,10 +373,13 @@ class EVT(object):
             # Record the original number of particles
             self.evtcnt = len(self.evt.index)
 
+            # Record the number of particles reported in the header
+            self.headercnt = rowcnt
+
     def filter_particles(self, notch1=None, notch2=None, offset=None,
                          origin=None, width=None):
         """Filter EVT particle data."""
-        if self.evt is None:
+        if self.evt is None or self.evtcnt == 0:
             return
 
         if (width is None) or (offset is None):
@@ -398,23 +436,28 @@ class EVT(object):
 
     def add_extra_columns(self, cruise_name):
         """Add columns for cruise name, file name, and particle ID to OPP."""
-        if self.opp is None:
+        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
         self.opp.insert(0, "cruise", cruise_name)
         self.opp.insert(1, "file", self.get_db_file_name())
         self.opp.insert(2, "particle", range(1, self.oppcnt+1))
 
-    def save_opp_to_db(self, cruise, dbpath):
-        if self.opp is None:
+    def save_opp_to_db(self, cruise, dbpath,no_opp=False):
+        if self.opp is None or self.evtcnt == 0:
             return
 
-        self.add_extra_columns(cruise)
-        self.insert_opp_particles_sqlite3(dbpath)
-        self.insert_filter_sqlite3(cruise, dbpath)
+        try:
+            if not no_opp:
+                self.add_extra_columns(cruise)
+                self.insert_opp_particles_sqlite3(dbpath)
+            self.insert_filter_sqlite3(cruise, dbpath)
+        except:
+            print self
+            raise
 
     def insert_opp_particles_sqlite3(self, dbpath):
-        if self.opp is None:
+        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * self.opp.shape[1])
@@ -424,14 +467,15 @@ class EVT(object):
         con.commit()
 
     def insert_filter_sqlite3(self, cruise_name, dbpath):
-        if self.opp is None:
+        if self.opp is None or self.evtcnt == 0:
             return
 
         # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
         # offset, origin, width
         sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*10)
         con = sqlite3.connect(dbpath, timeout=120)
-        con.execute(
+        cur = con.cursor()
+        cur.execute(
             sql,
             (cruise_name, self.get_db_file_name(), self.oppcnt, self.evtcnt,
                 self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
@@ -509,19 +553,6 @@ def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
     with os.fdopen(os.open(config, flags, 0600), "w") as fh:
         fh.write("[default]\n")
         fh.write("region = %s\n" % AWS_REGION)
-
-
-def mkdir_p(path):
-    """From
-    http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-    """
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 
 def get_s3_connection():
@@ -614,8 +645,8 @@ def ensure_tables(dbpath):
         opp_count INTEGER NOT NULL,
         evt_count INTEGER NOT NULL,
         opp_evt_ratio REAL NOT NULL,
-        notch1 REAL NOT NULL,
-        notch2 REAL NOT NULL,
+        notch1 REAL,  -- notch values can be NaN
+        notch2 REAL,  -- notch values can be NaN
         offset REAL NOT NULL,
         origin REAL NOT NULL,
         width REAL NOT NULL,
@@ -698,6 +729,41 @@ def ensure_indexes(dbpath):
 
     t1 = time.time()
     print "Index creation completed in %.2f seconds" % (t1 - t0,)
+
+
+# ----------------------------------------------------------------------------
+# Utility functions
+# ----------------------------------------------------------------------------
+def gzip_file(path):
+    gzipbin = "pigz"  # Default to using pigz
+    devnull = open(os.devnull, "w")
+    try:
+        subprocess.check_call(["pigz", "--version"], stdout=devnull,
+                              stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        # If pigz is not installed fall back to gzip
+        gzipbin = "gzip"
+
+    t0 = time.time()
+    print ""
+    print "Compressing %s" % path
+    subprocess.check_call([gzipbin, path], stdout=devnull,
+                          stderr=subprocess.STDOUT)
+    t1 = time.time()
+    print "Compression completed in %.2f seconds" % (t1 - t0)
+
+
+def mkdir_p(path):
+    """From
+    http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 
 if __name__ == "__main__":
