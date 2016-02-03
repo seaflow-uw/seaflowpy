@@ -55,7 +55,7 @@ optional arguments:
 Filter a directory of 19 EVT files using 2 cores, show progress every 5%.
 
 ```
-$ filterevt.py --cpus 2 --progress 5 --cruise SCOPE_1 --evt_dir SCOPE_1 --db ./SCOPE_1.db
+$ filterevt.py --cpus 2 --progress 5 --cruise SCOPE_1 --evt_dir ./SCOPE_1 --db ./SCOPE_1.db
 
 Defined parameters:
 { 'cpus': 2,
@@ -105,7 +105,7 @@ Index creation completed in 8.09 seconds
 Filter a directory of 19 EVT files using 2 cores, show progress every 5%, but don't save OPP data. This is a fast way to see the effects of filtering if actual focused particle data is not needed. Notice it only took 6.5 seconds versus 34 seconds if OPP data was saved.
 
 ```
-$ filterevt.py --cpus 2 --progress 5 --cruise SCOPE_1 --no_opp --evt_dir SCOPE_1 --db ./SCOPE_1.db
+$ filterevt.py --cpus 2 --progress 5 --cruise SCOPE_1 --no_opp --evt_dir ./SCOPE_1 --db ./SCOPE_1.db
 
 Defined parameters:
 { 'cpus': 2,
@@ -155,7 +155,7 @@ Index creation completed in 0.01 seconds
 Filter the first 10 files in an EVT directory
 
 ```
-$ filterevt.py --cruise SCOPE_1 --evt_dir ./SCOPE_1 --db SCOPE_1.db --limit 10
+$ filterevt.py --cruise SCOPE_1 --evt_dir ./SCOPE_1 --db ./SCOPE_1.db --limit 10
 
 Defined parameters:
 { 'cpus': 1,
@@ -197,7 +197,7 @@ Index creation completed in 5.96 seconds
 Filter 2 EVT files.
 
 ```
-$ filterevt.py --cruise SCOPE_1 --files ./SCOPE_1/2014_342/2014-12-08T22-53-34+00-00 ./SCOPE_1/2014_342/2014-12-08T23-07-01+00-00 --db SCOPE_1.db
+$ filterevt.py --cruise SCOPE_1 --files ./SCOPE_1/2014_342/2014-12-08T22-53-34+00-00 ./SCOPE_1/2014_342/2014-12-08T23-07-01+00-00 --db ./SCOPE_1.db
 
 Defined parameters:
 { 'cpus': 1,
@@ -231,7 +231,7 @@ Index creation completed in 1.16 seconds
 Filter a list of EVT files fed to STDIN by `find`.
 
 ```
-$ find SCOPE_1 -name '*T23-2*00-00' | ./filterevt.py --cruise SCOPE_1 --files - --db SCOPE_1.db
+$ find SCOPE_1 -name '*T23-2*00-00' | ./filterevt.py --cruise SCOPE_1 --files - --db ./SCOPE_1.db
 
 Defined parameters:
 { 'cpus': 1,
