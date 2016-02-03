@@ -222,7 +222,7 @@ def filter_one_file(params):
     evt_file = params["file"]
 
     if params["s3"]:
-        gzfile = download_s3_file_memory(params["file"])
+        gzfile = download_s3_file_memory(evt_file)
         evt = EVT(path=evt_file, fileobj=gzfile)
     else:
         evt = EVT(path=evt_file)
@@ -274,6 +274,9 @@ class EVT(object):
             self.read_evt()
         except EVTFileError as e:
             print "Could not parse file %s: %s" % (self.path, repr(e))
+        except:
+            print "Unexpected error for file %s" % self.path
+            raise
 
         # Set a flag to indicate if EVT file could be parsed
         if not self.evt is None:
@@ -522,7 +525,7 @@ def find_evt_files(evt_dir):
             if EVT.is_evt(f):
                 evt_files.append(os.path.join(root, f))
 
-    return evt_files
+    return sorted(evt_files)
 
 
 # ----------------------------------------------------------------------------
