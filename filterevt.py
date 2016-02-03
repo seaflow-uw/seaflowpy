@@ -76,7 +76,7 @@ def main():
     to_delete = [k for k in v if v[k] is None]
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
-    print "Defined parameters:"
+    print "\nDefined parameters:"
     pprint.pprint(v, indent=2)
 
     # Find EVT files
@@ -508,8 +508,9 @@ def parse_file_list(files):
     files_list = []
     if len(files) and files[0] == "-":
         for line in sys.stdin:
+            f = line.rstrip()
             if EVT.is_evt(f):
-                files_list.append(line.rstrip())
+                files_list.append(f)
     else:
         for f in files:
             if EVT.is_evt(f):
@@ -709,11 +710,11 @@ def ensure_tables(dbpath):
 
 
 def ensure_indexes(dbpath):
-    """Create opp table indexes."""
+    """Create table indexes."""
     t0 = time.time()
 
     print ""
-    print "Creating opp table indexes"
+    print "Creating DB indexes"
     con = sqlite3.connect(dbpath)
     cur = con.cursor()
     index_cmds = [
@@ -725,7 +726,6 @@ def ensure_indexes(dbpath):
         "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)"
     ]
     for cmd in index_cmds:
-        print cmd
         cur.execute(cmd)
     con.commit()
     con.close()
