@@ -197,7 +197,8 @@ Index creation completed in 5.96 seconds
 Filter 2 EVT files.
 
 ```
-$ filterevt.py --cruise SCOPE_1 --files ./SCOPE_1/2014_342/2014-12-08T22-53-34+00-00 ./SCOPE_1/2014_342/2014-12-08T23-07-01+00-00 --db ./SCOPE_1.db
+$ filterevt.py --cruise SCOPE_1 --files ./SCOPE_1/2014_342/2014-12-08T22-53-34+00-00 \
+./SCOPE_1/2014_342/2014-12-08T23-07-01+00-00 --db ./SCOPE_1.db
 
 Defined parameters:
 { 'cpus': 1,
@@ -231,7 +232,7 @@ Index creation completed in 1.16 seconds
 Filter a list of EVT files fed to STDIN by `find`.
 
 ```
-$ find SCOPE_1 -name '*T23-2*00-00' | ./filterevt.py --cruise SCOPE_1 --files - --db ./SCOPE_1.db
+$ find SCOPE_1 -name '*T23-2*00-00' | filterevt.py --cruise SCOPE_1 --files - --db ./SCOPE_1.db
 
 Defined parameters:
 { 'cpus': 1,
