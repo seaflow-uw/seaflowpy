@@ -470,7 +470,7 @@ class EVT(object):
         con.commit()
 
     def insert_filter_sqlite3(self, cruise_name, dbpath):
-        if self.opp is None or self.evtcnt == 0:
+        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
         # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
@@ -648,8 +648,8 @@ def ensure_tables(dbpath):
         opp_count INTEGER NOT NULL,
         evt_count INTEGER NOT NULL,
         opp_evt_ratio REAL NOT NULL,
-        notch1 REAL,  -- notch values can be NaN
-        notch2 REAL,  -- notch values can be NaN
+        notch1 REAL NOT NULL,
+        notch2 REAL NOT NULL,
         offset REAL NOT NULL,
         origin REAL NOT NULL,
         width REAL NOT NULL,
