@@ -32,24 +32,28 @@ def main():
         description="Filter EVT data.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("--files", nargs="+",
+    g_in = p.add_mutually_exclusive_group(required=True)
+    g_in.add_argument("--files", nargs="+",
                    help="""EVT file paths. - to read from stdin.
                         (required unless --evt_dir or --s3)""")
-    g.add_argument("--evt_dir",
+    g_in.add_argument("--evt_dir",
                    help="EVT directory path (required unless --files or --s3)")
-    g.add_argument("--s3", default=False, action="store_true",
+    g_in.add_argument("--s3", default=False, action="store_true",
                    help="""Read EVT files from s3://seaflowdata/CRUISE where
                         cruise is provided by --cruise (required unless --files
                         or --evt_dir)""")
 
-    p.add_argument("--cpus", required=False, type=int, default=1,
-                   help="""Number of CPU cores to use in filtering
-                        (optional)""")
-    p.add_argument("--db", required=True,
-                   help="""SQLite3 db file. If this file is to be compressed
-                   (i.e. --no_gz is not set), an extension of ".gz" will
-                   automatically be added to the path given here. (required)""")
+    g_out = p.add_mutually_exclusive_group(required=True)
+    g_out.add_argument("--db",
+                       help="""SQLite3 db file. If this file is to be
+                            compressed(i.e. --no_gz is not set), an extension
+                            of ".gz" will automatically be added to the path
+                            given here. (required unless --binary_dir)""")
+    g_out.add_argument("--binary_dir",
+                       help="""Directory in which to save binary EVT formatted
+                            files of focused particles (OPP). Will be created
+                            if does not exist. (required unless --db)""")
+
     p.add_argument("--cruise", required=True, help="Cruise name (required)")
     p.add_argument("--notch1", type=float, help="Notch 1 (optional)")
     p.add_argument("--notch2", type=float, help="Notch 2 (optional)")
@@ -57,12 +61,16 @@ def main():
     p.add_argument("--origin", type=float, help="Origin (optional)")
     p.add_argument("--offset", type=float, default=0.0,
                    help="Offset (optional)")
+
+    p.add_argument("--cpus", required=False, type=int, default=1,
+                   help="""Number of CPU cores to use in filtering
+                        (optional)""")
     p.add_argument("--no_index", default=False, action="store_true",
                    help="Don't create SQLite3 indexes (optional)")
     p.add_argument("--no_opp", default=False, action="store_true",
-                   help="Don't save data to opp table (optional)")
+                   help="Don't save data to OPP data (optional)")
     p.add_argument("--gz", default=False, action="store_true",
-                   help="gzip compress SQLite3 db file (optional)")
+                   help="gzip compress output files (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
     p.add_argument("--limit", type=int, default=None,
@@ -94,15 +102,17 @@ def main():
         files = files[:args.limit]
 
     # Filter
+    # TODO: This argument list is too long. Figure out a better way.
     filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
                  args.width, args.origin, args.offset, args.progress,
-                 args.s3, args.no_opp, args.db)
+                 args.s3, args.no_opp, args.gz, args.db, args.binary_dir)
     # Index
-    if not args.no_index:
-        ensure_indexes(args.db)
-    # Compress
-    if args.gz:
-        gzip_file(args.db)
+    if args.db:
+        if not args.no_index:
+            ensure_indexes(args.db)
+        # Compress Db
+        if args.gz:
+            gzip_file(args.db)
 
 
 # ----------------------------------------------------------------------------
@@ -369,9 +379,9 @@ class EVT(object):
             # column with a descriptive name.
             self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
                                     columns=cols)
-            # Cast as 64-bit floats. Could do 32-bit except SQLite 3 only
-            # has 64-bit floats.
-            self.evt = self.evt.astype("float64")
+
+            # Convert to int32 to avoid possible overflow later
+            self.evt = self.evt.astype("int32")
 
             # Record the original number of particles
             self.evtcnt = len(self.evt.index)
@@ -419,11 +429,6 @@ class EVT(object):
         oppD2 = aligned["fsc_small"] > ((aligned["D2"] * notch2) - (offset * 10**4))
         opp = aligned[oppD1 & oppD2].copy()
 
-        # Scale data (unsigned 16-bit numbers) to 3.5 decades
-        ignore = ["time", "pulse_width"]
-        cols = [x for x in opp.columns if not x in ignore]
-        opp[cols] = 10**((opp[cols] / 2**16) * 3.5)
-
         self.opp = opp
         self.oppcnt = len(self.opp.index)
         try:
@@ -437,40 +442,32 @@ class EVT(object):
         self.origin = origin
         self.width = width
 
-    def add_extra_columns(self, cruise_name):
-        """Add columns for cruise name, file name, and particle ID to OPP."""
-        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
-            return
-
-        self.opp.insert(0, "cruise", cruise_name)
-        self.opp.insert(1, "file", self.get_db_file_name())
-        self.opp.insert(2, "particle", range(1, self.oppcnt+1))
-
-    def save_opp_to_db(self, cruise, dbpath,no_opp=False):
-        if self.opp is None or self.evtcnt == 0:
+    def save_opp_to_db(self, cruise, dbpath, transform=True, no_opp=False):
+        if self.oppcnt == 0:
             return
 
         try:
             if not no_opp:
-                self.add_extra_columns(cruise)
-                self.insert_opp_particles_sqlite3(dbpath)
+                self.insert_opp_sqlite3(cruise, dbpath, transform=transform)
             self.insert_filter_sqlite3(cruise, dbpath)
         except:
             print self
             raise
 
-    def insert_opp_particles_sqlite3(self, dbpath):
-        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
+    def insert_opp_sqlite3(self, cruise, dbpath, transform=True):
+        if self.oppcnt == 0:
             return
 
-        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * self.opp.shape[1])
+        opp = self.create_opp_for_db(cruise, transform=transform)
+
+        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * opp.shape[1])
         con = sqlite3.connect(dbpath, timeout=120)
         cur = con.cursor()
-        cur.executemany(sql, self.opp.itertuples(index=False))
+        cur.executemany(sql, opp.itertuples(index=False))
         con.commit()
 
     def insert_filter_sqlite3(self, cruise_name, dbpath):
-        if self.opp is None or self.evtcnt == 0:
+        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
         # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
@@ -485,8 +482,61 @@ class EVT(object):
                 self.origin, self.width))
         con.commit()
 
-    def write_opp_csv(self, outfile):
+    def create_opp_for_db(self, cruise, transform=True):
+        """Return a copy of opp ready for insert into db"""
         if self.opp is None:
+            return
+
+        # Get columns that need to be type-converted or transformed
+        ignore = ["time", "pulse_width"]
+        cols = [x for x in self.opp.columns if not x in ignore]
+
+        # Convert to float64 before saving to SQLite3
+        opp = self.opp.copy()
+        opp[cols] = opp[cols].astype(np.float64)
+
+        # Log transform data scaled to 3.5 decades
+        if transform:
+            opp[cols] = 10**((opp[cols] / 2**16) * 3.5)
+
+        # Add columns for cruise name, file name, and particle ID to OPP
+        opp.insert(0, "cruise", cruise)
+        opp.insert(1, "file", self.get_db_file_name())
+        opp.insert(2, "particle", np.arange(1, self.oppcnt+1, dtype=np.int32))
+
+        return opp
+
+    def write_opp_binary(self, outfile):
+        if self.oppcnt == 0:
+            return
+
+        with open("test.evt", "w") as outfile:
+            # Write 32-bit uint particle count header
+            header = np.array([self.oppcnt], np.uint32)
+            header.tofile(outfile)
+
+            # Write particle data
+            self.create_opp_for_binary().tofile(outfile)
+
+    def create_opp_for_binary(self):
+        """Return a copy of opp ready to write to binary file"""
+        if self.opp is None:
+            return
+
+        # Convert back to original type
+        opp = self.opp.astype(np.uint16)
+
+        # Add leading 4 bytes to match LabViews binary format
+        zeros = np.zeros([self.oppcnt, 1], dtype=np.uint16)
+        tens = np.copy(zeros)
+        tens.fill(10)
+        opp.insert(0, "tens", tens)
+        opp.insert(1, "zeros", zeros)
+
+        return opp.as_matrix()
+
+    def write_opp_csv(self, outfile):
+        if self.oppcnt == 0:
             return
         self.opp.to_csv(outfile, sep=",", index=False, header=False)
 
