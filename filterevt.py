@@ -8,9 +8,9 @@ import getpass
 import gzip
 import multiprocessing as mp
 import numpy as np
+import os
 import pandas as pd
 import pprint
-import os
 import random
 import re
 import shutil
@@ -112,21 +112,22 @@ def main():
             ensure_indexes(args.db)
         # Compress Db
         if args.gz:
-            gzip_file(args.db)
+            gzip_file(args.db, print_timing=True)
 
 
 # ----------------------------------------------------------------------------
 # Functions and classes to manage filter workflows
 # ----------------------------------------------------------------------------
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 every, s3_flag, no_opp, dbpath):
+                 every, s3_flag, no_opp, gz, dbpath, binary_dir):
     t0 = time.time()
 
     print ""
     print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
         (len(files), every)
 
-    ensure_tables(dbpath)
+    if dbpath:
+        ensure_tables(dbpath)
 
     evtcnt = 0
     oppcnt = 0
@@ -148,6 +149,8 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             "offset": offset,
             "s3": s3_flag,
             "no_opp": no_opp,
+            "gz": gz,
+            "binary_dir": binary_dir,
             "dbpath": dbpath})
 
     last = 0  # Last progress milestone in increments of every
@@ -239,7 +242,22 @@ def filter_one_file(params):
 
     if evt.ok:
         evt.filter_particles(**filter_kwargs)
-        evt.save_opp_to_db(**save_kwargs)
+
+        if params["dbpath"]:
+            evt.save_opp_to_db(**save_kwargs)
+
+        if params["binary_dir"]:
+            # Might have julian day, might not
+            outdir = os.path.join(
+                params["binary_dir"],
+                os.path.dirname(evt.get_file_path_with_julian_dir()))
+            mkdir_p(outdir)
+            outfile = os.path.join(
+                params["binary_dir"],
+                evt.get_file_path_with_julian_dir())
+            if params["gz"]:
+                outfile += ".gz"
+            evt.write_opp_binary(outfile)
 
     result = { k: getattr(evt, k) for k in result_keys }
     return result
@@ -251,6 +269,9 @@ class EVT(object):
     # EVT file name regexes. Does not contain directory names.
     new_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(\.gz)?$')
     old_re = re.compile(r'^\d+\.evt(\.gz)?$')
+
+    # Julian day folder regex
+    julian_re = re.compile(r'^20\d\d_\d+$')
 
     @staticmethod
     def is_evt(path):
@@ -304,6 +325,29 @@ class EVT(object):
     def isgz(self):
         return self.path and self.path.endswith(".gz")
 
+    def get_file_path_with_julian_dir(self):
+        """Get the file path with julian directory.
+
+        If there is no julian directory in path, just return file name. Always
+        remove ".gz" extensions.
+        """
+        julianpath = None
+
+        if self.isgz():
+            path = self.path[:-3]  # remove .gz
+        else:
+            path = self.path
+
+        parts = splitpath(path)
+        if len(parts) == 1:
+            julianpath = self.path
+        else:
+            if self.julian_re.match(parts[-2]):
+                julianpath = os.path.join(parts[-2], parts[-1])
+            else:
+                julianpath = parts[-1]
+        return julianpath
+
     def get_db_file_name(self):
         """Get the file name to be used in the sqlite3 db."""
         db_file_name = None
@@ -318,8 +362,8 @@ class EVT(object):
             db_file_name = os.path.basename(path)
         elif self.old_re.match(os.path.basename(path)):
             # Old style EVT name
-            parts = path.split("/")
-            if len(parts) < 2:
+            parts = splitpath(path)
+            if len(parts) < 2 or not self.julian_re.match(parts[-2]):
                 raise EVTFileError(
                     "Old style EVT file paths must contain julian day directory")
             db_file_name = os.path.join(parts[-2], parts[-1])
@@ -339,9 +383,9 @@ class EVT(object):
                 handle = self.fileobj
         else:
             if self.isgz():
-                handle = gzip.GzipFile(self.path, "r")
+                handle = gzip.GzipFile(self.path, "rb")
             else:
-                handle = open(self.path, "r")
+                handle = open(self.path, "rb")
         return handle
 
     def read_evt(self):
@@ -380,8 +424,8 @@ class EVT(object):
             self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
                                     columns=cols)
 
-            # Convert to int32 to avoid possible overflow later
-            self.evt = self.evt.astype("int32")
+            # Convert to float64
+            self.evt = self.evt.astype("float64")
 
             # Record the original number of particles
             self.evtcnt = len(self.evt.index)
@@ -488,35 +532,45 @@ class EVT(object):
             return
 
         # Get columns that need to be type-converted or transformed
-        ignore = ["time", "pulse_width"]
-        cols = [x for x in self.opp.columns if not x in ignore]
+        ints = ["time", "pulse_width"]  # integer columns
+        floats = [x for x in self.opp.columns if not x in ints]
 
-        # Convert to float64 before saving to SQLite3
+        # Convert to int64 before saving to SQLite3
         opp = self.opp.copy()
-        opp[cols] = opp[cols].astype(np.float64)
+        opp[ints] = opp[ints].astype(np.int64)
 
         # Log transform data scaled to 3.5 decades
         if transform:
-            opp[cols] = 10**((opp[cols] / 2**16) * 3.5)
+            opp[floats] = 10**((opp[floats] / 2**16) * 3.5)
 
         # Add columns for cruise name, file name, and particle ID to OPP
         opp.insert(0, "cruise", cruise)
         opp.insert(1, "file", self.get_db_file_name())
-        opp.insert(2, "particle", np.arange(1, self.oppcnt+1, dtype=np.int32))
+        opp.insert(2, "particle", np.arange(1, self.oppcnt+1, dtype=np.int64))
 
         return opp
 
     def write_opp_binary(self, outfile):
+        """Write opp to LabView binary file.
+
+        If outfile ends with ".gz", gzip compress.
+        """
         if self.oppcnt == 0:
             return
 
-        with open("test.evt", "w") as outfile:
+        if outfile.endswith(".gz"):
+            tmpout = outfile[:-3]
+
+        with open(tmpout, "wb") as fh:
             # Write 32-bit uint particle count header
             header = np.array([self.oppcnt], np.uint32)
-            header.tofile(outfile)
+            header.tofile(fh)
 
             # Write particle data
-            self.create_opp_for_binary().tofile(outfile)
+            self.create_opp_for_binary().tofile(fh)
+
+        if outfile.endswith(".gz"):
+            gzip_file(tmpout)
 
     def create_opp_for_binary(self):
         """Return a copy of opp ready to write to binary file"""
@@ -544,11 +598,6 @@ class EVT(object):
         if self.evt is None:
             return
         self.evt.to_csv(outfile, sep=",", index=False)
-
-
-class EVTFileError(Exception):
-    """Custom exception class for EVT file format errors"""
-    pass
 
 
 # ----------------------------------------------------------------------------
@@ -787,7 +836,7 @@ def ensure_indexes(dbpath):
 # ----------------------------------------------------------------------------
 # Utility functions
 # ----------------------------------------------------------------------------
-def gzip_file(path):
+def gzip_file(path, print_timing=False):
     gzipbin = "pigz"  # Default to using pigz
     devnull = open(os.devnull, "w")
     try:
@@ -797,13 +846,20 @@ def gzip_file(path):
         # If pigz is not installed fall back to gzip
         gzipbin = "gzip"
 
-    t0 = time.time()
-    print ""
-    print "Compressing %s" % path
-    subprocess.check_call([gzipbin, path], stdout=devnull,
-                          stderr=subprocess.STDOUT)
-    t1 = time.time()
-    print "Compression completed in %.2f seconds" % (t1 - t0)
+    if print_timing:
+        t0 = time.time()
+        print ""
+        print "Compressing %s" % path
+
+    try:
+        output = subprocess.check_output([gzipbin, "-f", path],
+                                         stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        raise PoolCalledProcessError(e.output)
+
+    if print_timing:
+        t1 = time.time()
+        print "Compression completed in %.2f seconds" % (t1 - t0)
 
 
 def mkdir_p(path):
@@ -817,6 +873,39 @@ def mkdir_p(path):
             pass
         else:
             raise
+
+def splitpath(path):
+    """Return a list of all path components"""
+    parts = []
+    path, last = os.path.split(path)
+    if last != "":
+        parts.append(last)
+    while True:
+        path, last = os.path.split(path)
+        if last != "":
+            parts.append(last)
+        else:
+            if path != "":
+                parts.append(path)
+            break
+    return parts[::-1]
+
+
+# ----------------------------------------------------------------------------
+# Custom exception classes
+# ----------------------------------------------------------------------------
+class EVTFileError(Exception):
+    """Custom exception class for EVT file format errors"""
+    pass
+
+
+class PoolCalledProcessError(Exception):
+    """Custom exception to replace subprocess.CalledProcessError
+
+    subprocess.CalledProcessError does not handling pickling/unpickling through
+    a multiprocessing pool very well (https://bugs.python.org/issue9400).
+    """
+    pass
 
 
 if __name__ == "__main__":
