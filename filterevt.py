@@ -247,7 +247,7 @@ def filter_one_file(params):
         evt = EVT(path=evt_file)
 
     if evt.ok:
-        evt.filter_particles(**filter_kwargs)
+        evt.filter(**filter_kwargs)
 
         if params["db"]:
             evt.save_opp_to_db(cruise=params["cruise"], no_opp=params["no_opp"],
@@ -257,11 +257,11 @@ def filter_one_file(params):
             # Might have julian day, might not
             outdir = os.path.join(
                 params["binary_dir"],
-                os.path.dirname(evt.get_file_path_with_julian_dir()))
+                os.path.dirname(evt.get_julian_path()))
             mkdir_p(outdir)
             outfile = os.path.join(
                 params["binary_dir"],
-                evt.get_file_path_with_julian_dir())
+                evt.get_julian_path())
             if params["gz_binary"]:
                 outfile += ".gz"
             evt.write_opp_binary(outfile)
@@ -301,7 +301,7 @@ class EVT(object):
         self.ok = False  # Could EVT file be parsed
 
         # Set filter params to None
-        # Should be set in filter_particles()
+        # Should be set in filter()
         self.notch1 = None
         self.notch2 = None
         self.offset = None
@@ -332,7 +332,7 @@ class EVT(object):
     def isgz(self):
         return self.path and self.path.endswith(".gz")
 
-    def get_file_path_with_julian_dir(self):
+    def get_julian_path(self):
         """Get the file path with julian directory.
 
         If there is no julian directory in path, just return file name. Always
@@ -440,15 +440,15 @@ class EVT(object):
             # Record the number of particles reported in the header
             self.headercnt = rowcnt
 
-    def filter_particles(self, notch1=None, notch2=None, offset=None,
-                         origin=None, width=None):
+    def filter(self, notch1=None, notch2=None, offset=None,
+               origin=None, width=None):
         """Filter EVT particle data."""
         if self.evt is None or self.evtcnt == 0:
             return
 
         if (width is None) or (offset is None):
             raise ValueError(
-                "Must supply width and offset to EVT.filter_particles")
+                "Must supply width and offset to EVT.filter()")
 
         # Correction for the difference in sensitivity between D1 and D2
         if origin is None:
