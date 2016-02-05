@@ -43,16 +43,15 @@ def main():
                         cruise is provided by --cruise (required unless --files
                         or --evt_dir)""")
 
-    g_out = p.add_mutually_exclusive_group(required=True)
-    g_out.add_argument("--db",
-                       help="""SQLite3 db file. If this file is to be
-                            compressed(i.e. --no_gz is not set), an extension
-                            of ".gz" will automatically be added to the path
-                            given here. (required unless --binary_dir)""")
-    g_out.add_argument("--binary_dir",
-                       help="""Directory in which to save binary EVT formatted
-                            files of focused particles (OPP). Will be created
-                            if does not exist. (required unless --db)""")
+    p.add_argument("--db",
+                   help="""SQLite3 db file. If this file is to be
+                        compressed (i.e. --gz_db is set), an extension
+                        of ".gz" will automatically be added to the path
+                        given here. (required unless --binary_dir)""")
+    p.add_argument("--binary_dir",
+                   help="""Directory in which to save LabView binary formatted
+                        files of focused particles (OPP). Will be created
+                        if does not exist. (required unless --db)""")
 
     p.add_argument("--cruise", required=True, help="Cruise name (required)")
     p.add_argument("--notch1", type=float, help="Notch 1 (optional)")
@@ -69,8 +68,10 @@ def main():
                    help="Don't create SQLite3 indexes (optional)")
     p.add_argument("--no_opp", default=False, action="store_true",
                    help="Don't save data to OPP data (optional)")
-    p.add_argument("--gz", default=False, action="store_true",
-                   help="gzip compress output files (optional)")
+    p.add_argument("--gz_db", default=False, action="store_true",
+                   help="gzip compress output db (optional)")
+    p.add_argument("--gz_binary", default=False, action="store_true",
+                   help="gzip compress output binary files (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
     p.add_argument("--limit", type=int, default=None,
@@ -78,6 +79,11 @@ def main():
                         (optional)""")
 
     args = p.parse_args()
+
+    if not args.db and not args.binary_dir:
+        sys.stderr.write("At least one of --db or --binary_dir is required\n\n")
+        p.print_help()
+        sys.exit(1)
 
     # Print defined parameters
     v = dict(vars(args))
@@ -105,13 +111,14 @@ def main():
     # TODO: This argument list is too long. Figure out a better way.
     filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
                  args.width, args.origin, args.offset, args.progress,
-                 args.s3, args.no_opp, args.gz, args.db, args.binary_dir)
+                 args.s3, args.no_opp, args.gz_db, args.gz_binary, args.db,
+                 args.binary_dir)
     # Index
     if args.db:
         if not args.no_index:
             ensure_indexes(args.db)
         # Compress Db
-        if args.gz:
+        if args.gz_db:
             gzip_file(args.db, print_timing=True)
 
 
@@ -119,15 +126,15 @@ def main():
 # Functions and classes to manage filter workflows
 # ----------------------------------------------------------------------------
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 every, s3_flag, no_opp, gz, dbpath, binary_dir):
+                 every, s3_flag, no_opp, gz_db, gz_binary, db, binary_dir):
     t0 = time.time()
 
     print ""
     print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
         (len(files), every)
 
-    if dbpath:
-        ensure_tables(dbpath)
+    if db:
+        ensure_tables(db)
 
     evtcnt = 0
     oppcnt = 0
@@ -149,9 +156,10 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             "offset": offset,
             "s3": s3_flag,
             "no_opp": no_opp,
-            "gz": gz,
-            "binary_dir": binary_dir,
-            "dbpath": dbpath})
+            "gz_db": gz_db,
+            "gz_binary": gz_binary,
+            "db": db,
+            "binary_dir": binary_dir})
 
     last = 0  # Last progress milestone in increments of every
     evtcnt_block = 0  # EVT particles in this block (between milestones)
@@ -225,12 +233,10 @@ def filter_one_file(params):
         "ok", "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
         "width", "path"]
 
-    # Keys to pull from params for filter and save methods parameters
+    # Keys to pull from params for filter method parameters
     filter_keys = ("notch1", "notch2", "offset", "origin", "width")
-    save_keys = ("cruise", "no_opp", "dbpath")
     # Make methods parameter keyword dictionaries
     filter_kwargs = {k: params[k] for k in filter_keys}
-    save_kwargs = {k: params[k] for k in save_keys}
 
     evt_file = params["file"]
 
@@ -243,8 +249,9 @@ def filter_one_file(params):
     if evt.ok:
         evt.filter_particles(**filter_kwargs)
 
-        if params["dbpath"]:
-            evt.save_opp_to_db(**save_kwargs)
+        if params["db"]:
+            evt.save_opp_to_db(cruise=params["cruise"], no_opp=params["no_opp"],
+                               db=params["db"])
 
         if params["binary_dir"]:
             # Might have julian day, might not
@@ -255,7 +262,7 @@ def filter_one_file(params):
             outfile = os.path.join(
                 params["binary_dir"],
                 evt.get_file_path_with_julian_dir())
-            if params["gz"]:
+            if params["gz_binary"]:
                 outfile += ".gz"
             evt.write_opp_binary(outfile)
 
@@ -374,7 +381,7 @@ class EVT(object):
         return db_file_name
 
     def open(self):
-        """Return a EVT file-like object for reading."""
+        """Return an EVT file-like object for reading."""
         handle = None
         if self.fileobj:
             if self.isgz():
@@ -486,16 +493,15 @@ class EVT(object):
         self.origin = origin
         self.width = width
 
-    def save_opp_to_db(self, cruise, dbpath, transform=True, no_opp=False):
+    def save_opp_to_db(self, cruise, db, transform=True, no_opp=False):
         if self.oppcnt == 0:
             return
 
         try:
             if not no_opp:
-                self.insert_opp_sqlite3(cruise, dbpath, transform=transform)
-            self.insert_filter_sqlite3(cruise, dbpath)
+                self.insert_opp_sqlite3(cruise, db, transform=transform)
+            self.insert_filter_sqlite3(cruise, db)
         except:
-            print self
             raise
 
     def insert_opp_sqlite3(self, cruise, dbpath, transform=True):
@@ -558,10 +564,13 @@ class EVT(object):
         if self.oppcnt == 0:
             return
 
+        # Detect gzip output
+        gz = False
         if outfile.endswith(".gz"):
-            tmpout = outfile[:-3]
+            gz = True
+            outfile = outfile[:-3]
 
-        with open(tmpout, "wb") as fh:
+        with open(outfile, "wb") as fh:
             # Write 32-bit uint particle count header
             header = np.array([self.oppcnt], np.uint32)
             header.tofile(fh)
@@ -569,8 +578,8 @@ class EVT(object):
             # Write particle data
             self.create_opp_for_binary().tofile(fh)
 
-        if outfile.endswith(".gz"):
-            gzip_file(tmpout)
+        if gz:
+            gzip_file(outfile)
 
     def create_opp_for_binary(self):
         """Return a copy of opp ready to write to binary file"""
@@ -863,9 +872,7 @@ def gzip_file(path, print_timing=False):
 
 
 def mkdir_p(path):
-    """From
-    http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-    """
+    """From http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python"""
     try:
         os.makedirs(path)
     except OSError as exc:
