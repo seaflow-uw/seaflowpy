@@ -67,7 +67,7 @@ def main():
     p.add_argument("--no_index", default=False, action="store_true",
                    help="Don't create SQLite3 indexes (optional)")
     p.add_argument("--no_opp", default=False, action="store_true",
-                   help="Don't save data to OPP data (optional)")
+                   help="Don't save OPP data to db (optional)")
     p.add_argument("--gz_db", default=False, action="store_true",
                    help="gzip compress output db (optional)")
     p.add_argument("--gz_binary", default=False, action="store_true",
@@ -229,9 +229,12 @@ def do_work(params):
 
 def filter_one_file(params):
     """Filter one EVT file, save to sqlite3, return filter stats"""
-    result_keys = [
-        "ok", "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
-        "width", "path"]
+    result = {
+        "ok": False,
+        "evtcnt": 0,
+        "oppcnt": 0,
+        "path": params["file"]
+    }
 
     # Keys to pull from params for filter method parameters
     filter_keys = ("notch1", "notch2", "offset", "origin", "width")
@@ -239,14 +242,17 @@ def filter_one_file(params):
     filter_kwargs = {k: params[k] for k in filter_keys}
 
     evt_file = params["file"]
-
+    fileobj = None
     if params["s3"]:
-        gzfile = download_s3_file_memory(evt_file)
-        evt = EVT(path=evt_file, fileobj=gzfile)
-    else:
-        evt = EVT(path=evt_file)
+        fileobj = download_s3_file_memory(evt_file)
 
-    if evt.ok:
+    try:
+        evt = EVT(path=evt_file, fileobj=fileobj)
+    except EVTFileError as e:
+        print "Could not parse file %s: %s" % (evt_file, repr(e))
+    except:
+        print "Unexpected error for file %s" % evt_file
+    else:
         evt.filter(**filter_kwargs)
 
         if params["db"]:
@@ -266,7 +272,10 @@ def filter_one_file(params):
                 outfile += ".gz"
             evt.write_opp_binary(outfile)
 
-    result = { k: getattr(evt, k) for k in result_keys }
+        result["ok"] = True
+        result["evtcnt"] = evt.evtcnt
+        result["oppcnt"] = evt.oppcnt
+
     return result
 
 
@@ -298,7 +307,6 @@ class EVT(object):
         self.opp_evt_ratio = 0.0
         self.evt = None
         self.opp = None
-        self.ok = False  # Could EVT file be parsed
 
         # Set filter params to None
         # Should be set in filter()
@@ -308,21 +316,11 @@ class EVT(object):
         self.origin = None
         self.width = None
 
-        try:
-            self.read_evt()
-        except EVTFileError as e:
-            print "Could not parse file %s: %s" % (self.path, repr(e))
-        except:
-            print "Unexpected error for file %s" % self.path
-            raise
-
-        # Set a flag to indicate if EVT file could be parsed
-        if not self.evt is None:
-            self.ok = True
+        self.read_evt()
 
     def __repr__(self):
         keys = [
-            "ok", "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
+            "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
             "width", "path", "headercnt"]
         return pprint.pformat({ k: getattr(self, k) for k in keys }, indent=2)
 
