@@ -66,7 +66,7 @@ def main():
                         (optional)""")
     p.add_argument("--no_index", default=False, action="store_true",
                    help="Don't create SQLite3 indexes (optional)")
-    p.add_argument("--no_opp", default=False, action="store_true",
+    p.add_argument("--no_opp_db", default=False, action="store_true",
                    help="Don't save OPP data to db (optional)")
     p.add_argument("--gz_db", default=False, action="store_true",
                    help="gzip compress output db (optional)")
@@ -111,7 +111,7 @@ def main():
     # TODO: This argument list is too long. Figure out a better way.
     filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
                  args.width, args.origin, args.offset, args.progress,
-                 args.s3, args.no_opp, args.gz_db, args.gz_binary, args.db,
+                 args.s3, args.no_opp_db, args.gz_db, args.gz_binary, args.db,
                  args.binary_dir)
     # Index
     if args.db:
@@ -126,7 +126,7 @@ def main():
 # Functions and classes to manage filter workflows
 # ----------------------------------------------------------------------------
 def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 every, s3_flag, no_opp, gz_db, gz_binary, db, binary_dir):
+                 every, s3_flag, no_opp_db, gz_db, gz_binary, db, binary_dir):
     t0 = time.time()
 
     print ""
@@ -155,7 +155,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
             "origin": origin,
             "offset": offset,
             "s3": s3_flag,
-            "no_opp": no_opp,
+            "no_opp_db": no_opp_db,
             "gz_db": gz_db,
             "gz_binary": gz_binary,
             "db": db,
@@ -256,8 +256,9 @@ def filter_one_file(params):
         evt.filter(**filter_kwargs)
 
         if params["db"]:
-            evt.save_opp_to_db(cruise=params["cruise"], no_opp=params["no_opp"],
-                               db=params["db"])
+            evt.save_opp_to_db(
+                cruise=params["cruise"], no_opp=params["no_opp_db"],
+                db=params["db"])
 
         if params["binary_dir"]:
             # Might have julian day, might not
@@ -295,7 +296,7 @@ class EVT(object):
         basename = os.path.basename(path)  # Don't check directories
         return bool(EVT.new_re.match(basename) or EVT.old_re.match(basename))
 
-    def __init__(self, path=None, fileobj=None):
+    def __init__(self, path=None, fileobj=None, read_data=True):
         # If fileobj is set, read data from this object. The path will be used
         # to set the file name in the database and detect compression.
         self.path = path  # EVT file path, local or in S3
@@ -316,7 +317,8 @@ class EVT(object):
         self.origin = None
         self.width = None
 
-        self.read_evt()
+        if read_data:
+            self.read_evt()
 
     def __repr__(self):
         keys = [

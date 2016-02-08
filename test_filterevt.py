@@ -41,18 +41,58 @@ class OpenTests(unittest.TestCase):
         with self.assertRaises(filterevt.EVTFileError):
             evt = filterevt.EVT(self.short_header_file)
 
+class PathTests(unittest.TestCase):
+    def test_get_paths_new_style(self):
+        evt = filterevt.EVT("2014-07-04T00-00-02+00-00", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
+        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+
+        evt = filterevt.EVT("2014_185/2014-07-04T00-00-02+00-00", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014_185/2014-07-04T00-00-02+00-00")
+        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+
+        evt = filterevt.EVT("foo/2014-07-04T00-00-02+00-00", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
+        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+
+        evt = filterevt.EVT("foo/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014_185/2014-07-04T00-00-02+00-00")
+        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+
+        evt = filterevt.EVT("foo/bar/2014-07-04T00-00-02+00-00", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
+        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+
+    def test_get_paths_old_style(self):
+        evt = filterevt.EVT("42.evt", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "42.evt")
+        with self.assertRaises(filterevt.EVTFileError):
+            evt.get_db_file_name()
+
+        evt = filterevt.EVT("2014_185/42.evt", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014_185/42.evt")
+        self.assertEqual(evt.get_db_file_name(), "2014_185/42.evt")
+
+        evt = filterevt.EVT("foo/42.evt", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "42.evt")
+        with self.assertRaises(filterevt.EVTFileError):
+            evt.get_db_file_name()
+
+        evt = filterevt.EVT("foo/2014_185/42.evt", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "2014_185/42.evt")
+        self.assertEqual(evt.get_db_file_name(), "2014_185/42.evt")
+
+        evt = filterevt.EVT("foo/bar/42.evt", read_data=False)
+        self.assertEqual(evt.get_julian_path(), "42.evt")
+        with self.assertRaises(filterevt.EVTFileError):
+            evt.get_db_file_name()
+
 
 class FilterTests(unittest.TestCase):
     def setUp(self):
         # This file is a valid new style EVT file
         self.file = "2014_185/2014-07-04T00-00-02+00-00"
         self.evt = filterevt.EVT(self.file)
-
-    def test_get_julian_path(self):
-        evt = self.evt
-        self.assertEqual(
-            evt.get_julian_path(),
-            self.file)
 
     def test_get_db_file_name(self):
         evt = self.evt
