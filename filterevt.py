@@ -2,6 +2,7 @@
 
 import argparse
 from boto.s3.connection import S3Connection
+import copy
 import errno
 import io
 import getpass
@@ -107,12 +108,17 @@ def main():
     if (not args.limit is None) and (args.limit > 0):
         files = files[:args.limit]
 
+    # Copy --progress to --every alias
+    args.every = args.progress
+
+    # Construct kwargs to pass to filter
+    kwargs = vars(args)
+    filter_keys = ["notch1", "notch2", "width", "offset", "origin"]
+    kwargs["filter_options"] = dict((k, kwargs[k]) for k in filter_keys)
+    kwargs["files"] = files
+
     # Filter
-    # TODO: This argument list is too long. Figure out a better way.
-    filter_files(files, args.cpus, args.cruise, args.notch1, args.notch2,
-                 args.width, args.origin, args.offset, args.progress,
-                 args.s3, args.no_opp_db, args.gz_db, args.gz_binary, args.db,
-                 args.binary_dir)
+    filter_files(**kwargs)
     # Index
     if args.db:
         if not args.no_index:
@@ -125,41 +131,59 @@ def main():
 # ----------------------------------------------------------------------------
 # Functions and classes to manage filter workflows
 # ----------------------------------------------------------------------------
-def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
-                 every, s3_flag, no_opp_db, gz_db, gz_binary, db, binary_dir):
+def filter_files(**kwargs):
+    """Filter a list of files.
+
+    Keyword arguments:
+        files - paths to files to filter
+        cruise - cruise name
+        cpus - number of worker processes to use
+        filter_options - Dictionary of filter params
+            (notch1, notch2, width, offset, origin)
+        every - Percent progress output resolution
+        s3 - Get EVT data from S3
+        no_opp_db - Don't save OPP data to SQLite3 db
+        gz_db - Gzip SQLite3 db
+        gz_binary - Gzip binary OPP files
+        db = SQLite3 db path
+        binary_dir = Directory for output binary OPP files
+    """
+    o = {
+        "files": [],
+        "cruise": None,
+        "cpus": 1,
+        "filter_options": {},
+        "every": 10.0,
+        "s3": False,
+        "no_opp_db": False,
+        "gz_db": False,
+        "gz_binary": False,
+        "db": None,
+        "binary_dir": None
+    }
+    o.update(kwargs)
+
     t0 = time.time()
 
     print ""
     print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
-        (len(files), every)
+        (len(o["files"]), o["every"])
 
-    if db:
-        ensure_tables(db)
+    if o["db"]:
+        ensure_tables(o["db"])
 
     evtcnt = 0
     oppcnt = 0
     files_ok = 0
 
     # Create a pool of N worker processes
-    pool = mp.Pool(cpus)
+    pool = mp.Pool(o["cpus"])
 
     # Construct worker inputs
     inputs = []
-    for f in files:
-        inputs.append({
-            "file": f,
-            "cruise": cruise,
-            "notch1": notch1,
-            "notch2": notch2,
-            "width": width,
-            "origin": origin,
-            "offset": offset,
-            "s3": s3_flag,
-            "no_opp_db": no_opp_db,
-            "gz_db": gz_db,
-            "gz_binary": gz_binary,
-            "db": db,
-            "binary_dir": binary_dir})
+    for f in o["files"]:
+        inputs.append(copy.deepcopy(o))
+        inputs[-1]["file"] = f
 
     last = 0  # Last progress milestone in increments of every
     evtcnt_block = 0  # EVT particles in this block (between milestones)
@@ -172,8 +196,8 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
         files_ok += 1 if res["ok"] else 0
 
         # Print progress periodically
-        perc = float(i + 1) / len(files) * 100  # Percent completed
-        milestone = int(perc / every) * every   # Round down to closest every%
+        perc = float(i + 1) / len(o["files"]) * 100  # Percent completed
+        milestone = int(perc / o["every"]) * o["every"]   # Round down to closest every%
         if milestone > last:
             now = time.time()
             evtcnt += evtcnt_block
@@ -182,7 +206,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
                 ratio_block = float(oppcnt_block) / evtcnt_block
             except ZeroDivisionError:
                 ratio_block = 0.0
-            msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
+            msg = "File: %i/%i (%.02f%%)" % (i + 1, len(o["files"]), perc)
             msg += " Particles this block: %i / %i (%.06f) elapsed: %.2fs" % \
                 (oppcnt_block, evtcnt_block, ratio_block, now - t0)
             print msg
@@ -211,7 +235,7 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
         opprate = 0.0
 
     print ""
-    print "Input EVT files = %i" % len(files)
+    print "Input EVT files = %i" % len(o["files"])
     print "Parsed EVT files = %i" % files_ok
     print "EVT particles = %s (%.2f p/s)" % (evtcnt, evtrate)
     print "OPP particles = %s (%.2f p/s)" % (oppcnt, opprate)
@@ -219,31 +243,27 @@ def filter_files(files, cpus, cruise, notch1, notch2, width, origin, offset,
     print "Filtering completed in %.2f seconds" % (delta,)
 
 
-def do_work(params):
+def do_work(options):
     """multiprocessing pool worker function"""
     try:
-        return filter_one_file(params)
+        return filter_one_file(**options)
     except KeyboardInterrupt as e:
         pass
 
 
-def filter_one_file(params):
+def filter_one_file(**kwargs):
     """Filter one EVT file, save to sqlite3, return filter stats"""
+    o = kwargs
     result = {
         "ok": False,
         "evtcnt": 0,
         "oppcnt": 0,
-        "path": params["file"]
+        "path": o["file"]
     }
 
-    # Keys to pull from params for filter method parameters
-    filter_keys = ("notch1", "notch2", "offset", "origin", "width")
-    # Make methods parameter keyword dictionaries
-    filter_kwargs = {k: params[k] for k in filter_keys}
-
-    evt_file = params["file"]
+    evt_file = o["file"]
     fileobj = None
-    if params["s3"]:
+    if o["s3"]:
         fileobj = download_s3_file_memory(evt_file)
 
     try:
@@ -253,23 +273,21 @@ def filter_one_file(params):
     except:
         print "Unexpected error for file %s" % evt_file
     else:
-        evt.filter(**filter_kwargs)
+        evt.filter(**o["filter_options"])
 
-        if params["db"]:
-            evt.save_opp_to_db(
-                cruise=params["cruise"], no_opp=params["no_opp_db"],
-                db=params["db"])
+        if o["db"]:
+            evt.save_opp_to_db(o["cruise"], o["db"], no_opp=o["no_opp_db"])
 
-        if params["binary_dir"]:
+        if o["binary_dir"]:
             # Might have julian day, might not
             outdir = os.path.join(
-                params["binary_dir"],
+                o["binary_dir"],
                 os.path.dirname(evt.get_julian_path()))
             mkdir_p(outdir)
             outfile = os.path.join(
-                params["binary_dir"],
+                o["binary_dir"],
                 evt.get_julian_path())
-            if params["gz_binary"]:
+            if o["gz_binary"]:
                 outfile += ".gz"
             evt.write_opp_binary(outfile)
 
@@ -518,26 +536,26 @@ class EVT(object):
         except:
             raise
 
-    def insert_opp_sqlite3(self, cruise, dbpath, transform=True):
+    def insert_opp_sqlite3(self, cruise, db, transform=True):
         if self.oppcnt == 0:
             return
 
         opp = self.create_opp_for_db(cruise, transform=transform)
 
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * opp.shape[1])
-        con = sqlite3.connect(dbpath, timeout=120)
+        con = sqlite3.connect(db, timeout=120)
         cur = con.cursor()
         cur.executemany(sql, opp.itertuples(index=False))
         con.commit()
 
-    def insert_filter_sqlite3(self, cruise_name, dbpath):
+    def insert_filter_sqlite3(self, cruise_name, db):
         if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
         # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
         # offset, origin, width
         sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*10)
-        con = sqlite3.connect(dbpath, timeout=120)
+        con = sqlite3.connect(db, timeout=120)
         cur = con.cursor()
         cur.execute(
             sql,

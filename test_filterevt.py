@@ -64,6 +64,20 @@ class PathTests(unittest.TestCase):
         self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
         self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
 
+    def test_is_evt(self):
+        files = [
+            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "not_evt_file",
+            "testcruise/2014_185/100.evt",
+            "testcruise/2014_185/200.evt.gz",
+            "2014_185/2014-07-04T00-00-02+00-00",
+            "2014-07-04T00-00-02+00-00"
+        ]
+        results = [filterevt.EVT.is_evt(f) for f in files]
+        answers = [True, True, False, True, True, True, True]
+        self.assertSequenceEqual(results, answers)
+
     def test_get_paths_old_style(self):
         evt = filterevt.EVT("42.evt", read_data=False)
         self.assertEqual(evt.get_julian_path(), "42.evt")
@@ -87,6 +101,28 @@ class PathTests(unittest.TestCase):
         self.assertEqual(evt.get_julian_path(), "42.evt")
         with self.assertRaises(filterevt.EVTFileError):
             evt.get_db_file_name()
+
+    def test_parse_file_list(self):
+        files = [
+            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "not_evt_file",
+            "testcruise/2014_185/100.evt",
+            "testcruise/2014_185/200.evt.gz",
+        ]
+        parsed = filterevt.parse_file_list(files)
+        self.assertSequenceEqual(parsed, files[:2] + files[3:])
+
+    def test_find_evt_files(self):
+        files = filterevt.find_evt_files("testcruise")
+        answer = [
+            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "testcruise/2014_185/2014-07-04T00-06-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-09-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-12-02+00-00"
+        ]
+        self.assertSequenceEqual(files, answer)
 
 
 class FilterTests(unittest.TestCase):
@@ -160,7 +196,6 @@ class OutputTests(unittest.TestCase):
         # Create path for temp opp binary file
         self.tempopp = os.path.basename(
             os.path.join(self.tempdir, self.file + ".opp"))
-
         # Create empty popcycle sqlite3 database
         filterevt.ensure_tables(self.tempdb)
 
@@ -232,9 +267,8 @@ class MultiFileFilterTests(unittest.TestCase):
     def test_multi_file_filter(self):
         devnull = open(os.devnull, "w")
         with mock.patch("sys.stdout", devnull):
-            filterevt.filter_files(
-                self.files, 2, "testcruise", None, None, 0.5, None, 0.0, 10.0,
-                False, False, False, False, self.tempdb, None)
+            filterevt.filter_files(files=self.files, cpus=2,
+                cruise="testcruise", db=self.tempdb)
 
         con = sqlite3.connect(self.tempdb)
         cur = con.cursor()
