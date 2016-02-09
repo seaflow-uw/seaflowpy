@@ -290,6 +290,13 @@ class EVT(object):
     # Julian day folder regex
     julian_re = re.compile(r'^20\d\d_\d+$')
 
+    # Data columns
+    cols = [
+        "time", "pulse_width", "D1", "D2", "fsc_small", "fsc_perp","fsc_big",
+        "pe", "chl_small", "chl_big"]
+    int_cols = cols[:2]
+    float_cols = cols[2:]
+
     @staticmethod
     def is_evt(path):
         """Does the file specified by this path look like an EVT file?"""
@@ -397,11 +404,6 @@ class EVT(object):
 
     def read_evt(self):
         """Read an EVT binary file and return a pandas DataFrame."""
-        # Data columns
-        cols = ["time", "pulse_width", "D1", "D2",
-                "fsc_small", "fsc_perp", "fsc_big",
-                "pe", "chl_small", "chl_big"]
-
         with self.open() as fh:
             # Particle count (rows of data) is stored in an initial 32-bit
             # unsigned int
@@ -429,10 +431,11 @@ class EVT(object):
             # idiosyncrasy of LabVIEW's binary output format. Label each
             # column with a descriptive name.
             self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
-                                    columns=cols)
+                                    columns=self.cols)
 
-            # Convert to float64
-            self.evt = self.evt.astype("float64")
+            # Convert column types
+            self.evt[self.int_cols] = self.evt[self.int_cols].astype("int64")
+            self.evt[self.float_cols] = self.evt[self.float_cols].astype("float64")
 
             # Record the original number of particles
             self.evtcnt = len(self.evt.index)
@@ -537,17 +540,11 @@ class EVT(object):
         if self.opp is None:
             return
 
-        # Get columns that need to be type-converted or transformed
-        ints = ["time", "pulse_width"]  # integer columns
-        floats = [x for x in self.opp.columns if not x in ints]
-
-        # Convert to int64 before saving to SQLite3
         opp = self.opp.copy()
-        opp[ints] = opp[ints].astype(np.int64)
 
         # Log transform data scaled to 3.5 decades
         if transform:
-            opp[floats] = 10**((opp[floats] / 2**16) * 3.5)
+            opp[self.float_cols] = 10**((opp[self.float_cols] / 2**16) * 3.5)
 
         # Add columns for cruise name, file name, and particle ID to OPP
         opp.insert(0, "cruise", cruise)
