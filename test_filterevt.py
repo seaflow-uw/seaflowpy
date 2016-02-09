@@ -3,6 +3,7 @@ import numpy as np
 import numpy.testing as npt
 import os
 import pandas as pd
+import mock
 import shutil
 import sqlite3
 import tempfile
@@ -11,11 +12,11 @@ import unittest
 
 class OpenTests(unittest.TestCase):
     def setUp(self):
-        self.file = "2014_185/2014-07-04T00-00-02+00-00"
-        self.filegz = "2014_185/2014-07-04T00-03-02+00-00.gz"
-        self.empty_file = "2014_185/2014-07-04T00-06-02+00-00"
-        self.bad_header_count_file = "2014_185/2014-07-04T00-09-02+00-00"
-        self.short_header_file = "2014_185/2014-07-04T00-12-02+00-00"
+        self.file = "testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        self.filegz = "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
+        self.empty_file = "testcruise/2014_185/2014-07-04T00-06-02+00-00"
+        self.bad_header_count_file = "testcruise/2014_185/2014-07-04T00-09-02+00-00"
+        self.short_header_file = "testcruise/2014_185/2014-07-04T00-12-02+00-00"
 
     def test_read_valid_evt(self):
         evt = filterevt.EVT(self.file)
@@ -91,18 +92,22 @@ class PathTests(unittest.TestCase):
 class FilterTests(unittest.TestCase):
     def setUp(self):
         # This file is a valid new style EVT file
-        self.file = "2014_185/2014-07-04T00-00-02+00-00"
+        self.file = "testcruise/2014_185/2014-07-04T00-00-02+00-00"
         self.evt = filterevt.EVT(self.file)
 
-    def test_get_db_file_name(self):
+    def test_filter_bad_width(self):
         evt = self.evt
-        self.assertEqual(
-            evt.get_db_file_name(),
-            os.path.basename(self.file))
+        with self.assertRaises(ValueError):
+            evt.filter(width=None)
 
-    def test_filter(self):
+    def test_filter_bad_offset(self):
         evt = self.evt
-        evt.filter(offset=0.0, width=0.5)
+        with self.assertRaises(ValueError):
+            evt.filter(offset=None)
+
+    def test_filter_default(self):
+        evt = self.evt
+        evt.filter()
         self.assertEqual(evt.oppcnt, 345)
         self.assertEqual(evt.width, 0.5)
         self.assertEqual(evt.offset, 0.0)
@@ -110,12 +115,12 @@ class FilterTests(unittest.TestCase):
         self.assertAlmostEqual(evt.notch1, 0.7668803418803419313932, places=22)
         self.assertAlmostEqual(evt.notch2, 0.7603813559322033510668, places=22)
 
-    def test_filter_with_set_notch_origin(self):
+    def test_filter_with_set_params(self):
         evt = self.evt
-        evt.filter(offset=0.0, width=0.5, notch1=1.5, notch2=1.1, origin=-1000)
-        self.assertEqual(evt.oppcnt, 158)
-        self.assertEqual(evt.width, 0.5)
-        self.assertEqual(evt.offset, 0.0)
+        evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
+        self.assertEqual(evt.oppcnt, 2812)
+        self.assertEqual(evt.width, 0.75)
+        self.assertEqual(evt.offset, 100)
         self.assertEqual(evt.origin, -1000)
         self.assertAlmostEqual(evt.notch1, 1.5, places=22)
         self.assertAlmostEqual(evt.notch2, 1.1, places=22)
@@ -131,10 +136,13 @@ class FilterTests(unittest.TestCase):
         r_answer = []
         for i, x in enumerate(txt.split("|")):
             r_answer.append(types[i](x))
+        opp_str = oppdf.values[0][:2]
         opp_ints = oppdf.values[0][2:5].astype(np.int64)
         opp_floats = oppdf.values[0][5:].astype(np.float64)
+        r_str = np.array(r_answer[:2])
         r_ints = np.array(r_answer[2:5], dtype=np.int64)
         r_floats = np.array(r_answer[5:], dtype=np.float64)
+        npt.assert_array_equal(opp_str, r_str)
         npt.assert_array_equal(opp_ints, r_ints)
         npt.assert_array_almost_equal(opp_floats, r_floats, decimal=14)
 
@@ -142,7 +150,7 @@ class FilterTests(unittest.TestCase):
 class OutputTests(unittest.TestCase):
     def setUp(self):
         # This file is a valid new style EVT file
-        self.file = "2014_185/2014-07-04T00-00-02+00-00"
+        self.file = "testcruise/2014_185/2014-07-04T00-00-02+00-00"
         self.evt = filterevt.EVT(self.file)
 
         # Get a temp directory
@@ -204,11 +212,11 @@ class MultiFileFilterTests(unittest.TestCase):
     def setUp(self):
         # This file is a valid new style EVT file
         self.files = [
-            "2014_185/2014-07-04T00-00-02+00-00",
-            "2014_185/2014-07-04T00-03-02+00-00.gz",
-            "2014_185/2014-07-04T00-06-02+00-00",
-            "2014_185/2014-07-04T00-09-02+00-00",
-            "2014_185/2014-07-04T00-12-02+00-00"
+            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "testcruise/2014_185/2014-07-04T00-06-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-09-02+00-00",
+            "testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
 
         # Get a temp directory
@@ -222,9 +230,12 @@ class MultiFileFilterTests(unittest.TestCase):
         shutil.rmtree(self.tempdir)
 
     def test_multi_file_filter(self):
-        filterevt.filter_files(
-            self.files, 2, "testcruise", None, None, 0.5, None, 0.0, 10.0,
-            False, False, False, False, self.tempdb, None)
+        devnull = open(os.devnull, "w")
+        with mock.patch("sys.stdout", devnull):
+            filterevt.filter_files(
+                self.files, 2, "testcruise", None, None, 0.5, None, 0.0, 10.0,
+                False, False, False, False, self.tempdb, None)
+
         con = sqlite3.connect(self.tempdb)
         cur = con.cursor()
         cur.execute("SELECT count(*) FROM opp")

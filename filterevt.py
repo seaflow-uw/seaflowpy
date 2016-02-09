@@ -443,8 +443,8 @@ class EVT(object):
             # Record the number of particles reported in the header
             self.headercnt = rowcnt
 
-    def filter(self, notch1=None, notch2=None, offset=None,
-               origin=None, width=None):
+    def filter(self, notch1=None, notch2=None, offset=0.0,
+               origin=None, width=0.5):
         """Filter EVT particle data."""
         if self.evt is None or self.evtcnt == 0:
             return
@@ -452,6 +452,17 @@ class EVT(object):
         if (width is None) or (offset is None):
             raise ValueError(
                 "Must supply width and offset to EVT.filter()")
+
+        # Make sure all params are floats up front to prevent potential
+        # python integer division bugs
+        offset = float(offset)
+        width = float(width)
+        if not origin is None:
+            origin = float(origin)
+        if not notch1 is None:
+            notch1 = float(notch1)
+        if not notch2 is None:
+            notch2 = float(notch2)
 
         # Correction for the difference in sensitivity between D1 and D2
         if origin is None:
