@@ -451,9 +451,8 @@ class EVT(object):
             self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
                                     columns=self.cols)
 
-            # Convert column types
-            self.evt[self.int_cols] = self.evt[self.int_cols].astype("int64")
-            self.evt[self.float_cols] = self.evt[self.float_cols].astype("float64")
+            # Convert to float64
+            self.evt = self.evt.astype(np.float64)
 
             # Record the original number of particles
             self.evtcnt = len(self.evt.index)
@@ -570,6 +569,9 @@ class EVT(object):
             return
 
         opp = self.opp.copy()
+
+        # Convert int columns to int64
+        opp[self.int_cols] = opp[self.int_cols].astype(np.int64)
 
         # Log transform data scaled to 3.5 decades
         if transform:
