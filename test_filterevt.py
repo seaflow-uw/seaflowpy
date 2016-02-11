@@ -4,6 +4,31 @@ import numpy.testing as npt
 import pandas as pd
 import pytest
 import sqlite3
+from subprocess import check_output
+
+
+scope1_local = pytest.mark.skipif(
+    not pytest.config.getoption("--scope1_local"),
+    reason="need --scope1_local option to run"
+)
+s3 = pytest.mark.skipif(
+    not pytest.config.getoption("--s3"),
+    reason="need --s3 option to run"
+)
+
+@pytest.fixture()
+def evt():
+    return filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
+
+@pytest.fixture()
+def tmpout(tmpdir, evt):
+    db = str(tmpdir.join("test.db"))
+    filterevt.ensure_tables(db)
+    return {
+        "db": db,
+        "evt": evt,
+        "opp": tmpdir.join(evt.path + ".opp").basename
+    }
 
 
 class TestOpen:
@@ -205,7 +230,7 @@ class TestOutput:
 
 
 class TestMultiFileFilter:
-    def test_multi_file_filter(self, tmpout):
+    def test_multi_file_filter_local(self, tmpout):
         files = [
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
@@ -246,17 +271,54 @@ class TestMultiFileFilter:
         assert rows[0]["offset"] == 0.0
         assert rows[1]["offset"] == 0.0
 
+    @s3
+    def test_multi_file_filter_S3(self, tmpout):
+        files = filterevt.get_s3_files("testcruise")
 
-@pytest.fixture()
-def evt():
-    return filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
+        filterevt.filter_files(files=files, cpus=2, cruise="testcruise",
+            db=tmpout["db"], s3=True)
 
-@pytest.fixture()
-def tmpout(tmpdir, evt):
-    db = str(tmpdir.join("test.db"))
-    filterevt.ensure_tables(db)
-    return {
-        "db": db,
-        "evt": evt,
-        "opp": tmpdir.join(evt.path + ".opp").basename
-    }
+        con = sqlite3.connect(tmpout["db"])
+        cur = con.cursor()
+        cur.execute("SELECT count(*) FROM opp")
+        oppcnt = cur.fetchone()[0]
+        con.close()
+        assert oppcnt == 749
+
+        con = sqlite3.connect(tmpout["db"])
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        cur.execute("SELECT * FROM filter ORDER BY file")
+        rows = cur.fetchall()
+
+        assert rows[0]["opp_count"] == 345
+        assert rows[1]["opp_count"] == 404
+        assert rows[0]["evt_count"] == 40000
+        assert rows[1]["evt_count"] == 40000
+        npt.assert_almost_equal(rows[0]["opp_evt_ratio"], 0.008625, decimal=22)
+        npt.assert_almost_equal(rows[1]["opp_evt_ratio"], 0.0101, decimal=22)
+        npt.assert_almost_equal(rows[0]["notch1"], 0.7668803418803419313932, decimal=22)
+        npt.assert_almost_equal(rows[1]["notch1"], 0.8768736616702355046726, decimal=22)
+        npt.assert_almost_equal(rows[0]["notch2"], 0.7603813559322033510668, decimal=22)
+        npt.assert_almost_equal(rows[1]["notch2"], 0.8675847457627118286538, decimal=22)
+        assert rows[0]["width"] == 0.5
+        assert rows[1]["width"] == 0.5
+        assert rows[0]["origin"] == -1792
+        assert rows[1]["origin"] == -1744
+        assert rows[0]["offset"] == 0.0
+        assert rows[1]["offset"] == 0.0
+
+    @scope1_local
+    def test_SCOPE_1_first_19_local(self, tmpout):
+        files = filterevt.find_evt_files("SCOPE_1")
+        filterevt.filter_files(files=files[:19], cpus=2, cruise="SCOPE_1", db=tmpout["db"])
+        cmd = "sqlite3 %s 'SELECT * FROM opp ORDER BY file' | openssl md5" % tmpout["db"]
+        md5_opp = check_output(cmd, shell=True).split(None)[-1]
+        cmd = "sqlite3 %s 'SELECT * FROM filter ORDER BY file' | openssl md5" % tmpout["db"]
+        md5_filter = check_output(cmd, shell=True).split(None)[-1]
+
+        popcycle_md5_opp = "b82e76165424511ed304f5d7afaf0592"
+        popcycle_md5_filter = "e49953d3fe43463a1e5a6c84b0ad95f3"
+
+        assert md5_opp == popcycle_md5_opp
+        assert md5_filter == popcycle_md5_filter
