@@ -1,68 +1,57 @@
 import filterevt
 import numpy as np
 import numpy.testing as npt
-import os
 import pandas as pd
-import mock
-import shutil
+import pytest
 import sqlite3
-import tempfile
-import unittest
 
 
-class OpenTests(unittest.TestCase):
-    def setUp(self):
-        self.file = "testcruise/2014_185/2014-07-04T00-00-02+00-00"
-        self.filegz = "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
-        self.empty_file = "testcruise/2014_185/2014-07-04T00-06-02+00-00"
-        self.bad_header_count_file = "testcruise/2014_185/2014-07-04T00-09-02+00-00"
-        self.short_header_file = "testcruise/2014_185/2014-07-04T00-12-02+00-00"
-
+class TestOpen:
     def test_read_valid_evt(self):
-        evt = filterevt.EVT(self.file)
-        self.assertEqual(evt.headercnt, 40000)
-        self.assertEqual(evt.evtcnt, 40000)
-        self.assertEqual(evt.path, self.file)
+        evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
+        assert evt.headercnt == 40000
+        assert evt.evtcnt == 40000
+        assert evt.path == "testcruise/2014_185/2014-07-04T00-00-02+00-00"
 
     def test_read_valid_gz_evt(self):
-        evt = filterevt.EVT(self.filegz)
-        self.assertEqual(evt.headercnt, 40000)
-        self.assertEqual(evt.evtcnt, 40000)
-        self.assertEqual(evt.path, self.filegz)
+        evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-03-02+00-00.gz")
+        assert evt.headercnt == 40000
+        assert evt.evtcnt == 40000
+        assert evt.path == "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
 
     def test_read_empty_evt(self):
-        with self.assertRaises(filterevt.EVTFileError):
-            evt = filterevt.EVT(self.empty_file)
+        with pytest.raises(filterevt.EVTFileError):
+            evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_bad_header_count_evt(self):
-        with self.assertRaises(filterevt.EVTFileError):
-            evt = filterevt.EVT(self.bad_header_count_file)
+        with pytest.raises(filterevt.EVTFileError):
+            evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_short_header_evt(self):
-        with self.assertRaises(filterevt.EVTFileError):
-            evt = filterevt.EVT(self.short_header_file)
+        with pytest.raises(filterevt.EVTFileError):
+            evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-12-02+00-00")
 
-class PathTests(unittest.TestCase):
+class TestPathFilenameParsing:
     def test_get_paths_new_style(self):
         evt = filterevt.EVT("2014-07-04T00-00-02+00-00", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
-        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
+        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
 
         evt = filterevt.EVT("2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014_185/2014-07-04T00-00-02+00-00")
-        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
 
         evt = filterevt.EVT("foo/2014-07-04T00-00-02+00-00", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
-        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
+        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
 
         evt = filterevt.EVT("foo/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014_185/2014-07-04T00-00-02+00-00")
-        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
 
         evt = filterevt.EVT("foo/bar/2014-07-04T00-00-02+00-00", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014-07-04T00-00-02+00-00")
-        self.assertEqual(evt.get_db_file_name(), "2014-07-04T00-00-02+00-00")
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
+        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
 
     def test_is_evt(self):
         files = [
@@ -76,30 +65,30 @@ class PathTests(unittest.TestCase):
         ]
         results = [filterevt.EVT.is_evt(f) for f in files]
         answers = [True, True, False, True, True, True, True]
-        self.assertSequenceEqual(results, answers)
+        npt.assert_array_equal(results, answers)
 
     def test_get_paths_old_style(self):
         evt = filterevt.EVT("42.evt", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "42.evt")
-        with self.assertRaises(filterevt.EVTFileError):
+        assert evt.get_julian_path() == "42.evt"
+        with pytest.raises(filterevt.EVTFileError):
             evt.get_db_file_name()
 
         evt = filterevt.EVT("2014_185/42.evt", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014_185/42.evt")
-        self.assertEqual(evt.get_db_file_name(), "2014_185/42.evt")
+        assert evt.get_julian_path() == "2014_185/42.evt"
+        assert evt.get_db_file_name() == "2014_185/42.evt"
 
         evt = filterevt.EVT("foo/42.evt", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "42.evt")
-        with self.assertRaises(filterevt.EVTFileError):
+        assert evt.get_julian_path() == "42.evt"
+        with pytest.raises(filterevt.EVTFileError):
             evt.get_db_file_name()
 
         evt = filterevt.EVT("foo/2014_185/42.evt", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "2014_185/42.evt")
-        self.assertEqual(evt.get_db_file_name(), "2014_185/42.evt")
+        assert evt.get_julian_path() == "2014_185/42.evt"
+        assert evt.get_db_file_name() == "2014_185/42.evt"
 
         evt = filterevt.EVT("foo/bar/42.evt", read_data=False)
-        self.assertEqual(evt.get_julian_path(), "42.evt")
-        with self.assertRaises(filterevt.EVTFileError):
+        assert evt.get_julian_path() == "42.evt"
+        with pytest.raises(filterevt.EVTFileError):
             evt.get_db_file_name()
 
     def test_parse_file_list(self):
@@ -111,7 +100,7 @@ class PathTests(unittest.TestCase):
             "testcruise/2014_185/200.evt.gz",
         ]
         parsed = filterevt.parse_file_list(files)
-        self.assertSequenceEqual(parsed, files[:2] + files[3:])
+        npt.assert_array_equal(parsed, files[:2] + files[3:])
 
     def test_find_evt_files(self):
         files = filterevt.find_evt_files("testcruise")
@@ -122,47 +111,37 @@ class PathTests(unittest.TestCase):
             "testcruise/2014_185/2014-07-04T00-09-02+00-00",
             "testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
-        self.assertSequenceEqual(files, answer)
+        npt.assert_array_equal(files, answer)
 
 
-class FilterTests(unittest.TestCase):
-    def setUp(self):
-        # This file is a valid new style EVT file
-        self.file = "testcruise/2014_185/2014-07-04T00-00-02+00-00"
-        self.evt = filterevt.EVT(self.file)
-
-    def test_filter_bad_width(self):
-        evt = self.evt
-        with self.assertRaises(ValueError):
+class TestFilter:
+    def test_filter_bad_width(self, evt):
+        with pytest.raises(ValueError):
             evt.filter(width=None)
 
-    def test_filter_bad_offset(self):
-        evt = self.evt
-        with self.assertRaises(ValueError):
+    def test_filter_bad_offset(self, evt):
+        with pytest.raises(ValueError):
             evt.filter(offset=None)
 
-    def test_filter_default(self):
-        evt = self.evt
+    def test_filter_default(self, evt):
         evt.filter()
-        self.assertEqual(evt.oppcnt, 345)
-        self.assertEqual(evt.width, 0.5)
-        self.assertEqual(evt.offset, 0.0)
-        self.assertEqual(evt.origin, -1792)
-        self.assertAlmostEqual(evt.notch1, 0.7668803418803419313932, places=22)
-        self.assertAlmostEqual(evt.notch2, 0.7603813559322033510668, places=22)
+        assert evt.oppcnt == 345
+        assert evt.width == 0.5
+        assert evt.offset == 0.0
+        assert evt.origin == -1792
+        npt.assert_almost_equal(evt.notch1, 0.7668803418803419313932, decimal=22)
+        npt.assert_almost_equal(evt.notch2, 0.7603813559322033510668, decimal=22)
 
-    def test_filter_with_set_params(self):
-        evt = self.evt
+    def test_filter_with_set_params(self, evt):
         evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        self.assertEqual(evt.oppcnt, 2812)
-        self.assertEqual(evt.width, 0.75)
-        self.assertEqual(evt.offset, 100)
-        self.assertEqual(evt.origin, -1000)
-        self.assertAlmostEqual(evt.notch1, 1.5, places=22)
-        self.assertAlmostEqual(evt.notch2, 1.1, places=22)
+        assert evt.oppcnt == 2812
+        assert evt.width == 0.75
+        assert evt.offset == 100
+        assert evt.origin == -1000
+        npt.assert_almost_equal(evt.notch1, 1.5, decimal=22)
+        npt.assert_almost_equal(evt.notch2, 1.1, decimal=22)
 
-    def test_create_opp_for_db_against_R_popcycle_results(self):
-        evt = self.evt
+    def test_create_opp_for_db_against_R_popcycle_results(self, evt):
         evt.filter(offset=0.0, width=0.5)
         oppdf = evt.create_opp_for_db("testcruise")
         # Answer from R popcycle sqlite3 database 'select * from opp limit 1'
@@ -183,70 +162,51 @@ class FilterTests(unittest.TestCase):
         npt.assert_array_almost_equal(opp_floats, r_floats, decimal=14)
 
 
-class OutputTests(unittest.TestCase):
-    def setUp(self):
-        # This file is a valid new style EVT file
-        self.file = "testcruise/2014_185/2014-07-04T00-00-02+00-00"
-        self.evt = filterevt.EVT(self.file)
-
-        # Get a temp directory
-        self.tempdir = tempfile.mkdtemp()
-        # Create path for temp sqlite3 file
-        self.tempdb = os.path.join(self.tempdir, "test.db")
-        # Create path for temp opp binary file
-        self.tempopp = os.path.basename(
-            os.path.join(self.tempdir, self.file + ".opp"))
-        # Create empty popcycle sqlite3 database
-        filterevt.ensure_tables(self.tempdb)
-
-    def tearDown(self):
-        shutil.rmtree(self.tempdir)
-
-    def test_sqlite3_opp_output_transformed_against_create_opp_for_db(self):
-        evt = self.evt
+class TestOutput:
+    def test_sqlite3_opp_transformed_against_create_opp_for_db(self, tmpout):
+        evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
-        evt.save_opp_to_db("testcruise", self.tempdb, transform=True,
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=True,
                            no_opp=False)
-        con = sqlite3.connect(self.tempdb)
+        con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
         oppdf = evt.create_opp_for_db("testcruise")
         npt.assert_array_equal(oppdf.values, sqlitedf.values)
 
-    def test_sqlite3_opp_output_not_transformed_against_create_opp_for_db(self):
-        evt = self.evt
+    def test_sqlite3_opp_not_transformed_against_create_opp_for_db(self, tmpout):
+        evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
-        evt.save_opp_to_db("testcruise", self.tempdb, transform=False,
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=False,
                            no_opp=False)
-        con = sqlite3.connect(self.tempdb)
+        con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
         oppdf = evt.create_opp_for_db("testcruise", transform=False)
         npt.assert_array_equal(oppdf.values, sqlitedf.values)
 
-    def test_sqlite3_opp_output_not_transformed_against_np_array(self):
-        evt = self.evt
+    def test_sqlite3_opp_not_transformed_against_np_array(self, tmpout):
+        evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
-        evt.save_opp_to_db("testcruise", self.tempdb, transform=False,
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=False,
                            no_opp=False)
-        con = sqlite3.connect(self.tempdb)
+        con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
         # Strip columns that were added by create_opp_for_db
         sqlitedf = sqlitedf.drop(["cruise", "file", "particle"], axis=1)
         npt.assert_array_equal(evt.opp.values, sqlitedf.values)
 
-    def test_binary_opp_output(self):
-        evt = self.evt
+    def test_binary_opp(self, tmpout):
+        evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
-        evt.write_opp_binary(self.tempopp)
-        opp = filterevt.EVT(self.tempopp)
+        evt.write_opp_binary(tmpout["opp"])
+        opp = filterevt.EVT(tmpout["opp"])
         # Make sure OPP binary file written can be read back as EVT and is
         # exactly the same
         npt.assert_array_equal(evt.opp, opp.evt)
 
 
-class MultiFileFilterTests(unittest.TestCase):
-    def setUp(self):
-        # This file is a valid new style EVT file
-        self.files = [
+class TestMultiFileFilter:
+    def test_multi_file_filter(self, tmpout):
+        files = [
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
             "testcruise/2014_185/2014-07-04T00-06-02+00-00",
@@ -254,57 +214,49 @@ class MultiFileFilterTests(unittest.TestCase):
             "testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
 
-        # Get a temp directory
-        self.tempdir = tempfile.mkdtemp()
-        # Create path for temp sqlite3 file
-        self.tempdb = os.path.join(self.tempdir, "test.db")
-        # Create empty popcycle sqlite3 database
-        filterevt.ensure_tables(self.tempdb)
+        filterevt.filter_files(files=files, cpus=2, cruise="testcruise", db=tmpout["db"])
 
-    def tearDown(self):
-        shutil.rmtree(self.tempdir)
-
-    def test_multi_file_filter(self):
-        devnull = open(os.devnull, "w")
-        with mock.patch("sys.stdout", devnull):
-            filterevt.filter_files(files=self.files, cpus=2,
-                cruise="testcruise", db=self.tempdb)
-
-        con = sqlite3.connect(self.tempdb)
+        con = sqlite3.connect(tmpout["db"])
         cur = con.cursor()
         cur.execute("SELECT count(*) FROM opp")
         oppcnt = cur.fetchone()[0]
         con.close()
-        self.assertEqual(oppcnt, 749)
+        assert oppcnt == 749
 
-        con = sqlite3.connect(self.tempdb)
+        con = sqlite3.connect(tmpout["db"])
         con.row_factory = sqlite3.Row
         cur = con.cursor()
         cur.execute("SELECT * FROM filter ORDER BY file")
         rows = cur.fetchall()
 
-        self.assertEqual(rows[0]["opp_count"], 345)
-        self.assertEqual(rows[1]["opp_count"], 404)
-        self.assertEqual(rows[0]["evt_count"], 40000)
-        self.assertEqual(rows[1]["evt_count"], 40000)
-        self.assertAlmostEqual(rows[0]["opp_evt_ratio"], 0.008625, places=22)
-        self.assertAlmostEqual(rows[1]["opp_evt_ratio"], 0.0101, places=22)
-        self.assertAlmostEqual(rows[0]["notch1"], 0.7668803418803419313932,
-                               places=22)
-        self.assertAlmostEqual(rows[1]["notch1"], 0.8768736616702355046726,
-                               places=22)
-        self.assertAlmostEqual(rows[0]["notch2"], 0.7603813559322033510668,
-                               places=22)
-        self.assertAlmostEqual(rows[1]["notch2"], 0.8675847457627118286538,
-                               places=22)
-        self.assertEqual(rows[0]["width"], 0.5)
-        self.assertEqual(rows[1]["width"], 0.5)
-        self.assertEqual(rows[0]["origin"], -1792)
-        self.assertEqual(rows[1]["origin"], -1744)
-        self.assertEqual(rows[0]["offset"], 0.0)
-        self.assertEqual(rows[1]["offset"], 0.0)
+        assert rows[0]["opp_count"] == 345
+        assert rows[1]["opp_count"] == 404
+        assert rows[0]["evt_count"] == 40000
+        assert rows[1]["evt_count"] == 40000
+        npt.assert_almost_equal(rows[0]["opp_evt_ratio"], 0.008625, decimal=22)
+        npt.assert_almost_equal(rows[1]["opp_evt_ratio"], 0.0101, decimal=22)
+        npt.assert_almost_equal(rows[0]["notch1"], 0.7668803418803419313932, decimal=22)
+        npt.assert_almost_equal(rows[1]["notch1"], 0.8768736616702355046726, decimal=22)
+        npt.assert_almost_equal(rows[0]["notch2"], 0.7603813559322033510668, decimal=22)
+        npt.assert_almost_equal(rows[1]["notch2"], 0.8675847457627118286538, decimal=22)
+        assert rows[0]["width"] == 0.5
+        assert rows[1]["width"] == 0.5
+        assert rows[0]["origin"] == -1792
+        assert rows[1]["origin"] == -1744
+        assert rows[0]["offset"] == 0.0
+        assert rows[1]["offset"] == 0.0
 
 
+@pytest.fixture()
+def evt():
+    return filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture()
+def tmpout(tmpdir, evt):
+    db = str(tmpdir.join("test.db"))
+    filterevt.ensure_tables(db)
+    return {
+        "db": db,
+        "evt": evt,
+        "opp": tmpdir.join(evt.path + ".opp").basename
+    }
