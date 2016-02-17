@@ -186,6 +186,23 @@ class TestFilter:
         npt.assert_array_equal(opp_ints, r_ints)
         npt.assert_array_almost_equal(opp_floats, r_floats, decimal=14)
 
+    def test_filter_twice_overwrites_old_results(self, evt):
+        evt.filter()
+        assert evt.oppcnt == 345
+        assert evt.width == 0.5
+        assert evt.offset == 0.0
+        assert evt.origin == -1792
+        npt.assert_almost_equal(evt.notch1, 0.7668803418803419313932, decimal=22)
+        npt.assert_almost_equal(evt.notch2, 0.7603813559322033510668, decimal=22)
+
+        evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
+        assert evt.oppcnt == 2812
+        assert evt.width == 0.75
+        assert evt.offset == 100
+        assert evt.origin == -1000
+        npt.assert_almost_equal(evt.notch1, 1.5, decimal=22)
+        npt.assert_almost_equal(evt.notch2, 1.1, decimal=22)
+
 
 class TestOutput:
     def test_sqlite3_opp_transformed_against_create_opp_for_db(self, tmpout):
