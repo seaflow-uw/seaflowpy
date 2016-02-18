@@ -163,12 +163,6 @@ def filter_files(**kwargs):
     }
     o.update(kwargs)
 
-    t0 = time.time()
-
-    print ""
-    print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
-        (len(o["files"]), o["every"])
-
     if o["db"]:
         ensure_tables(o["db"])
 
@@ -181,9 +175,16 @@ def filter_files(**kwargs):
 
     # Construct worker inputs
     inputs = []
-    for f in o["files"]:
-        inputs.append(copy.deepcopy(o))
+    files = o.pop("files")
+    for f in files:
+        inputs.append(copy.copy(o))
         inputs[-1]["file"] = f
+
+    print ""
+    print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
+        (len(files), o["every"])
+
+    t0 = time.time()
 
     last = 0  # Last progress milestone in increments of every
     evtcnt_block = 0  # EVT particles in this block (between milestones)
@@ -196,7 +197,7 @@ def filter_files(**kwargs):
         files_ok += 1 if res["ok"] else 0
 
         # Print progress periodically
-        perc = float(i + 1) / len(o["files"]) * 100  # Percent completed
+        perc = float(i + 1) / len(files) * 100  # Percent completed
         milestone = int(perc / o["every"]) * o["every"]   # Round down to closest every%
         if milestone > last:
             now = time.time()
@@ -206,7 +207,7 @@ def filter_files(**kwargs):
                 ratio_block = float(oppcnt_block) / evtcnt_block
             except ZeroDivisionError:
                 ratio_block = 0.0
-            msg = "File: %i/%i (%.02f%%)" % (i + 1, len(o["files"]), perc)
+            msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
             msg += " Particles this block: %i / %i (%.06f) elapsed: %.2fs" % \
                 (oppcnt_block, evtcnt_block, ratio_block, now - t0)
             print msg
@@ -235,7 +236,7 @@ def filter_files(**kwargs):
         opprate = 0.0
 
     print ""
-    print "Input EVT files = %i" % len(o["files"])
+    print "Input EVT files = %i" % len(files)
     print "Parsed EVT files = %i" % files_ok
     print "EVT particles = %s (%.2f p/s)" % (evtcnt, evtrate)
     print "OPP particles = %s (%.2f p/s)" % (oppcnt, opprate)
