@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
-from boto.s3.connection import S3Connection
+import boto3
+import botocore
 import copy
 import errno
 import io
@@ -23,7 +24,7 @@ import time
 # Global configuration variables for AWS
 # ######################################
 # Default name of Seaflow bucket
-SEAFLOW_BUCKET = "seaflowdata"
+SEAFLOW_BUCKET = "armbrustlab.seaflow"
 # Default AWS region
 AWS_REGION = "us-west-2"
 
@@ -698,27 +699,42 @@ def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
 
 def get_s3_connection():
     try:
-        s3 = S3Connection()
+        s3 = boto3.resource("s3")
     except:
         (aws_access_key_id, aws_secret_access_key) = get_aws_credentials()
-        s3 = S3Connection(aws_access_key_id, aws_secret_access_key)
         # Save credentials so we don't have to do this all the time
         # And so that any child processes have acces to AWS resources
         save_aws_credentials(aws_access_key_id, aws_secret_access_key)
+        s3 = boto3.resource("s3")
     return s3
+
+
+def get_s3_bucket(s3, bucket_name):
+    bucket = s3.Bucket(bucket_name)
+    exists = True
+    try:
+        s3.meta.client.head_bucket(Bucket=bucket_name)
+    except botocore.exceptions.ClientError as e:
+        # If a client error is thrown, then check that it was a 404 error.
+        # If it was a 404 error, then the bucket does not exist.
+        error_code = int(e.response['Error']['Code'])
+        if error_code == 404:
+            exists = False
+    if not exists:
+        raise IOError("S3 bucket %s does not exist" % bucket_name)
+    return bucket
 
 
 def get_s3_files(cruise):
     s3 = get_s3_connection()
-    bucket = s3.get_bucket(SEAFLOW_BUCKET, validate=True)
+    bucket = get_s3_bucket(s3, SEAFLOW_BUCKET)
     i = 0
     files = []
-    for item in bucket.list(prefix=cruise + "/"):
+    for obj in bucket.objects.filter(Prefix=cruise + "/"):
         # Only keep files for this cruise and skip SFL files
-        if str(item.key) != "%s/" % cruise:
-            # Make sure this looks like an EVT file
-            if EVT.is_evt(str(item.key)):
-                files.append(str(item.key))
+        # Make sure this looks like an EVT file
+        if EVT.is_evt(obj.key):
+            files.append(obj.key)
     return files
 
 
@@ -728,9 +744,9 @@ def download_s3_file_memory(key_str, retries=5):
     while True:
         try:
             s3 = get_s3_connection()
-            bucket = s3.get_bucket("seaflowdata", validate=True)
-            key = bucket.get_key(key_str)
-            data = io.BytesIO(key.get_contents_as_string())
+            obj = s3.Object(SEAFLOW_BUCKET, key_str)
+            resp = obj.get()
+            data = io.BytesIO(resp["Body"].read())
             return data
         except:
             tries += 1
