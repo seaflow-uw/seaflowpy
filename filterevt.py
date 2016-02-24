@@ -896,7 +896,7 @@ def gzip_file(path, print_timing=False):
     try:
         subprocess.check_call(["pigz", "--version"], stdout=devnull,
                               stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError:
+    except OSError as e:
         # If pigz is not installed fall back to gzip
         gzipbin = "gzip"
 
