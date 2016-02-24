@@ -57,64 +57,59 @@ class TestOpen:
             evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-12-02+00-00")
 
 class TestPathFilenameParsing:
-    def test_get_paths_new_style(self):
-        evt = filterevt.EVT("2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
-
-        evt = filterevt.EVT("2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
-
-        evt = filterevt.EVT("foo/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
-
-        evt = filterevt.EVT("foo/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
-
-        evt = filterevt.EVT("foo/bar/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-        assert evt.get_db_file_name() == "2014-07-04T00-00-02+00-00"
-
     def test_is_evt(self):
         files = [
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
             "not_evt_file",
+            "x.evt",
+            "2014-07-0400-00-02+00-00",
             "testcruise/2014_185/100.evt",
             "testcruise/2014_185/200.evt.gz",
             "2014_185/2014-07-04T00-00-02+00-00",
             "2014-07-04T00-00-02+00-00"
         ]
         results = [filterevt.EVT.is_evt(f) for f in files]
-        answers = [True, True, False, True, True, True, True]
+        answers = [True, True, False, False, False, True, True, True, True]
         npt.assert_array_equal(results, answers)
+
+    def test_get_paths_new_style(self):
+        evt = filterevt.EVT("2014-07-04T00-00-02+00-00", read_data=False)
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
+
+        evt = filterevt.EVT("2014_185/2014-07-04T00-00-02+00-00", read_data=False)
+        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
+
+        evt = filterevt.EVT("foo/2014-07-04T00-00-02+00-00", read_data=False)
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
+
+        evt = filterevt.EVT("foo/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
+        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
+
+        evt = filterevt.EVT("foo/bar/2014-07-04T00-00-02+00-00", read_data=False)
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
+
+        evt = filterevt.EVT("foo/bar/2014-07-04T00-00-02+00-00.gz", read_data=False)
+        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
 
     def test_get_paths_old_style(self):
         evt = filterevt.EVT("42.evt", read_data=False)
         assert evt.get_julian_path() == "42.evt"
-        with pytest.raises(filterevt.EVTFileError):
-            evt.get_db_file_name()
 
         evt = filterevt.EVT("2014_185/42.evt", read_data=False)
         assert evt.get_julian_path() == "2014_185/42.evt"
-        assert evt.get_db_file_name() == "2014_185/42.evt"
 
         evt = filterevt.EVT("foo/42.evt", read_data=False)
         assert evt.get_julian_path() == "42.evt"
-        with pytest.raises(filterevt.EVTFileError):
-            evt.get_db_file_name()
 
         evt = filterevt.EVT("foo/2014_185/42.evt", read_data=False)
         assert evt.get_julian_path() == "2014_185/42.evt"
-        assert evt.get_db_file_name() == "2014_185/42.evt"
 
         evt = filterevt.EVT("foo/bar/42.evt", read_data=False)
         assert evt.get_julian_path() == "42.evt"
-        with pytest.raises(filterevt.EVTFileError):
-            evt.get_db_file_name()
+
+        evt = filterevt.EVT("foo/bar/42.evt.gz", read_data=False)
+        assert evt.get_julian_path() == "42.evt"
 
     def test_parse_file_list(self):
         files = [
@@ -170,7 +165,7 @@ class TestFilter:
         evt.filter(offset=0.0, width=0.5)
         oppdf = evt.create_opp_for_db("testcruise")
         # Answer from R popcycle sqlite3 database 'select * from opp limit 1'
-        txt = "testcruise|2014-07-04T00-00-02+00-00|1|0|9783|2.30305700391851|1.30423678597587|5.91025807888534|58.4120408652103|2.01861599856769|1.20790074742528|7.622597117578|53.5020800111923"
+        txt = "testcruise|2014_185/2014-07-04T00-00-02+00-00|1|0|9783|2.30305700391851|1.30423678597587|5.91025807888534|58.4120408652103|2.01861599856769|1.20790074742528|7.622597117578|53.5020800111923"
         # cruise, file, particle, time, pulse_width, D1, D2, fsc_small, fsc_perp, fsc_big, pe, chl_small, chl_big
         types = [str, str, int, int, int, float, float, float, float, float, float, float, float]
         r_answer = []
@@ -334,8 +329,14 @@ class TestMultiFileFilter:
         cmd = "sqlite3 %s 'SELECT * FROM filter ORDER BY file' | openssl md5" % tmpout["db"]
         md5_filter = check_output(cmd, shell=True).split(None)[-1]
 
-        popcycle_md5_opp = "b82e76165424511ed304f5d7afaf0592"
-        popcycle_md5_filter = "e49953d3fe43463a1e5a6c84b0ad95f3"
+        # This is based on popcycle revision deda9a8 running the R script
+        # test_filter_SCOPE_1.R. The base popcycle library was slightly
+        # modified so that notch1 and notch2 have matching precision in both
+        # sqlite3 filter tables. Line 148 in filter.R was changed to:
+        # para <- data.frame(cbind(file=file, notch1=as.numeric(notch.1), notch2=as.numeric(notch.2,2),
+
+        popcycle_md5_opp = "0ed407e52c75c18729001958ebb80f88"
+        popcycle_md5_filter = "4b83240c728ccbc79b4b899dd7f9042b"
 
         assert md5_opp == popcycle_md5_opp
         assert md5_filter == popcycle_md5_filter

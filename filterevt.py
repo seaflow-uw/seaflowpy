@@ -304,11 +304,11 @@ class EVT(object):
     """Class for EVT data operations"""
 
     # EVT file name regexes. Does not contain directory names.
-    new_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(\.gz)?$')
-    old_re = re.compile(r'^\d+\.evt(\.gz)?$')
-
-    # Julian day folder regex
-    julian_re = re.compile(r'^20\d\d_\d+$')
+    file_re = re.compile(
+        r'^.*?/?'
+        r'(?P<julian>\d{4}_\d{1,3})?/?'
+        r'(?P<file>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}|\d+\.evt)'
+        r'(?P<gz>\.gz)?$')
 
     # Data columns
     cols = [
@@ -320,8 +320,7 @@ class EVT(object):
     @staticmethod
     def is_evt(path):
         """Does the file specified by this path look like an EVT file?"""
-        basename = os.path.basename(path)  # Don't check directories
-        return bool(EVT.new_re.match(basename) or EVT.old_re.match(basename))
+        return bool(EVT.file_re.match(path))
 
     def __init__(self, path=None, fileobj=None, read_data=True):
         # If fileobj is set, read data from this object. The path will be used
@@ -365,47 +364,14 @@ class EVT(object):
         If there is no julian directory in path, just return file name. Always
         remove ".gz" extensions.
         """
-        julianpath = None
-
-        if self.isgz():
-            path = self.path[:-3]  # remove .gz
-        else:
-            path = self.path
-
-        parts = splitpath(path)
-        if len(parts) == 1:
-            julianpath = self.path
-        else:
-            if self.julian_re.match(parts[-2]):
-                julianpath = os.path.join(parts[-2], parts[-1])
+        m = self.file_re.match(self.path)
+        if m:
+            if m.group("julian"):
+                return os.path.join(m.group("julian"), m.group("file"))
             else:
-                julianpath = parts[-1]
-        return julianpath
-
-    def get_db_file_name(self):
-        """Get the file name to be used in the sqlite3 db."""
-        db_file_name = None
-
-        if self.isgz():
-            path = self.path[:-3]  # remove .gz
+                return m.group("file")
         else:
-            path = self.path
-
-        if self.new_re.match(os.path.basename(path)):
-            # New style EVT name
-            db_file_name = os.path.basename(path)
-        elif self.old_re.match(os.path.basename(path)):
-            # Old style EVT name
-            parts = splitpath(path)
-            if len(parts) < 2 or not self.julian_re.match(parts[-2]):
-                raise EVTFileError(
-                    "Old style EVT file paths must contain julian day directory")
-            db_file_name = os.path.join(parts[-2], parts[-1])
-        else:
-            raise EVTFileError("File name does not look like an EVT file: %s" %
-                os.path.basename(path))
-
-        return db_file_name
+            return self.path
 
     def open(self):
         """Return an EVT file-like object for reading."""
@@ -560,7 +526,7 @@ class EVT(object):
         cur = con.cursor()
         cur.execute(
             sql,
-            (cruise_name, self.get_db_file_name(), self.oppcnt, self.evtcnt,
+            (cruise_name, self.get_julian_path(), self.oppcnt, self.evtcnt,
                 self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
                 self.origin, self.width))
         con.commit()
@@ -581,7 +547,7 @@ class EVT(object):
 
         # Add columns for cruise name, file name, and particle ID to OPP
         opp.insert(0, "cruise", cruise)
-        opp.insert(1, "file", self.get_db_file_name())
+        opp.insert(1, "file", self.get_julian_path())
         opp.insert(2, "particle", np.arange(1, self.oppcnt+1, dtype=np.int64))
 
         return opp
