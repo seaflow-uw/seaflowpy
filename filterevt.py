@@ -917,7 +917,12 @@ def gzip_file(path, print_timing=False):
 
 
 def mkdir_p(path):
-    """From http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python"""
+    """Create directory tree for path.
+
+    Doesn't raise an error if a directory in the path already exists.
+
+    From http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+    """
     try:
         os.makedirs(path)
     except OSError as exc:
