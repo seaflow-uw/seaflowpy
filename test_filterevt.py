@@ -302,6 +302,7 @@ class TestMultiFileFilter:
         cur = con.cursor()
         cur.execute("SELECT * FROM filter ORDER BY file")
         rows = cur.fetchall()
+        con.close()
 
         assert rows[0]["opp_count"] == 345
         assert rows[1]["opp_count"] == 404
@@ -324,19 +325,37 @@ class TestMultiFileFilter:
     def test_SCOPE_1_first_19_local(self, tmpout):
         files = filterevt.find_evt_files("SCOPE_1")
         filterevt.filter_files(files=files[:19], cpus=2, cruise="SCOPE_1", db=tmpout["db"])
-        cmd = "sqlite3 %s 'SELECT * FROM opp ORDER BY file' | openssl md5" % tmpout["db"]
-        md5_opp = check_output(cmd, shell=True).split(None)[-1]
-        cmd = "sqlite3 %s 'SELECT * FROM filter ORDER BY file' | openssl md5" % tmpout["db"]
-        md5_filter = check_output(cmd, shell=True).split(None)[-1]
+        con = sqlite3.connect(tmpout["db"])
+        opp_python = pd.read_sql("SELECT * FROM opp ORDER BY file, particle", con)
+        filter_python = pd.read_sql("SELECT * FROM filter ORDER BY file", con)
+        con.close()
 
-        # This is based on popcycle revision deda9a8 running the R script
-        # test_filter_SCOPE_1.R. The base popcycle library was slightly
-        # modified so that notch1 and notch2 have matching precision in both
-        # sqlite3 filter tables. Line 148 in filter.R was changed to:
-        # para <- data.frame(cbind(file=file, notch1=as.numeric(notch.1), notch2=as.numeric(notch.2,2),
+        # This db was created with the R script test_filter_SCOPE_1.R using
+        # popcycle revision deda9a8.
+        con = sqlite3.connect("./popcycle-SCOPE_1-first20.db")
+        opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, particle", con)
+        filter_R = pd.read_sql("SELECT * FROM filter ORDER BY file", con)
+        con.close()
 
-        popcycle_md5_opp = "0ed407e52c75c18729001958ebb80f88"
-        popcycle_md5_filter = "4b83240c728ccbc79b4b899dd7f9042b"
+        npt.assert_array_equal(
+            opp_python[["cruise", "file"]],
+            opp_R[["cruise", "file"]])
+        npt.assert_array_almost_equal(
+            opp_python.drop(["cruise", "file"], axis=1).as_matrix(),
+            opp_R.drop(["cruise", "file"], axis=1).as_matrix(),
+            decimal=12)
 
-        assert md5_opp == popcycle_md5_opp
-        assert md5_filter == popcycle_md5_filter
+        npt.assert_array_equal(
+            filter_python[["cruise", "file"]],
+            filter_R[["cruise", "file"]])
+        # Compare whole arrays to two decimal places because R code rounds
+        # notch1 and notch2 to two decimal places.
+        npt.assert_array_almost_equal(
+            filter_python.drop(["cruise", "file"], axis=1).as_matrix(),
+            filter_R.drop(["cruise", "file"], axis=1).as_matrix(),
+            decimal=2)
+        # R code saves opp_evt_ratio with full precision so compare these
+        # these columns with not decimal precision setting.
+        npt.assert_array_equal(
+            filter_python["opp_evt_ratio"].as_matrix(),
+            filter_R["opp_evt_ratio"].as_matrix())
