@@ -313,7 +313,8 @@ class EVT(object):
     # Data columns
     cols = [
         "time", "pulse_width", "D1", "D2", "fsc_small", "fsc_perp","fsc_big",
-        "pe", "chl_small", "chl_big"]
+        "pe", "chl_small", "chl_big"
+    ]
     int_cols = cols[:2]
     float_cols = cols[2:]
 
@@ -343,13 +344,16 @@ class EVT(object):
         self.origin = None
         self.width = None
 
+        self.stats = {}  # min, max, mean for each channel of OPP data
+
         if read_data:
             self.read_evt()
 
     def __repr__(self):
         keys = [
             "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
-            "width", "path", "headercnt"]
+            "width", "path", "headercnt"
+        ]
         return pprint.pformat({ k: getattr(self, k) for k in keys }, indent=2)
 
     def __str__(self):
@@ -408,7 +412,8 @@ class EVT(object):
             if len(buff) != expected_bytes:
                 raise EVTFileError(
                     "File has incorrect number of data bytes. Expected %i, saw %i" %
-                    (expected_bytes, len(buff)))
+                    (expected_bytes, len(buff))
+                )
             particles = np.fromstring(buff, dtype="uint16", count=rowcnt*12)
             # Reshape into a matrix of 12 columns and one row per particle
             particles = np.reshape(particles, [rowcnt, 12])
@@ -436,7 +441,8 @@ class EVT(object):
 
         if (width is None) or (offset is None):
             raise ValueError(
-                "Must supply width and offset to EVT.filter()")
+                "Must supply width and offset to EVT.filter()"
+            )
 
         # Make sure all params are floats up front to prevent potential
         # python integer division bugs
@@ -492,6 +498,21 @@ class EVT(object):
         self.origin = origin
         self.width = width
 
+    def calc_opp_stats(self):
+        """Calculate min, max, sum, mean for each channel of OPP data"""
+        if self.oppcnt == 0:
+            return
+
+        for col in self.float_cols:
+            self.stats[col] = {
+                "min": self.opp[col].min(),
+                "max": self.opp[col].max(),
+                "mean": self.opp[col].mean()
+            }
+
+    def transform(self, vals):
+        return 10**((vals / 2**16) * 3.5)
+
     def save_opp_to_db(self, cruise, db, transform=True, no_opp=False):
         if self.oppcnt == 0:
             return
@@ -499,7 +520,7 @@ class EVT(object):
         try:
             if not no_opp:
                 self.insert_opp_sqlite3(cruise, db, transform=transform)
-            self.insert_filter_sqlite3(cruise, db)
+            self.insert_filter_sqlite3(cruise, db, transform=transform)
         except:
             raise
 
@@ -515,20 +536,29 @@ class EVT(object):
         cur.executemany(sql, opp.itertuples(index=False))
         con.commit()
 
-    def insert_filter_sqlite3(self, cruise_name, db):
+    def insert_filter_sqlite3(self, cruise_name, db, transform=True):
         if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
-        # cruise, file, evt_count, opp_count, opp_evt_ratio, notch1, notch2,
-        # offset, origin, width
-        sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*10)
+        vals = [cruise_name, self.get_julian_path(), self.oppcnt, self.evtcnt,
+            self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
+            self.origin, self.width]
+
+        self.calc_opp_stats()
+        for channel in self.float_cols:
+            if transform:
+                vals.append(self.transform(self.stats[channel]["min"]))
+                vals.append(self.transform(self.stats[channel]["max"]))
+                vals.append(self.transform(self.stats[channel]["mean"]))
+            else:
+                vals.append(self.stats[channel]["min"])
+                vals.append(self.stats[channel]["max"])
+                vals.append(self.stats[channel]["mean"])
+
+        sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*len(vals))
         con = sqlite3.connect(db, timeout=120)
         cur = con.cursor()
-        cur.execute(
-            sql,
-            (cruise_name, self.get_julian_path(), self.oppcnt, self.evtcnt,
-                self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
-                self.origin, self.width))
+        cur.execute(sql, tuple(vals))
         con.commit()
 
     def create_opp_for_db(self, cruise, transform=True):
@@ -543,7 +573,7 @@ class EVT(object):
 
         # Log transform data scaled to 3.5 decades
         if transform:
-            opp[self.float_cols] = 10**((opp[self.float_cols] / 2**16) * 3.5)
+            opp[self.float_cols] = self.transform(opp[self.float_cols])
 
         # Add columns for cruise name, file name, and particle ID to OPP
         opp.insert(0, "cruise", cruise)
@@ -773,6 +803,30 @@ def ensure_tables(dbpath):
         offset REAL NOT NULL,
         origin REAL NOT NULL,
         width REAL NOT NULL,
+        D1_min REAL NOT NULL,
+        D1_max REAL NOT NULL,
+        D1_mean REAL NOT NULL,
+        D2_min REAL NOT NULL,
+        D2_max REAL NOT NULL,
+        D2_mean REAL NOT NULL,
+        fsc_small_min REAL NOT NULL,
+        fsc_small_max REAL NOT NULL,
+        fsc_small_mean REAL NOT NULL,
+        fsc_perp_min REAL NOT NULL,
+        fsc_perp_max REAL NOT NULL,
+        fsc_perp_mean REAL NOT NULL,
+        fsc_big_min REAL NOT NULL,
+        fsc_big_max REAL NOT NULL,
+        fsc_big_mean REAL NOT NULL,
+        pe_min REAL NOT NULL,
+        pe_max REAL NOT NULL,
+        pe_mean REAL NOT NULL,
+        chl_small_min REAL NOT NULL,
+        chl_small_max REAL NOT NULL,
+        chl_small_mean REAL NOT NULL,
+        chl_big_min REAL NOT NULL,
+        chl_big_max REAL NOT NULL,
+        chl_big_mean REAL NOT NULL,
         PRIMARY KEY (cruise, file)
     )""")
 

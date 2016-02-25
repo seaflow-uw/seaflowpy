@@ -198,8 +198,34 @@ class TestFilter:
         npt.assert_almost_equal(evt.notch1, 1.5, decimal=22)
         npt.assert_almost_equal(evt.notch2, 1.1, decimal=22)
 
+    def test_opp_stats(self, evt):
+        evt.filter()
+        assert evt.stats == {}
+        evt.calc_opp_stats()
+        answer = {
+            'D1': {'max': 64960.0, 'mean': 10064.834782608696, 'min': 592.0},
+            'D2': {'max': 65520.0, 'mean': 8199.420289855072, 'min': 0.0},
+            'chl_big': {'max': 32384.0, 'mean': 32357.50434782609, 'min': 32341.0},
+            'chl_small': {'max': 55515.0, 'mean': 14797.066666666668, 'min': 2347.0},
+            'fsc_big': {'max': 9904.0, 'mean': 6416.139130434783, 'min': 2880.0},
+            'fsc_perp': {'max': 33109.0, 'mean': 33078.91594202899, 'min': 33067.0},
+            'fsc_small': {'max': 57424.0, 'mean': 14504.811594202898, 'min': 1216.0},
+            'pe': {'max': 58112.0, 'mean': 9768.573913043478, 'min': 0.0}
+        }
+        assert evt.stats == answer
+
 
 class TestOutput:
+    def test_sqlite3_opp_cruise_file(self, tmpout):
+        evt = tmpout["evt"]
+        evt.filter(offset=0.0, width=0.5)
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=True,
+                           no_opp=False)
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
+        assert "testcruise" == sqlitedf.cruise[0]
+        assert evt.get_julian_path() == sqlitedf.file[0]
+
     def test_sqlite3_opp_transformed_against_create_opp_for_db(self, tmpout):
         evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
@@ -207,6 +233,8 @@ class TestOutput:
                            no_opp=False)
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
+        assert "testcruise" == sqlitedf.cruise[0]
+        assert evt.get_julian_path() == sqlitedf.file[0]
         oppdf = evt.create_opp_for_db("testcruise")
         npt.assert_array_equal(oppdf.values, sqlitedf.values)
 
@@ -230,6 +258,55 @@ class TestOutput:
         # Strip columns that were added by create_opp_for_db
         sqlitedf = sqlitedf.drop(["cruise", "file", "particle"], axis=1)
         npt.assert_array_equal(evt.opp.values, sqlitedf.values)
+
+    def test_sqlite3_filter_cruise_file(self, tmpout):
+        evt = tmpout["evt"]
+        evt.filter(offset=0.0, width=0.5)
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=True,
+                           no_opp=True)
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM filter", con)
+        assert "testcruise" == sqlitedf.cruise[0]
+        assert evt.get_julian_path() == sqlitedf.file[0]
+
+    def test_sqlite3_filter(self, tmpout):
+        evt = tmpout["evt"]
+        evt.filter(offset=0.0, width=0.5)
+        evt.save_opp_to_db("testcruise", tmpout["db"], no_opp=True)
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM filter", con)
+        npt.assert_array_equal(
+            [evt.oppcnt, evt.evtcnt, evt.opp_evt_ratio, evt.notch1, evt.notch2,
+                evt.offset, evt.origin, evt.width],
+            sqlitedf[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
+                "notch2", "offset", "origin", "width"]].as_matrix()[0]
+        )
+
+    def test_sqlite3_filter_transformed(self, tmpout):
+        evt = tmpout["evt"]
+        evt.filter(offset=0.0, width=0.5)
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=True,
+                           no_opp=True)
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM filter", con)
+        row = sqlitedf.iloc[0]
+        for channel in evt.stats:
+            for stat in ["min", "max", "mean"]:
+                k = channel + "_" + stat
+                assert evt.transform(evt.stats[channel][stat]) == row[k]
+
+    def test_sqlite3_filter_not_transformed(self, tmpout):
+        evt = tmpout["evt"]
+        evt.filter(offset=0.0, width=0.5)
+        evt.save_opp_to_db("testcruise", tmpout["db"], transform=False,
+                           no_opp=True)
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM filter", con)
+        row = sqlitedf.iloc[0]
+        for channel in evt.stats:
+            for stat in ["min", "max", "mean"]:
+                k = channel + "_" + stat
+                assert evt.stats[channel][stat] == row[k]
 
     def test_binary_opp(self, tmpout):
         evt = tmpout["evt"]
