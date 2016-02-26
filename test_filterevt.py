@@ -63,6 +63,7 @@ class TestPathFilenameParsing:
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
             "not_evt_file",
             "x.evt",
+            "testcruise/2014_185/100_1.evt",
             "2014-07-0400-00-02+00-00",
             "testcruise/2014_185/100.evt",
             "testcruise/2014_185/200.evt.gz",
@@ -70,8 +71,8 @@ class TestPathFilenameParsing:
             "2014-07-04T00-00-02+00-00"
         ]
         results = [filterevt.EVT.is_evt(f) for f in files]
-        answers = [True, True, False, False, False, True, True, True, True]
-        npt.assert_array_equal(results, answers)
+        answers = [True, True, False, False, False, False, True, True, True, True]
+        assert results == answers
 
     def test_get_paths_new_style(self):
         evt = filterevt.EVT("2014-07-04T00-00-02+00-00", read_data=False)
@@ -120,7 +121,7 @@ class TestPathFilenameParsing:
             "testcruise/2014_185/200.evt.gz",
         ]
         parsed = filterevt.parse_file_list(files)
-        npt.assert_array_equal(parsed, files[:2] + files[3:])
+        assert parsed == (files[:2] + files[3:])
 
     def test_find_evt_files(self):
         files = filterevt.find_evt_files("testcruise")
@@ -131,7 +132,7 @@ class TestPathFilenameParsing:
             "testcruise/2014_185/2014-07-04T00-09-02+00-00",
             "testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
-        npt.assert_array_equal(files, answer)
+        assert files == answer
 
 
 class TestFilter:

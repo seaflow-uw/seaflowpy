@@ -213,7 +213,8 @@ def filter_files(**kwargs):
 
         # Print progress periodically
         perc = float(i + 1) / len(files) * 100  # Percent completed
-        milestone = int(perc / o["every"]) * o["every"]   # Round down to closest every%
+        # Round down to closest every%
+        milestone = int(perc / o["every"]) * o["every"]
         if milestone > last:
             now = time.time()
             evtcnt += evtcnt_block
@@ -317,12 +318,14 @@ def filter_one_file(**kwargs):
 class EVT(object):
     """Class for EVT data operations"""
 
-    # EVT file name regexes. Does not contain directory names.
+    # EVT file name regexes
     file_re = re.compile(
-        r'^.*?/?'
-        r'(?P<julian>\d{4}_\d{1,3})?/?'
-        r'(?P<file>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}|\d+\.evt)'
-        r'(?P<gz>\.gz)?$')
+        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}|\d+\.evt)'
+        r'(?:\.gz)?$'
+    )
+    julian_re = re.compile(
+        r'^20\d{2}_\d{1,3}$'
+    )
 
     # Data columns
     cols = [
@@ -334,8 +337,25 @@ class EVT(object):
 
     @staticmethod
     def is_evt(path):
-        """Does the file specified by this path look like an EVT file?"""
-        return bool(EVT.file_re.match(path))
+        """Does the file specified by this path look like a valid EVT file?"""
+        parts = EVT.parse_evt_path(path)
+        return bool(parts["file"] and EVT.file_re.match(parts["file"]))
+
+    @staticmethod
+    def parse_evt_path(path):
+        d = { "julian": None, "file": None }
+        parts = splitpath(path)
+        if len(parts) == 1:
+            d["file"] = parts[0]
+        elif len(parts) > 1:
+            d["file"] = parts[-1]
+            if EVT.julian_re.match(parts[-2]):
+                d["julian"] = parts[-2]
+        return d
+
+    @staticmethod
+    def transform(vals):
+        return 10**((vals / 2**16) * 3.5)
 
     def __init__(self, path=None, fileobj=None, read_data=True):
         # If fileobj is set, read data from this object. The path will be used
@@ -382,14 +402,13 @@ class EVT(object):
         If there is no julian directory in path, just return file name. Always
         remove ".gz" extensions.
         """
-        m = self.file_re.match(self.path)
-        if m:
-            if m.group("julian"):
-                return os.path.join(m.group("julian"), m.group("file"))
-            else:
-                return m.group("file")
-        else:
-            return self.path
+        parts = self.parse_evt_path(self.path)
+        jpath = parts["file"]
+        if parts["julian"]:
+            jpath = os.path.join(parts["julian"], jpath)
+        if jpath.endswith(".gz"):
+            jpath = jpath[:-len(".gz")]
+        return jpath
 
     def open(self):
         """Return an EVT file-like object for reading."""
@@ -523,9 +542,6 @@ class EVT(object):
                 "max": self.opp[col].max(),
                 "mean": self.opp[col].mean()
             }
-
-    def transform(self, vals):
-        return 10**((vals / 2**16) * 3.5)
 
     def save_opp_to_db(self, cruise, db, transform=True, no_opp=False):
         if self.oppcnt == 0:
