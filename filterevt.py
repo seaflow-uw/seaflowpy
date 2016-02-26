@@ -79,6 +79,9 @@ def main():
     p.add_argument("--limit", type=int, default=None,
                    help="""Limit how many files to process. Useful for testing.
                         (optional)""")
+    p.add_argument("--s3_bucket", default=SEAFLOW_BUCKET,
+                   help="S3 bucket name (optional)")
+
 
     args = p.parse_args()
 
@@ -103,7 +106,16 @@ def main():
     elif args.s3:
         # Make sure try to access S3 up front to setup AWS credentials before
         # launching child processes.
-        files = get_s3_files(args.cruise)
+        try:
+            files = get_s3_files(args.cruise, args.s3_bucket)
+        except botocore.exceptions.NoCredentialsError as e:
+            print "Please configure aws first:"
+            print "  $ conda install aws"
+            print "  or"
+            print "  $ pip install aws"
+            print "  then"
+            print "  $ aws configure"
+            sys.exit(1)
 
     # Restrict length of file list with --limit
     if (not args.limit is None) and (args.limit > 0):
@@ -143,6 +155,7 @@ def filter_files(**kwargs):
             (notch1, notch2, width, offset, origin)
         every - Percent progress output resolution
         s3 - Get EVT data from S3
+        s3_bucket - S3 bucket name
         no_opp_db - Don't save OPP data to SQLite3 db
         gz_db - Gzip SQLite3 db
         gz_binary - Gzip binary OPP files
@@ -156,6 +169,7 @@ def filter_files(**kwargs):
         "filter_options": {},
         "every": 10.0,
         "s3": False,
+        "s3_bucket": None,
         "no_opp_db": False,
         "gz_db": False,
         "gz_binary": False,
@@ -266,7 +280,7 @@ def filter_one_file(**kwargs):
     evt_file = o["file"]
     fileobj = None
     if o["s3"]:
-        fileobj = download_s3_file_memory(evt_file)
+        fileobj = download_s3_file_memory(evt_file, o["s3_bucket"])
 
     try:
         evt = EVT(path=evt_file, fileobj=fileobj)
@@ -666,45 +680,6 @@ def find_evt_files(evt_dir):
 # ----------------------------------------------------------------------------
 # AWS functions
 # ----------------------------------------------------------------------------
-def get_aws_credentials():
-    aws_access_key_id = getpass.getpass("aws_access_key_id: ")
-    aws_secret_access_key = getpass.getpass("aws_secret_access_key: ")
-    return (aws_access_key_id, aws_secret_access_key)
-
-
-def save_aws_credentials(aws_access_key_id, aws_secret_access_key):
-    # Make ~/.aws config directory
-    awsdir = os.path.join(os.environ["HOME"], ".aws")
-    mkdir_p(awsdir)
-
-    flags = os.O_WRONLY | os.O_CREAT
-
-    # Make credentials file
-    credentials = os.path.join(awsdir, "credentials")
-    with os.fdopen(os.open(credentials, flags, 0600), "w") as fh:
-        fh.write("[default]\n")
-        fh.write("aws_access_key_id = %s\n" % aws_access_key_id)
-        fh.write("aws_secret_access_key = %s\n" % aws_secret_access_key)
-
-    # May as well make config file and set default region while we're at it
-    config = os.path.join(awsdir, "config")
-    with os.fdopen(os.open(config, flags, 0600), "w") as fh:
-        fh.write("[default]\n")
-        fh.write("region = %s\n" % AWS_REGION)
-
-
-def get_s3_connection():
-    try:
-        s3 = boto3.resource("s3")
-    except:
-        (aws_access_key_id, aws_secret_access_key) = get_aws_credentials()
-        # Save credentials so we don't have to do this all the time
-        # And so that any child processes have acces to AWS resources
-        save_aws_credentials(aws_access_key_id, aws_secret_access_key)
-        s3 = boto3.resource("s3")
-    return s3
-
-
 def get_s3_bucket(s3, bucket_name):
     bucket = s3.Bucket(bucket_name)
     exists = True
@@ -721,9 +696,9 @@ def get_s3_bucket(s3, bucket_name):
     return bucket
 
 
-def get_s3_files(cruise):
-    s3 = get_s3_connection()
-    bucket = get_s3_bucket(s3, SEAFLOW_BUCKET)
+def get_s3_files(cruise, bucket_name):
+    s3 = boto3.resource("s3")
+    bucket = get_s3_bucket(s3, bucket_name)
     i = 0
     files = []
     for obj in bucket.objects.filter(Prefix=cruise + "/"):
@@ -734,13 +709,13 @@ def get_s3_files(cruise):
     return files
 
 
-def download_s3_file_memory(key_str, retries=5):
+def download_s3_file_memory(key_str, bucket_name, retries=5):
     """Return S3 file contents in io.BytesIO file-like object"""
     tries = 0
     while True:
         try:
-            s3 = get_s3_connection()
-            obj = s3.Object(SEAFLOW_BUCKET, key_str)
+            s3 = boto3.resource("s3")
+            obj = s3.Object(bucket_name, key_str)
             resp = obj.get()
             data = io.BytesIO(resp["Body"].read())
             return data

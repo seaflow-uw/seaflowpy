@@ -362,10 +362,10 @@ class TestMultiFileFilter:
 
     @s3
     def test_multi_file_filter_S3(self, tmpout):
-        files = filterevt.get_s3_files("testcruise")
+        files = filterevt.get_s3_files("testcruise", filterevt.SEAFLOW_BUCKET)
 
         filterevt.filter_files(files=files, cpus=2, cruise="testcruise",
-            db=tmpout["db"], s3=True)
+            db=tmpout["db"], s3=True, s3_bucket=filterevt.SEAFLOW_BUCKET)
 
         con = sqlite3.connect(tmpout["db"])
         cur = con.cursor()
