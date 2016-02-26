@@ -204,8 +204,6 @@ class TestFilter:
         assert evt.stats == {}
         evt.calc_opp_stats()
         answer = {
-            'D1': {'max': 64960.0, 'mean': 10064.834782608696, 'min': 592.0},
-            'D2': {'max': 65520.0, 'mean': 8199.420289855072, 'min': 0.0},
             'chl_big': {'max': 32384.0, 'mean': 32357.50434782609, 'min': 32341.0},
             'chl_small': {'max': 55515.0, 'mean': 14797.066666666668, 'min': 2347.0},
             'fsc_big': {'max': 9904.0, 'mean': 6416.139130434783, 'min': 2880.0},

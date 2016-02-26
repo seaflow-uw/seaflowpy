@@ -536,11 +536,13 @@ class EVT(object):
         if self.oppcnt == 0:
             return
 
-        for col in self.float_cols:
-            self.stats[col] = {
-                "min": self.opp[col].min(),
-                "max": self.opp[col].max(),
-                "mean": self.opp[col].mean()
+        for channel in self.float_cols:
+            if channel in ["D1", "D2"]:
+                continue
+            self.stats[channel] = {
+                "min": self.opp[channel].min(),
+                "max": self.opp[channel].max(),
+                "mean": self.opp[channel].mean()
             }
 
     def save_opp_to_db(self, cruise, db, transform=True, no_opp=False):
@@ -576,6 +578,8 @@ class EVT(object):
 
         self.calc_opp_stats()
         for channel in self.float_cols:
+            if channel in ["D1", "D2"]:
+                continue
             if transform:
                 vals.append(self.transform(self.stats[channel]["min"]))
                 vals.append(self.transform(self.stats[channel]["max"]))
@@ -794,12 +798,6 @@ def ensure_tables(dbpath):
         offset REAL NOT NULL,
         origin REAL NOT NULL,
         width REAL NOT NULL,
-        D1_min REAL NOT NULL,
-        D1_max REAL NOT NULL,
-        D1_mean REAL NOT NULL,
-        D2_min REAL NOT NULL,
-        D2_max REAL NOT NULL,
-        D2_mean REAL NOT NULL,
         fsc_small_min REAL NOT NULL,
         fsc_small_max REAL NOT NULL,
         fsc_small_mean REAL NOT NULL,
