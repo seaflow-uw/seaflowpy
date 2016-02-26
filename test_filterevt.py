@@ -428,8 +428,12 @@ class TestMultiFileFilter:
             filter_R[["cruise", "file"]])
         # Compare whole arrays to two decimal places because R code rounds
         # notch1 and notch2 to two decimal places.
+        filter_python = filter_python.drop(["cruise", "file"], axis=1)
+        filter_python = filter_python[["opp_count", "evt_count",
+            "opp_evt_ratio", "notch1", "notch2", "offset", "origin",
+            "width"]]
         npt.assert_array_almost_equal(
-            filter_python.drop(["cruise", "file"], axis=1).as_matrix(),
+            filter_python.as_matrix(),
             filter_R.drop(["cruise", "file"], axis=1).as_matrix(),
             decimal=2)
         # R code saves opp_evt_ratio with full precision so compare these
