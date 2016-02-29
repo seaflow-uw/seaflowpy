@@ -45,11 +45,7 @@ def main():
                         cruise is provided by --cruise (required unless --files
                         or --evt_dir)""")
 
-    p.add_argument("--db",
-                   help="""SQLite3 db file. If this file is to be
-                        compressed (i.e. --gz_db is set), an extension
-                        of ".gz" will automatically be added to the path
-                        given here. (required unless --binary_dir)""")
+    p.add_argument("--db", help="""SQLite3 db file.""")
     p.add_argument("--binary_dir",
                    help="""Directory in which to save LabView binary formatted
                         files of focused particles (OPP). Will be created
@@ -66,12 +62,6 @@ def main():
     p.add_argument("--cpus", required=False, type=int, default=1,
                    help="""Number of CPU cores to use in filtering
                         (optional)""")
-    p.add_argument("--no_index", default=False, action="store_true",
-                   help="Don't create SQLite3 indexes (optional)")
-    p.add_argument("--no_opp_db", default=False, action="store_true",
-                   help="Don't save OPP data to db (optional)")
-    p.add_argument("--gz_db", default=False, action="store_true",
-                   help="gzip compress output db (optional)")
     p.add_argument("--gz_binary", default=False, action="store_true",
                    help="gzip compress output binary files (optional)")
     p.add_argument("--progress", type=float, default=10.0,
@@ -134,11 +124,7 @@ def main():
     filter_files(**kwargs)
     # Index
     if args.db:
-        if not args.no_index:
-            ensure_indexes(args.db)
-        # Compress Db
-        if args.gz_db:
-            gzip_file(args.db, print_timing=True)
+        ensure_indexes(args.db)
 
 
 # ----------------------------------------------------------------------------
@@ -156,8 +142,6 @@ def filter_files(**kwargs):
         every - Percent progress output resolution
         s3 - Get EVT data from S3
         s3_bucket - S3 bucket name
-        no_opp_db - Don't save OPP data to SQLite3 db
-        gz_db - Gzip SQLite3 db
         gz_binary - Gzip binary OPP files
         db = SQLite3 db path
         binary_dir = Directory for output binary OPP files
@@ -170,8 +154,6 @@ def filter_files(**kwargs):
         "every": 10.0,
         "s3": False,
         "s3_bucket": None,
-        "no_opp_db": False,
-        "gz_db": False,
         "gz_binary": False,
         "db": None,
         "binary_dir": None
@@ -293,7 +275,7 @@ def filter_one_file(**kwargs):
         evt.filter(**o["filter_options"])
 
         if o["db"]:
-            evt.save_opp_to_db(o["cruise"], o["db"], no_opp=o["no_opp_db"])
+            evt.save_opp_to_db(o["cruise"], o["db"])
 
         if o["binary_dir"]:
             # Might have julian day, might not
@@ -545,30 +527,7 @@ class EVT(object):
                 "mean": self.opp[channel].mean()
             }
 
-    def save_opp_to_db(self, cruise, db, transform=True, no_opp=False):
-        if self.oppcnt == 0:
-            return
-
-        try:
-            if not no_opp:
-                self.insert_opp_sqlite3(cruise, db, transform=transform)
-            self.insert_filter_sqlite3(cruise, db, transform=transform)
-        except:
-            raise
-
-    def insert_opp_sqlite3(self, cruise, db, transform=True):
-        if self.oppcnt == 0:
-            return
-
-        opp = self.create_opp_for_db(cruise, transform=transform)
-
-        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?" * opp.shape[1])
-        con = sqlite3.connect(db, timeout=120)
-        cur = con.cursor()
-        cur.executemany(sql, opp.itertuples(index=False))
-        con.commit()
-
-    def insert_filter_sqlite3(self, cruise_name, db, transform=True):
+    def save_opp_to_db(self, cruise_name, db, transform=True):
         if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
             return
 
@@ -589,32 +548,11 @@ class EVT(object):
                 vals.append(self.stats[channel]["max"])
                 vals.append(self.stats[channel]["mean"])
 
-        sql = "INSERT INTO filter VALUES (%s)" % ",".join("?"*len(vals))
+        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*len(vals))
         con = sqlite3.connect(db, timeout=120)
         cur = con.cursor()
         cur.execute(sql, tuple(vals))
         con.commit()
-
-    def create_opp_for_db(self, cruise, transform=True):
-        """Return a copy of opp ready for insert into db"""
-        if self.opp is None:
-            return
-
-        opp = self.opp.copy()
-
-        # Convert int columns to int64
-        opp[self.int_cols] = opp[self.int_cols].astype(np.int64)
-
-        # Log transform data scaled to 3.5 decades
-        if transform:
-            opp[self.float_cols] = self.transform(opp[self.float_cols])
-
-        # Add columns for cruise name, file name, and particle ID to OPP
-        opp.insert(0, "cruise", cruise)
-        opp.insert(1, "file", self.get_julian_path())
-        opp.insert(2, "particle", np.arange(1, self.oppcnt+1, dtype=np.int64))
-
-        return opp
 
     def write_opp_binary(self, outfile):
         """Write opp to LabView binary file.
@@ -755,39 +693,18 @@ def ensure_tables(dbpath):
     con = sqlite3.connect(dbpath)
     cur = con.cursor()
 
-    con.execute("""CREATE TABLE IF NOT EXISTS opp (
-      -- First three columns are the EVT, OPP, VCT composite key
-      cruise TEXT NOT NULL,
-      file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
-      particle INTEGER NOT NULL,
-      -- Next we have the measurements. For these, see
-      -- https://github.com/fribalet/flowPhyto/blob/master/R/Globals.R and look
-      -- at version 3 of the evt header
-      time INTEGER NOT NULL,
-      pulse_width INTEGER NOT NULL,
-      D1 REAL NOT NULL,
-      D2 REAL NOT NULL,
-      fsc_small REAL NOT NULL,
-      fsc_perp REAL NOT NULL,
-      fsc_big REAL NOT NULL,
-      pe REAL NOT NULL,
-      chl_small REAL NOT NULL,
-      chl_big REAL NOT NULL,
-      PRIMARY KEY (cruise, file, particle)
-    )""")
-
     cur.execute("""CREATE TABLE IF NOT EXISTS vct (
         -- First three columns are the EVT, OPP, VCT, SDS composite key
         cruise TEXT NOT NULL,
-        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
-        particle INTEGER NOT NULL,
-        -- Next we have the classification
+        file TEXT NOT NULL,
         pop TEXT NOT NULL,
+        count INTEGER NOT NULL,
         method TEXT NOT NULL,
-        PRIMARY KEY (cruise, file, particle)
+        PRIMARY KEY (cruise, file)
     )""")
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS filter (
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS opp (
         cruise TEXT NOT NULL,
         file TEXT NOT NULL,
         opp_count INTEGER NOT NULL,
@@ -881,9 +798,6 @@ def ensure_indexes(dbpath):
     cur = con.cursor()
     index_cmds = [
         "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
-        "CREATE INDEX IF NOT EXISTS oppFsc_smallIndex ON opp (fsc_small)",
-        "CREATE INDEX IF NOT EXISTS oppPeIndex ON opp (pe)",
-        "CREATE INDEX IF NOT EXISTS oppChl_smallIndex ON opp (chl_small)",
         "CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file)",
         "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)"
     ]
