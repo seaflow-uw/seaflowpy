@@ -45,11 +45,12 @@ def main():
                         cruise is provided by --cruise (required unless --files
                         or --evt_dir)""")
 
-    p.add_argument("--db", help="""SQLite3 db file.""")
-    p.add_argument("--binary_dir",
+    p.add_argument("--db", required=True,
+                   help="""SQLite3 db file. (required)""")
+    p.add_argument("--opp_dir",
                    help="""Directory in which to save LabView binary formatted
                         files of focused particles (OPP). Will be created
-                        if does not exist. (required unless --db)""")
+                        if does not exist. (optional)""")
 
     p.add_argument("--cruise", required=True, help="Cruise name (required)")
     p.add_argument("--notch1", type=float, help="Notch 1 (optional)")
@@ -74,11 +75,6 @@ def main():
 
 
     args = p.parse_args()
-
-    if not args.db and not args.binary_dir:
-        sys.stderr.write("At least one of --db or --binary_dir is required\n\n")
-        p.print_help()
-        sys.exit(1)
 
     # Print defined parameters
     v = dict(vars(args))
@@ -144,7 +140,7 @@ def filter_files(**kwargs):
         s3_bucket - S3 bucket name
         gz_binary - Gzip binary OPP files
         db = SQLite3 db path
-        binary_dir = Directory for output binary OPP files
+        opp_dir = Directory for output binary OPP files
     """
     o = {
         "files": [],
@@ -156,7 +152,7 @@ def filter_files(**kwargs):
         "s3_bucket": None,
         "gz_binary": False,
         "db": None,
-        "binary_dir": None
+        "opp_dir": None
     }
     o.update(kwargs)
 
@@ -277,14 +273,14 @@ def filter_one_file(**kwargs):
         if o["db"]:
             evt.save_opp_to_db(o["cruise"], o["db"])
 
-        if o["binary_dir"]:
+        if o["opp_dir"]:
             # Might have julian day, might not
             outdir = os.path.join(
-                o["binary_dir"],
+                o["opp_dir"],
                 os.path.dirname(evt.get_julian_path()))
             mkdir_p(outdir)
             outfile = os.path.join(
-                o["binary_dir"],
+                o["opp_dir"],
                 evt.get_julian_path())
             if o["gz_binary"]:
                 outfile += ".gz"

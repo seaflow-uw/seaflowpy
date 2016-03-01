@@ -257,7 +257,7 @@ class TestMultiFileFilter:
         ]
 
         filterevt.filter_files(files=files, cpus=2, cruise="testcruise",
-            db=tmpout["db"], binary_dir=str(tmpout["oppdir"]))
+            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]))
 
         evts = [filterevt.EVT(files[0]), filterevt.EVT(files[1])]
         for evt in evts:
@@ -295,7 +295,7 @@ class TestMultiFileFilter:
         files = filterevt.get_s3_files("testcruise", filterevt.SEAFLOW_BUCKET)
 
         filterevt.filter_files(files=files, cpus=2, cruise="testcruise",
-            db=tmpout["db"], binary_dir=str(tmpout["oppdir"]), s3=True,
+            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]), s3=True,
             s3_bucket=filterevt.SEAFLOW_BUCKET)
 
         evts = [filterevt.EVT(files[0]), filterevt.EVT(files[1])]
@@ -333,7 +333,7 @@ class TestMultiFileFilter:
     def test_SCOPE_1_first_19_local_against_popcycle(self, tmpout):
         files = filterevt.find_evt_files("SCOPE_1")
         filterevt.filter_files(files=files[:19], cpus=2, cruise="SCOPE_1",
-                               db=tmpout["db"], binary_dir=str(tmpout["oppdir"]))
+                               db=tmpout["db"], opp_dir=str(tmpout["oppdir"]))
         con = sqlite3.connect(tmpout["db"])
         filter_python = pd.read_sql("SELECT * FROM opp ORDER BY file", con)
         con.close()
