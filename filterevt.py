@@ -163,8 +163,8 @@ def filter_files(**kwargs):
     if o["db"]:
         ensure_tables(o["db"])
 
-    evtcnt = 0
-    oppcnt = 0
+    evt_count = 0
+    opp_count = 0
     files_ok = 0
 
     # Create a pool of N worker processes
@@ -184,13 +184,13 @@ def filter_files(**kwargs):
     t0 = time.time()
 
     last = 0  # Last progress milestone in increments of every
-    evtcnt_block = 0  # EVT particles in this block (between milestones)
-    oppcnt_block = 0  # OPP particles in this block
+    evt_count_block = 0  # EVT particles in this block (between milestones)
+    opp_count_block = 0  # OPP particles in this block
 
     # Filter particles in parallel with process pool
     for i, res in enumerate(pool.imap_unordered(do_work, inputs)):
-        evtcnt_block += res["evtcnt"]
-        oppcnt_block += res["oppcnt"]
+        evt_count_block += res["evt_count"]
+        opp_count_block += res["opp_count"]
         files_ok += 1 if res["ok"] else 0
 
         # Print progress periodically
@@ -199,45 +199,45 @@ def filter_files(**kwargs):
         milestone = int(perc / o["every"]) * o["every"]
         if milestone > last:
             now = time.time()
-            evtcnt += evtcnt_block
-            oppcnt += oppcnt_block
+            evt_count += evt_count_block
+            opp_count += opp_count_block
             try:
-                ratio_block = float(oppcnt_block) / evtcnt_block
+                ratio_block = float(opp_count_block) / evt_count_block
             except ZeroDivisionError:
                 ratio_block = 0.0
             msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
             msg += " Particles this block: %i / %i (%.06f) elapsed: %.2fs" % \
-                (oppcnt_block, evtcnt_block, ratio_block, now - t0)
+                (opp_count_block, evt_count_block, ratio_block, now - t0)
             print msg
             last = milestone
-            evtcnt_block = 0
-            oppcnt_block = 0
+            evt_count_block = 0
+            opp_count_block = 0
     # If any particle count data is left, add it to totals
-    if evtcnt_block > 0:
-        evtcnt += evtcnt_block
-        oppcnt += oppcnt_block
+    if evt_count_block > 0:
+        evt_count += evt_count_block
+        opp_count += opp_count_block
 
     try:
-        opp_evt_ratio = float(oppcnt) / evtcnt
+        opp_evt_ratio = float(opp_count) / evt_count
     except ZeroDivisionError:
         opp_evt_ratio = 0.0
 
     t1 = time.time()
     delta = t1 - t0
     try:
-        evtrate = float(evtcnt) / delta
+        evtrate = float(evt_count) / delta
     except ZeroDivisionError:
         evtrate = 0.0
     try:
-        opprate = float(oppcnt) / delta
+        opprate = float(opp_count) / delta
     except ZeroDivisionError:
         opprate = 0.0
 
     print ""
     print "Input EVT files = %i" % len(files)
     print "Parsed EVT files = %i" % files_ok
-    print "EVT particles = %s (%.2f p/s)" % (evtcnt, evtrate)
-    print "OPP particles = %s (%.2f p/s)" % (oppcnt, opprate)
+    print "EVT particles = %s (%.2f p/s)" % (evt_count, evtrate)
+    print "OPP particles = %s (%.2f p/s)" % (opp_count, opprate)
     print "OPP/EVT ratio = %.06f" % opp_evt_ratio
     print "Filtering completed in %.2f seconds" % (delta,)
 
@@ -255,8 +255,8 @@ def filter_one_file(**kwargs):
     o = kwargs
     result = {
         "ok": False,
-        "evtcnt": 0,
-        "oppcnt": 0,
+        "evt_count": 0,
+        "opp_count": 0,
         "path": o["file"]
     }
 
@@ -291,8 +291,8 @@ def filter_one_file(**kwargs):
             evt.write_opp_binary(outfile)
 
         result["ok"] = True
-        result["evtcnt"] = evt.evtcnt
-        result["oppcnt"] = evt.oppcnt
+        result["evt_count"] = evt.evt_count
+        result["opp_count"] = evt.opp_count
 
     return result
 
@@ -346,8 +346,8 @@ class EVT(object):
         self.fileobj = fileobj  # EVT data in file object
 
         self.headercnt = 0
-        self.evtcnt = 0
-        self.oppcnt = 0
+        self.evt_count = 0
+        self.opp_count = 0
         self.opp_evt_ratio = 0.0
         self.evt = None
         self.opp = None
@@ -367,7 +367,7 @@ class EVT(object):
 
     def __repr__(self):
         keys = [
-            "evtcnt", "oppcnt", "notch1", "notch2", "offset", "origin",
+            "evt_count", "opp_count", "notch1", "notch2", "offset", "origin",
             "width", "path", "headercnt"
         ]
         return pprint.pformat({ k: getattr(self, k) for k in keys }, indent=2)
@@ -443,7 +443,7 @@ class EVT(object):
             self.evt = self.evt.astype(np.float64)
 
             # Record the original number of particles
-            self.evtcnt = len(self.evt.index)
+            self.evt_count = len(self.evt.index)
 
             # Record the number of particles reported in the header
             self.headercnt = rowcnt
@@ -451,7 +451,7 @@ class EVT(object):
     def filter(self, notch1=None, notch2=None, offset=0.0,
                origin=None, width=0.5):
         """Filter EVT particle data."""
-        if self.evt is None or self.evtcnt == 0:
+        if self.evt is None or self.evt_count == 0:
             return
 
         if (width is None) or (offset is None):
@@ -501,9 +501,9 @@ class EVT(object):
         opp = aligned[oppD1 & oppD2].copy()
 
         self.opp = opp
-        self.oppcnt = len(self.opp.index)
+        self.opp_count = len(self.opp.index)
         try:
-            self.opp_evt_ratio = float(self.oppcnt) / self.evtcnt
+            self.opp_evt_ratio = float(self.opp_count) / self.evt_count
         except ZeroDivisionError:
             self.opp_evt_ratio = 0.0
 
@@ -515,7 +515,7 @@ class EVT(object):
 
     def calc_opp_stats(self):
         """Calculate min, max, sum, mean for each channel of OPP data"""
-        if self.oppcnt == 0:
+        if self.opp_count == 0:
             return
 
         for channel in self.float_cols:
@@ -528,12 +528,14 @@ class EVT(object):
             }
 
     def save_opp_to_db(self, cruise_name, db, transform=True):
-        if self.opp is None or self.evtcnt == 0 or self.oppcnt == 0:
+        if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
 
-        vals = [cruise_name, self.get_julian_path(), self.oppcnt, self.evtcnt,
+        vals = [
+            cruise_name, self.get_julian_path(), self.opp_count, self.evt_count,
             self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
-            self.origin, self.width]
+            self.origin, self.width
+        ]
 
         self.calc_opp_stats()
         for channel in self.float_cols:
@@ -559,7 +561,7 @@ class EVT(object):
 
         If outfile ends with ".gz", gzip compress.
         """
-        if self.oppcnt == 0:
+        if self.opp_count == 0:
             return
 
         # Detect gzip output
@@ -570,7 +572,7 @@ class EVT(object):
 
         with open(outfile, "wb") as fh:
             # Write 32-bit uint particle count header
-            header = np.array([self.oppcnt], np.uint32)
+            header = np.array([self.opp_count], np.uint32)
             header.tofile(fh)
 
             # Write particle data
@@ -588,7 +590,7 @@ class EVT(object):
         opp = self.opp.astype(np.uint16)
 
         # Add leading 4 bytes to match LabViews binary format
-        zeros = np.zeros([self.oppcnt, 1], dtype=np.uint16)
+        zeros = np.zeros([self.opp_count, 1], dtype=np.uint16)
         tens = np.copy(zeros)
         tens.fill(10)
         opp.insert(0, "tens", tens)
@@ -597,7 +599,7 @@ class EVT(object):
         return opp.as_matrix()
 
     def write_opp_csv(self, outfile):
-        if self.oppcnt == 0:
+        if self.opp_count == 0:
             return
         self.opp.to_csv(outfile, sep=",", index=False, header=False)
 

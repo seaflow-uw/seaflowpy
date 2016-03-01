@@ -36,13 +36,13 @@ class TestOpen:
     def test_read_valid_evt(self):
         evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
         assert evt.headercnt == 40000
-        assert evt.evtcnt == 40000
+        assert evt.evt_count == 40000
         assert evt.path == "testcruise/2014_185/2014-07-04T00-00-02+00-00"
 
     def test_read_valid_gz_evt(self):
         evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert evt.headercnt == 40000
-        assert evt.evtcnt == 40000
+        assert evt.evt_count == 40000
         assert evt.path == "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
 
     def test_read_empty_evt(self):
@@ -147,7 +147,7 @@ class TestFilter:
 
     def test_filter_default(self, evt):
         evt.filter()
-        assert evt.oppcnt == 345
+        assert evt.opp_count == 345
         assert evt.width == 0.5
         assert evt.offset == 0.0
         assert evt.origin == -1792
@@ -156,7 +156,7 @@ class TestFilter:
 
     def test_filter_with_set_params(self, evt):
         evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        assert evt.oppcnt == 2812
+        assert evt.opp_count == 2812
         assert evt.width == 0.75
         assert evt.offset == 100
         assert evt.origin == -1000
@@ -165,7 +165,7 @@ class TestFilter:
 
     def test_filter_twice_overwrites_old_results(self, evt):
         evt.filter()
-        assert evt.oppcnt == 345
+        assert evt.opp_count == 345
         assert evt.width == 0.5
         assert evt.offset == 0.0
         assert evt.origin == -1792
@@ -173,7 +173,7 @@ class TestFilter:
         npt.assert_almost_equal(evt.notch2, 0.7603813559322033510668, decimal=22)
 
         evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        assert evt.oppcnt == 2812
+        assert evt.opp_count == 2812
         assert evt.width == 0.75
         assert evt.offset == 100
         assert evt.origin == -1000
@@ -206,7 +206,7 @@ class TestOutput:
         assert "testcruise" == sqlitedf.cruise[0]
         assert evt.get_julian_path() == sqlitedf.file[0]
         npt.assert_array_equal(
-            [evt.oppcnt, evt.evtcnt, evt.opp_evt_ratio, evt.notch1, evt.notch2,
+            [evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1, evt.notch2,
                 evt.offset, evt.origin, evt.width],
             sqlitedf[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
                 "notch2", "offset", "origin", "width"]].as_matrix()[0]
@@ -281,7 +281,7 @@ class TestMultiFileFilter:
                     assert evt.transform(evt.stats[channel][stat]) == row[k]
             npt.assert_array_equal(
                 [
-                    evt.oppcnt, evt.evtcnt, evt.opp_evt_ratio, evt.notch1,
+                    evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
                     evt.notch2, evt.offset, evt.origin, evt.width
                 ],
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
@@ -320,7 +320,7 @@ class TestMultiFileFilter:
                     assert evt.transform(evt.stats[channel][stat]) == row[k]
             npt.assert_array_equal(
                 [
-                    evt.oppcnt, evt.evtcnt, evt.opp_evt_ratio, evt.notch1,
+                    evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
                     evt.notch2, evt.offset, evt.origin, evt.width
                 ],
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
@@ -354,7 +354,7 @@ class TestMultiFileFilter:
             # without file and cruise columns
             opp.evt[ints] = opp.evt[ints].astype(np.int64)
             opp.evt[floats] = filterevt.EVT.transform(opp.evt[floats])
-            opp.evt.insert(0, "particle", np.arange(1, opp.evtcnt+1, dtype=np.int64))
+            opp.evt.insert(0, "particle", np.arange(1, opp.evt_count+1, dtype=np.int64))
             opps.append(opp)
         opp_python = pd.concat([o.evt for o in opps])
         npt.assert_array_almost_equal(
