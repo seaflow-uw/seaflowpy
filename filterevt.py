@@ -338,7 +338,8 @@ class EVT(object):
     def transform(vals):
         return 10**((vals / 2**16) * 3.5)
 
-    def __init__(self, path=None, fileobj=None, read_data=True):
+    def __init__(self, path=None, fileobj=None, read_data=True,
+                 transform=False):
         # If fileobj is set, read data from this object. The path will be used
         # to set the file name in the database and detect compression.
         self.path = path  # EVT file path, local or in S3
@@ -350,6 +351,8 @@ class EVT(object):
         self.opp_evt_ratio = 0.0
         self.evt = None
         self.opp = None
+        self.evt_transformed = False
+        self.opp_transformed = False
 
         # Set filter params to None
         # Should be set in filter()
@@ -363,6 +366,9 @@ class EVT(object):
 
         if read_data:
             self.read_evt()
+
+        if transform:
+            self.transform_evt()
 
     def __repr__(self):
         keys = [
@@ -512,6 +518,24 @@ class EVT(object):
         self.origin = origin
         self.width = width
 
+    def transform_evt(self):
+        if self.evt_count == 0:
+            return
+        self.evt_transformed = True
+        return self.transform_particles(self.evt, inplace=True)
+
+    def transform_opp(self):
+        if self.opp_count == 0:
+            return
+        self.opp_transformed = True
+        return self.transform_particles(self.opp, inplace=True)
+
+    def transform_particles(self, particles, inplace=False):
+        if not inplace:
+            particles = particles.copy()
+        particles[self.float_cols] = self.transform(particles[self.float_cols])
+        return particles
+
     def calc_opp_stats(self):
         if self.opp_count == 0:
             return
@@ -522,14 +546,15 @@ class EVT(object):
             return
         return self.calc_stats(self.evt)
 
-    def calc_stats(self, df):
+    def calc_stats(self, particles):
         """Calculate min, max, sum, mean for each channel of OPP/EVT data"""
         stats = {}
+        df = self.transform_particles(particles)
         for channel in self.float_cols:
             stats[channel] = {
-                "min": self.transform(df[channel]).min(),
-                "max": self.transform(df[channel]).max(),
-                "mean": self.transform(df[channel]).mean()
+                "min": df[channel].min(),
+                "max": df[channel].max(),
+                "mean": df[channel].mean()
             }
         return stats
 

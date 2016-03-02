@@ -38,6 +38,15 @@ class TestOpen:
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
         assert evt.path == "testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.evt_transformed == False
+
+    def test_read_valid_evt_and_transform(self):
+        evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00",
+                            transform=True)
+        assert evt.headercnt == 40000
+        assert evt.evt_count == 40000
+        assert evt.path == "testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.evt_transformed == True
 
     def test_read_valid_gz_evt(self):
         evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-03-02+00-00.gz")
@@ -208,6 +217,54 @@ class TestFilter:
         assert opp_stats == opp_answer
 
 
+class TestTransform:
+    def test_transform_one_value(self):
+        npt.assert_almost_equal(filterevt.EVT.transform(56173.714285714275),
+            1000.0, decimal=10)
+
+    def test_transform_inplace(self, evt):
+        orig_df = evt.evt.copy()
+        orig_df_copy = orig_df.copy()
+        t_df = evt.transform_particles(orig_df, inplace=True)
+        # Returned the same object
+        assert orig_df is t_df
+        # Transformation happened in place
+        with pytest.raises(AssertionError):
+            npt.assert_array_equal(orig_df_copy.as_matrix(), t_df.as_matrix())
+
+        orig_df = evt.evt.copy()
+        assert evt.evt_transformed == False
+        t_df = evt.transform_evt()
+        assert evt.evt_transformed == True
+        # Returned the same object
+        assert t_df is evt.evt
+        # Transformation happened in place
+        with pytest.raises(AssertionError):
+            npt.assert_array_equal(orig_df.as_matrix(), evt.evt.as_matrix())
+
+        evt.filter()
+        orig_df = evt.opp.copy()
+        assert evt.opp_transformed == False
+        t_df = evt.transform_opp()
+        assert evt.opp_transformed == True
+        # Returned the same object
+        assert t_df is evt.opp
+        # Transformation happened in place
+        with pytest.raises(AssertionError):
+            npt.assert_array_equal(orig_df.as_matrix(), evt.opp.as_matrix())
+
+    def test_transform_not_inplace(self, evt):
+        orig_df = evt.evt.copy()
+        t_evt = evt.transform_particles(evt.evt, inplace=False)
+        # Returned a copy
+        assert not t_evt is evt.evt
+        # The input is unchanged
+        npt.assert_array_equal(orig_df.as_matrix(), evt.evt.as_matrix())
+        # The returned copy is different from original version of input
+        with pytest.raises(AssertionError):
+            npt.assert_array_equal(orig_df.as_matrix(), t_evt.as_matrix())
+
+
 class TestOutput:
     def test_sqlite3_opp_counts_and_params(self, tmpout):
         evt = tmpout["evt"]
@@ -249,6 +306,18 @@ class TestOutput:
         # exactly the same
         npt.assert_array_equal(evt.opp, opp.evt)
 
+    def test_binary_opp_after_calc_stats(self, tmpout):
+        evt = tmpout["evt"]
+        # This shouldn't modify evt
+        _ = evt.calc_evt_stats()
+        evt.filter(offset=0.0, width=0.5)
+        # This shouldn't modify opp
+        _ = evt.calc_opp_stats()
+        evt.write_opp_binary(tmpout["opp"])
+        opp = filterevt.EVT(tmpout["opp"])
+        # Make sure OPP binary file written can be read back as EVT and is
+        # exactly the same
+        npt.assert_array_equal(evt.opp, opp.evt)
 
 class TestMultiFileFilter:
     def test_multi_file_filter_local(self, tmpout):
