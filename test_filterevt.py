@@ -180,19 +180,32 @@ class TestFilter:
         npt.assert_almost_equal(evt.notch1, 1.5, decimal=22)
         npt.assert_almost_equal(evt.notch2, 1.1, decimal=22)
 
-    def test_opp_stats(self, evt):
+    def test_stats(self, evt):
         evt.filter()
-        assert evt.stats == {}
-        evt.calc_opp_stats()
-        answer = {
-            'chl_big': {'max': 32384.0, 'mean': 32357.50434782609, 'min': 32341.0},
-            'chl_small': {'max': 55515.0, 'mean': 14797.066666666668, 'min': 2347.0},
-            'fsc_big': {'max': 9904.0, 'mean': 6416.139130434783, 'min': 2880.0},
-            'fsc_perp': {'max': 33109.0, 'mean': 33078.91594202899, 'min': 33067.0},
-            'fsc_small': {'max': 57424.0, 'mean': 14504.811594202898, 'min': 1216.0},
-            'pe': {'max': 58112.0, 'mean': 9768.573913043478, 'min': 0.0}
+        evt_stats = evt.calc_evt_stats()
+        opp_stats = evt.calc_opp_stats()
+        evt_answer = {
+            'D1': {'max': 2963.4783432410418, 'mean': 73.08622879073846, 'min': 1.0},
+            'D2': {'max': 3156.0618662237976, 'mean': 79.54512712808497, 'min': 1.0},
+            'chl_big': {'max': 53.64042220069004, 'mean': 53.45042450208166, 'min': 53.357532766135428},
+            'chl_small': {'max': 2696.4112647346287, 'mean': 4.369003421372767, 'min': 1.1734940610013915},
+            'fsc_big': {'max': 4.1313203017805806, 'mean': 2.2051450385182534, 'min': 1.2319020328264516},
+            'fsc_perp': {'max': 58.68563380375862, 'mean': 58.41150116848148, 'min': 58.29722577023179},
+            'fsc_small': {'max': 1652.0286629483903, 'mean': 2.8114101351566445, 'min': 1.0},
+            'pe': {'max': 1779.1855898687629, 'mean': 8.329553221519069, 'min': 1.0}
         }
-        assert evt.stats == answer
+        opp_answer = {
+            'D1': {'max': 2946.0375718383511, 'mean': 27.57584311733493, 'min': 1.0755143540156189},
+            'D2': {'max': 3156.0618662237976, 'mean': 27.027957147404216, 'min': 1.0},
+            'chl_big': {'max': 53.64042220069004, 'mean': 53.46595431797728, 'min': 53.357532766135428},
+            'chl_small': {'max': 922.19096252450186, 'mean': 22.266367429741198, 'min': 1.3345760374616036},
+            'fsc_big': {'max': 3.380108678220699, 'mean': 2.2238485381723674, 'min': 1.4249794251756174},
+            'fsc_perp': {'max': 58.642349877876896, 'mean': 58.42582313084556, 'min': 58.340254959965897},
+            'fsc_small': {'max': 1166.1984528866317, 'mean': 23.187903329680267, 'min': 1.1612919251372618},
+            'pe': {'max': 1269.1578052463431, 'mean': 74.84328753100617, 'min': 1.0}
+        }
+        assert evt_stats == evt_answer
+        assert opp_stats == opp_answer
 
 
 class TestOutput:
@@ -212,29 +225,20 @@ class TestOutput:
                 "notch2", "offset", "origin", "width"]].as_matrix()[0]
         )
 
-    def test_sqlite3_opp_transformed(self, tmpout):
+    def test_sqlite3_opp(self, tmpout):
         evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
-        evt.save_opp_to_db("testcruise", tmpout["db"], transform=True)
+        stats = evt.calc_opp_stats()
+        evt.save_opp_to_db("testcruise", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
         row = sqlitedf.iloc[0]
-        for channel in evt.stats:
+        for channel in stats:
+            if channel == "D1" or channel == "D2":
+                continue
             for stat in ["min", "max", "mean"]:
                 k = channel + "_" + stat
-                assert evt.transform(evt.stats[channel][stat]) == row[k]
-
-    def test_sqlite3_opp_not_transformed(self, tmpout):
-        evt = tmpout["evt"]
-        evt.filter(offset=0.0, width=0.5)
-        evt.save_opp_to_db("testcruise", tmpout["db"], transform=False)
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-        row = sqlitedf.iloc[0]
-        for channel in evt.stats:
-            for stat in ["min", "max", "mean"]:
-                k = channel + "_" + stat
-                assert evt.stats[channel][stat] == row[k]
+                assert stats[channel][stat] == row[k]
 
     def test_binary_opp(self, tmpout):
         evt = tmpout["evt"]

@@ -484,12 +484,12 @@ class EVT(object):
         if notch1 is None:
             min1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
             max1 = aligned[aligned["D1"] == min1]["fsc_small"].max()
-            notch1 = max1 / (min1 + 10000)
+            notch1 = max1 / (min1 + 10**4)
 
         if notch2 is None:
             min2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
             max2 = aligned[aligned["D2"] == min2]["fsc_small"].max()
-            notch2 = max2 / (min2 + 10000)
+            notch2 = max2 / (min2 + 10**4)
 
         # Filter focused particles (fsc_small > D + notch)
         oppD1 = aligned["fsc_small"] > ((aligned["D1"] * notch1) - (offset * 10**4))
@@ -510,20 +510,27 @@ class EVT(object):
         self.width = width
 
     def calc_opp_stats(self):
-        """Calculate min, max, sum, mean for each channel of OPP data"""
         if self.opp_count == 0:
             return
+        return self.calc_stats(self.opp)
 
+    def calc_evt_stats(self):
+        if self.evt_count == 0:
+            return
+        return self.calc_stats(self.evt)
+
+    def calc_stats(self, df):
+        """Calculate min, max, sum, mean for each channel of OPP/EVT data"""
+        stats = {}
         for channel in self.float_cols:
-            if channel in ["D1", "D2"]:
-                continue
-            self.stats[channel] = {
-                "min": self.opp[channel].min(),
-                "max": self.opp[channel].max(),
-                "mean": self.opp[channel].mean()
+            stats[channel] = {
+                "min": self.transform(df[channel]).min(),
+                "max": self.transform(df[channel]).max(),
+                "mean": self.transform(df[channel]).mean()
             }
+        return stats
 
-    def save_opp_to_db(self, cruise_name, db, transform=True):
+    def save_opp_to_db(self, cruise_name, db):
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
 
@@ -533,18 +540,13 @@ class EVT(object):
             self.origin, self.width
         ]
 
-        self.calc_opp_stats()
+        stats = self.calc_opp_stats()
         for channel in self.float_cols:
             if channel in ["D1", "D2"]:
                 continue
-            if transform:
-                vals.append(self.transform(self.stats[channel]["min"]))
-                vals.append(self.transform(self.stats[channel]["max"]))
-                vals.append(self.transform(self.stats[channel]["mean"]))
-            else:
-                vals.append(self.stats[channel]["min"])
-                vals.append(self.stats[channel]["max"])
-                vals.append(self.stats[channel]["mean"])
+            vals.append(stats[channel]["min"])
+            vals.append(stats[channel]["max"])
+            vals.append(stats[channel]["mean"])
 
         sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*len(vals))
         con = sqlite3.connect(db, timeout=120)
