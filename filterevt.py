@@ -157,6 +157,9 @@ def filter_files(**kwargs):
     o.update(kwargs)
 
     if o["db"]:
+        dbdir = os.path.dirname(o["db"])
+        if dbdir and not os.path.isdir(dbdir):
+            mkdir_p(dbdir)
         ensure_tables(o["db"])
 
     evt_count = 0
