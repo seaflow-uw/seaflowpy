@@ -280,11 +280,13 @@ def filter_one_file(**kwargs):
             # Might have julian day, might not
             outdir = os.path.join(
                 o["opp_dir"],
-                os.path.dirname(evt.get_julian_path()))
+                os.path.dirname(evt.get_julian_path())
+            )
             mkdir_p(outdir)
             outfile = os.path.join(
                 o["opp_dir"],
-                evt.get_julian_path())
+                evt.get_julian_path() + ".opp"
+            )
             if o["gz_binary"]:
                 outfile += ".gz"
             evt.write_opp_binary(outfile)
@@ -301,7 +303,7 @@ class EVT(object):
 
     # EVT file name regexes
     file_re = re.compile(
-        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}|\d+\.evt)'
+        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(?:\.opp|\.evt)?|\d+\.evt)'
         r'(?:\.gz)?$'
     )
     julian_re = re.compile(
@@ -722,15 +724,16 @@ def ensure_tables(dbpath):
     cur = con.cursor()
 
     cur.execute("""CREATE TABLE IF NOT EXISTS vct (
-        -- First three columns are the EVT, OPP, VCT, SDS composite key
         cruise TEXT NOT NULL,
         file TEXT NOT NULL,
         pop TEXT NOT NULL,
         count INTEGER NOT NULL,
         method TEXT NOT NULL,
-        PRIMARY KEY (cruise, file)
+        fsc_small REAL NOT NULL,
+        chl_small REAL NOT NULL,
+        pe REAL NOT NULL,
+        PRIMARY KEY (cruise, file, pop)
     )""")
-
 
     cur.execute("""CREATE TABLE IF NOT EXISTS opp (
         cruise TEXT NOT NULL,
@@ -767,7 +770,7 @@ def ensure_tables(dbpath):
     cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
         --First two columns are the SFL composite key
         cruise TEXT NOT NULL,
-        file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
+        file TEXT NOT NULL,
         date TEXT,
         file_duration REAL,
         lat REAL,
@@ -781,24 +784,6 @@ def ensure_tables(dbpath):
         flow_rate REAL,
         event_rate REAL,
         PRIMARY KEY (cruise, file)
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS stats (
-        cruise TEXT NOT NULL,
-        file TEXT NOT NULL,
-        time TEXT,
-        lat REAL,
-        lon REAL,
-        opp_evt_ratio REAL,
-        flow_rate REAL,
-        file_duration REAL,
-        pop TEXT NOT NULL,
-        n_count INTEGER,
-        abundance REAL,
-        fsc_small REAL,
-        chl_small REAL,
-        pe REAL,
-        PRIMARY KEY (cruise, file, pop)
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS cytdiv (

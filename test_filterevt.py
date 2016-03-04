@@ -69,19 +69,29 @@ class TestOpen:
 class TestPathFilenameParsing:
     def test_is_evt(self):
         files = [
+            # Valid names
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "testcruise/2014_185/100.evt",
+            "testcruise/2014_185/200.evt.gz",
+            "2014_185/2014-07-04T00-00-02+00-00",
+            "2014-07-04T00-00-02+00-00",
+            "2014-07-04T00-00-02+00-00.opp",
+            "2014-07-04T00-00-02+00-00.evt",
+
+            # Bad names
             "not_evt_file",
             "x.evt",
             "testcruise/2014_185/100_1.evt",
             "2014-07-0400-00-02+00-00",
-            "testcruise/2014_185/100.evt",
-            "testcruise/2014_185/200.evt.gz",
-            "2014_185/2014-07-04T00-00-02+00-00",
-            "2014-07-04T00-00-02+00-00"
+            "2014-07-04T00-00-02+00-00.op",
+            "2014-07-04T00-00-02+00-00.ev"
         ]
         results = [filterevt.EVT.is_evt(f) for f in files]
-        answers = [True, True, False, False, False, False, True, True, True, True]
+        answers = [
+            True, True, True, True, True, True, True, True,
+            False, False, False, False, False, False
+        ]
         assert results == answers
 
     def test_get_paths_new_style(self):
@@ -216,6 +226,15 @@ class TestFilter:
         assert evt_stats == evt_answer
         assert opp_stats == opp_answer
 
+    def test_stats_does_not_modify(self, evt):
+        evt.filter()
+        orig_evt = evt.evt.copy()
+        orig_opp = evt.opp.copy()
+        _ = evt.calc_evt_stats()
+        _ = evt.calc_opp_stats()
+        npt.assert_array_equal(orig_evt.as_matrix(), evt.evt.as_matrix())
+        npt.assert_array_equal(orig_opp.as_matrix(), evt.opp.as_matrix())
+
 
 class TestTransform:
     def test_transform_one_value(self):
@@ -306,18 +325,6 @@ class TestOutput:
         # exactly the same
         npt.assert_array_equal(evt.opp, opp.evt)
 
-    def test_binary_opp_after_calc_stats(self, tmpout):
-        evt = tmpout["evt"]
-        # This shouldn't modify evt
-        _ = evt.calc_evt_stats()
-        evt.filter(offset=0.0, width=0.5)
-        # This shouldn't modify opp
-        _ = evt.calc_opp_stats()
-        evt.write_opp_binary(tmpout["opp"])
-        opp = filterevt.EVT(tmpout["opp"])
-        # Make sure OPP binary file written can be read back as EVT and is
-        # exactly the same
-        npt.assert_array_equal(evt.opp, opp.evt)
 
 class TestMultiFileFilter:
     def test_multi_file_filter_local(self, tmpout):
@@ -338,8 +345,8 @@ class TestMultiFileFilter:
             evt.calc_opp_stats()
 
         opps = [
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00"))),
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00")))
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp"))),
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp")))
         ]
 
         con = sqlite3.connect(tmpout["db"])
@@ -377,8 +384,8 @@ class TestMultiFileFilter:
             evt.calc_opp_stats()
 
         opps = [
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00"))),
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00")))
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp"))),
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp")))
         ]
 
         con = sqlite3.connect(tmpout["db"])
