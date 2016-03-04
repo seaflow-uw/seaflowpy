@@ -232,8 +232,8 @@ class TestFilter:
         orig_opp = evt.opp.copy()
         _ = evt.calc_evt_stats()
         _ = evt.calc_opp_stats()
-        npt.assert_array_equal(orig_evt.as_matrix(), evt.evt.as_matrix())
-        npt.assert_array_equal(orig_opp.as_matrix(), evt.opp.as_matrix())
+        npt.assert_array_equal(orig_evt, evt.evt)
+        npt.assert_array_equal(orig_opp, evt.opp)
 
 
 class TestTransform:
@@ -249,7 +249,7 @@ class TestTransform:
         assert orig_df is t_df
         # Transformation happened in place
         with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df_copy.as_matrix(), t_df.as_matrix())
+            npt.assert_array_equal(orig_df_copy, t_df)
 
         orig_df = evt.evt.copy()
         assert evt.evt_transformed == False
@@ -259,7 +259,7 @@ class TestTransform:
         assert t_df is evt.evt
         # Transformation happened in place
         with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df.as_matrix(), evt.evt.as_matrix())
+            npt.assert_array_equal(orig_df, evt.evt)
 
         evt.filter()
         orig_df = evt.opp.copy()
@@ -270,7 +270,7 @@ class TestTransform:
         assert t_df is evt.opp
         # Transformation happened in place
         with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df.as_matrix(), evt.opp.as_matrix())
+            npt.assert_array_equal(orig_df, evt.opp)
 
     def test_transform_not_inplace(self, evt):
         orig_df = evt.evt.copy()
@@ -278,10 +278,10 @@ class TestTransform:
         # Returned a copy
         assert not t_evt is evt.evt
         # The input is unchanged
-        npt.assert_array_equal(orig_df.as_matrix(), evt.evt.as_matrix())
+        npt.assert_array_equal(orig_df, evt.evt)
         # The returned copy is different from original version of input
         with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df.as_matrix(), t_evt.as_matrix())
+            npt.assert_array_equal(orig_df, t_evt)
 
 
 class TestOutput:
@@ -367,8 +367,7 @@ class TestMultiFileFilter:
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
                     "notch2", "offset", "origin", "width"]].as_matrix()
             )
-            npt.assert_array_equal(evts[i].opp.as_matrix(),
-                                   opps[i].evt.as_matrix())
+            npt.assert_array_equal(evts[i].opp, opps[i].evt)
 
     @s3
     def test_multi_file_filter_S3(self, tmpout):
@@ -406,8 +405,7 @@ class TestMultiFileFilter:
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
                     "notch2", "offset", "origin", "width"]].as_matrix()
             )
-            npt.assert_array_equal(evts[i].opp.as_matrix(),
-                                   opps[i].evt.as_matrix())
+            npt.assert_array_equal(evts[i].opp, opps[i].evt)
 
     @scope1_local
     def test_SCOPE_1_first_19_local_against_popcycle(self, tmpout):
@@ -428,7 +426,7 @@ class TestMultiFileFilter:
         opps = []
         ints = filterevt.EVT.int_cols
         floats = filterevt.EVT.float_cols
-        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00")):
+        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00.opp")):
             opp = filterevt.EVT(str(f))
             # Make OPP evt dataframe look like dataframe that popcycle creates
             # without file and cruise columns
@@ -459,5 +457,5 @@ class TestMultiFileFilter:
         # R code saves opp_evt_ratio with full precision so compare these
         # these columns with no decimal precision setting.
         npt.assert_array_equal(
-            filter_python["opp_evt_ratio"].as_matrix(),
-            filter_R["opp_evt_ratio"].as_matrix())
+            filter_python["opp_evt_ratio"],
+            filter_R["opp_evt_ratio"])
