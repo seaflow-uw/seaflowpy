@@ -730,8 +730,9 @@ def ensure_tables(dbpath):
         count INTEGER NOT NULL,
         method TEXT NOT NULL,
         fsc_small REAL NOT NULL,
-        chl_small REAL NOT NULL,
+        fsc_perp REAL NOT NULL,
         pe REAL NOT NULL,
+        chl_small REAL NOT NULL,
         PRIMARY KEY (cruise, file, pop)
     )""")
 
@@ -808,9 +809,10 @@ def ensure_tables(dbpath):
         gating_uuid TEXT NOT NULL,
         pop TEXT NOT NULL,
         fsc_small REAL,
-        chl_small REAL,
-        pe REAL,
+        fsc_perp REAL,
         fsc_big REAL,
+        pe REAL,
+        chl_small REAL,
         chl_big REAL
     )""")
 
