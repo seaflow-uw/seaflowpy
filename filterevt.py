@@ -797,6 +797,23 @@ def ensure_tables(dbpath):
         PRIMARY KEY (cruise, file)
     )""")
 
+    cur.execute("""CREATE TABLE IF NOT EXISTS gating (
+        date TEXT NOT NULL,
+        uuid TEXT NOT NULL,
+        pop_order TEXT NOT NULL,
+        PRIMARY KEY (uuid)
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS poly (
+        gating_uuid TEXT NOT NULL,
+        pop TEXT NOT NULL,
+        fsc_small REAL,
+        chl_small REAL,
+        pe REAL,
+        fsc_big REAL,
+        chl_big REAL
+    )""")
+
     con.commit()
     con.close()
 
