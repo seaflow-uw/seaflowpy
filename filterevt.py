@@ -798,6 +798,17 @@ def ensure_tables(dbpath):
         PRIMARY KEY (cruise, file)
     )""")
 
+    cur.execute("""CREATE TABLE IF NOT EXISTS filter (
+        id INTEGER PRIMARY KEY,
+        date TEXT NOT NULL,
+        notch1 REAL,
+        notch2 REAL,
+        offset REAL NOT NULL,
+        origin REAL,
+        width REAL NOT NULL
+    )""")
+
+
     cur.execute("""CREATE TABLE IF NOT EXISTS gating (
         date TEXT NOT NULL,
         uuid TEXT NOT NULL,
