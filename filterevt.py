@@ -4,6 +4,7 @@ import argparse
 import boto3
 import botocore
 import copy
+import datetime
 import errno
 import io
 import getpass
@@ -20,6 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import uuid
 
 # Global configuration variables for AWS
 # ######################################
@@ -156,11 +158,15 @@ def filter_files(**kwargs):
     }
     o.update(kwargs)
 
+    if not o["filter_options"]:
+        raise ValueError("Must specify keyword arg filter_options in filter_files()")
+
     if o["db"]:
         dbdir = os.path.dirname(o["db"])
         if dbdir and not os.path.isdir(dbdir):
             mkdir_p(dbdir)
         ensure_tables(o["db"])
+        o["filter_uuid"] = save_filter_params(o["db"], o["filter_options"])
 
     evt_count = 0
     opp_count = 0
@@ -274,7 +280,7 @@ def filter_one_file(**kwargs):
         evt.filter(**o["filter_options"])
 
         if o["db"]:
-            evt.save_opp_to_db(o["cruise"], o["db"])
+            evt.save_opp_to_db(o["cruise"], o["filter_uuid"], o["db"])
 
         if o["opp_dir"]:
             # Might have julian day, might not
@@ -560,28 +566,68 @@ class EVT(object):
             }
         return stats
 
-    def save_opp_to_db(self, cruise_name, db):
+    def save_opp_to_db(self, cruise_name, filter_uuid, db):
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
 
-        vals = [
-            cruise_name, self.get_julian_path(), self.opp_count, self.evt_count,
-            self.opp_evt_ratio, self.notch1, self.notch2, self.offset,
-            self.origin, self.width
+        # NOTE: values inserted must be in the same order as fields in opp
+        # table. Defining that order in a list here makes it easier to verify
+        # that the right order is used.
+        fields = [
+            "cruise",
+            "file",
+            "opp_count",
+            "evt_count",
+            "opp_evt_ratio",
+            "notch1",
+            "notch2",
+            "offset",
+            "origin",
+            "width",
+            "fsc_small_min",
+            "fsc_small_max",
+            "fsc_small_mean",
+            "fsc_perp_min",
+            "fsc_perp_max",
+            "fsc_perp_mean",
+            "fsc_big_min",
+            "fsc_big_max",
+            "fsc_big_mean",
+            "pe_min",
+            "pe_max",
+            "pe_mean",
+            "chl_small_min",
+            "chl_small_max",
+            "chl_small_mean",
+            "chl_big_min",
+            "chl_big_max",
+            "chl_big_mean",
+            "filter_uuid",
         ]
+
+        vals = {
+            "cruise": cruise_name, "file": self.get_julian_path(),
+            "opp_count": self.opp_count, "evt_count": self.evt_count,
+            "opp_evt_ratio": self.opp_evt_ratio, "notch1": self.notch1,
+            "notch2": self.notch2, "offset": self.offset, "origin": self.origin,
+            "width": self.width, "filter_uuid": filter_uuid
+        }
 
         stats = self.calc_opp_stats()
         for channel in self.float_cols:
             if channel in ["D1", "D2"]:
                 continue
-            vals.append(stats[channel]["min"])
-            vals.append(stats[channel]["max"])
-            vals.append(stats[channel]["mean"])
+            vals[channel + "_min"] = stats[channel]["min"]
+            vals[channel + "_max"] = stats[channel]["max"]
+            vals[channel + "_mean"] = stats[channel]["mean"]
 
-        sql = "INSERT INTO opp VALUES (%s)" % ",".join("?"*len(vals))
+        # Construct values string with named placeholders
+        values_str = ", ".join([":" + f for f in fields])
+
+        sql = "INSERT INTO opp VALUES (%s)" % values_str
         con = sqlite3.connect(db, timeout=120)
         cur = con.cursor()
-        cur.execute(sql, tuple(vals))
+        cur.execute(sql, vals)
         con.commit()
 
     def write_opp_binary(self, outfile):
@@ -733,6 +779,7 @@ def ensure_tables(dbpath):
         fsc_perp REAL NOT NULL,
         pe REAL NOT NULL,
         chl_small REAL NOT NULL,
+        gating_uuid TEXT NOT NULL,
         PRIMARY KEY (cruise, file, pop)
     )""")
 
@@ -765,6 +812,7 @@ def ensure_tables(dbpath):
         chl_big_min REAL NOT NULL,
         chl_big_max REAL NOT NULL,
         chl_big_mean REAL NOT NULL,
+        filter_uuid TEXT NOT NULL,
         PRIMARY KEY (cruise, file)
     )""")
 
@@ -799,32 +847,33 @@ def ensure_tables(dbpath):
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS filter (
-        id INTEGER PRIMARY KEY,
+        uuid TEXT NOT NULL,
         date TEXT NOT NULL,
         notch1 REAL,
         notch2 REAL,
         offset REAL NOT NULL,
         origin REAL,
-        width REAL NOT NULL
+        width REAL NOT NULL,
+        PRIMARY KEY (uuid)
     )""")
 
 
     cur.execute("""CREATE TABLE IF NOT EXISTS gating (
-        date TEXT NOT NULL,
         uuid TEXT NOT NULL,
+        date TEXT NOT NULL,
         pop_order TEXT NOT NULL,
         PRIMARY KEY (uuid)
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS poly (
-        gating_uuid TEXT NOT NULL,
         pop TEXT NOT NULL,
         fsc_small REAL,
         fsc_perp REAL,
         fsc_big REAL,
         pe REAL,
         chl_small REAL,
-        chl_big REAL
+        chl_big REAL,
+        gating_uuid TEXT NOT NULL
     )""")
 
     con.commit()
@@ -851,6 +900,30 @@ def ensure_indexes(dbpath):
 
     t1 = time.time()
     print "Index creation completed in %.2f seconds" % (t1 - t0,)
+
+
+def save_filter_params(dbpath, filter_options):
+    """Save filtering parameters
+
+    Arguments:
+        dbpath - SQLite3 database file path
+        filter_options - Dictionary of filter params
+            (notch1, notch2, width, offset, origin)
+
+    Returns:
+        UUID primary key for this entry in filter table
+    """
+    opts = dict(filter_options)  # Make a copy to preserve original
+    opts["id"] = None  # Autoincrement id
+    opts["date"] = iso8601()  # Datestamp for right now
+    opts["uuid"] = str(uuid.uuid4())
+    values = "(:uuid, :date, :notch1, :notch2, :offset, :origin, :width)"
+    sql = "INSERT INTO filter VALUES %s" % values
+    con = sqlite3.connect(dbpath)
+    con.execute(sql, opts)
+    con.commit()
+    con.close()
+    return opts["uuid"]
 
 
 # ----------------------------------------------------------------------------
@@ -912,6 +985,16 @@ def splitpath(path):
                 parts.append(path)
             break
     return parts[::-1]
+
+def iso8601():
+    """Create an ISO8601 date string for now.
+
+    Format will be YYYY-MM-DDTHH:MM:SS+0000
+    """
+    now = datetime.datetime.utcnow()
+    now = now.replace(microsecond=0)
+    iso = now.isoformat() + "+0000"
+    return iso
 
 
 # ----------------------------------------------------------------------------
