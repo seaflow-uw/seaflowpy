@@ -285,15 +285,31 @@ class TestTransform:
 
 
 class TestOutput:
+    def test_sqlite3_filter_params(self, tmpout):
+        opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+                "width": 0.5}
+        filter_uuid = filterevt.save_filter_params(tmpout["db"], opts)
+        con = sqlite3.connect(tmpout["db"])
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        cur.execute("SELECT * FROM filter")
+        row = dict(cur.fetchone())
+        del row["date"]  # Don't test date
+        opts["uuid"] = filter_uuid
+        assert opts == row
+
     def test_sqlite3_opp_counts_and_params(self, tmpout):
+        opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+                "width": 0.5}
         evt = tmpout["evt"]
-        evt.filter(offset=0.0, width=0.5)
-        evt.save_opp_to_db("testcruise", tmpout["db"])
+        evt.filter(**opts)
+        evt.save_opp_to_db("testcruise", "UUID", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         assert "testcruise" == sqlitedf.cruise[0]
         assert evt.get_julian_path() == sqlitedf.file[0]
+        assert "UUID" == sqlitedf.filter_uuid[0]
         npt.assert_array_equal(
             [evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1, evt.notch2,
                 evt.offset, evt.origin, evt.width],
@@ -305,7 +321,7 @@ class TestOutput:
         evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
         stats = evt.calc_opp_stats()
-        evt.save_opp_to_db("testcruise", tmpout["db"])
+        evt.save_opp_to_db("testcruise", "UUID", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
         row = sqlitedf.iloc[0]
@@ -327,6 +343,10 @@ class TestOutput:
 
 
 class TestMultiFileFilter:
+    def test_filter_files_without_filter_options_raises_ValueError(self):
+        with pytest.raises(ValueError):
+            filterevt.filter_files()
+
     def test_multi_file_filter_local(self, tmpout):
         files = [
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
@@ -335,9 +355,14 @@ class TestMultiFileFilter:
             "testcruise/2014_185/2014-07-04T00-09-02+00-00",
             "testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
+        filt_opts = {
+            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+            "width": 0.5
+        }
 
         filterevt.filter_files(files=files, cpus=2, cruise="testcruise",
-            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]))
+            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            filter_options=filt_opts)
 
         evts = [filterevt.EVT(files[0]), filterevt.EVT(files[1])]
         for evt in evts:
@@ -372,10 +397,13 @@ class TestMultiFileFilter:
     @s3
     def test_multi_file_filter_S3(self, tmpout):
         files = filterevt.get_s3_files("testcruise", filterevt.SEAFLOW_BUCKET)
-
+        filt_opts = {
+            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+            "width": 0.5
+        }
         filterevt.filter_files(files=files, cpus=2, cruise="testcruise",
-            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]), s3=True,
-            s3_bucket=filterevt.SEAFLOW_BUCKET)
+            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            filter_options=filt_opts, s3=True, s3_bucket=filterevt.SEAFLOW_BUCKET)
 
         evts = [filterevt.EVT(files[0]), filterevt.EVT(files[1])]
         for evt in evts:
@@ -410,8 +438,13 @@ class TestMultiFileFilter:
     @scope1_local
     def test_SCOPE_1_first_19_local_against_popcycle(self, tmpout):
         files = filterevt.find_evt_files("SCOPE_1")
+        filt_opts = {
+            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+            "width": 0.5
+        }
         filterevt.filter_files(files=files[:19], cpus=2, cruise="SCOPE_1",
-                               db=tmpout["db"], opp_dir=str(tmpout["oppdir"]))
+                               db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+                               filter_options=filt_opts)
         con = sqlite3.connect(tmpout["db"])
         filter_python = pd.read_sql("SELECT * FROM opp ORDER BY file", con)
         con.close()
