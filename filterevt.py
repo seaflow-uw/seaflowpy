@@ -32,6 +32,7 @@ AWS_REGION = "us-west-2"
 
 
 def main():
+    """Main function to implement command-line interface"""
     p = argparse.ArgumentParser(
         description="Filter EVT data.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -332,6 +333,7 @@ class EVT(object):
 
     @staticmethod
     def parse_evt_path(path):
+        """Return a dict with entries for 'julian' dir and 'file' name"""
         d = { "julian": None, "file": None }
         parts = splitpath(path)
         if len(parts) == 1:
@@ -344,6 +346,7 @@ class EVT(object):
 
     @staticmethod
     def transform(vals):
+        """Convert log SeaFlow data to linear"""
         return 10**((vals / 2**16) * 3.5)
 
     def __init__(self, path=None, fileobj=None, read_data=True,
@@ -389,6 +392,7 @@ class EVT(object):
         return self.__repr__()
 
     def isgz(self):
+        """Is file gzipped?"""
         return self.path and self.path.endswith(".gz")
 
     def get_julian_path(self):
@@ -421,7 +425,7 @@ class EVT(object):
         return handle
 
     def read_evt(self):
-        """Read an EVT binary file and return a pandas DataFrame."""
+        """Read an EVT binary file and return a Pandas DataFrame."""
         with self.open() as fh:
             # Particle count (rows of data) is stored in an initial 32-bit
             # unsigned int
@@ -527,35 +531,53 @@ class EVT(object):
         self.width = width
 
     def transform_evt(self):
+        """Linearize EVT data in-place
+
+        Returns a reference to the EVT DataFrame
+        """
         if self.evt_count == 0:
             return
         self.evt_transformed = True
         return self.transform_particles(self.evt, inplace=True)
 
     def transform_opp(self):
+        """Linearize OPP data in-place
+
+        Returns a reference to the OPP DataFrame
+        """
         if self.opp_count == 0:
             return
         self.opp_transformed = True
         return self.transform_particles(self.opp, inplace=True)
 
     def transform_particles(self, particles, inplace=False):
+        """Linearize particle data.
+
+        Arguments:
+            inplace: Modify particles DataFrame in-place
+
+        Returns:
+            Reference to original particles DataFrame or to a copy
+        """
         if not inplace:
             particles = particles.copy()
         particles[self.float_cols] = self.transform(particles[self.float_cols])
         return particles
 
     def calc_opp_stats(self):
+        """Calculate min, max, mean for each channel of OPP data"""
         if self.opp_count == 0:
             return
         return self.calc_stats(self.opp)
 
     def calc_evt_stats(self):
+        """Calculate min, max, mean for each channel of OPP data"""
         if self.evt_count == 0:
             return
         return self.calc_stats(self.evt)
 
     def calc_stats(self, particles):
-        """Calculate min, max, sum, mean for each channel of OPP/EVT data"""
+        """Calculate min, max, mean for each channel of particle data"""
         stats = {}
         df = self.transform_particles(particles)
         for channel in self.float_cols:
@@ -567,6 +589,7 @@ class EVT(object):
         return stats
 
     def save_opp_to_db(self, cruise_name, filter_uuid, db):
+        """Save aggregate statistics for filtered particle data to SQLite"""
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
 
@@ -673,11 +696,13 @@ class EVT(object):
         return opp.as_matrix()
 
     def write_opp_csv(self, outfile):
+        """Write OPP to CSV file, no header."""
         if self.opp_count == 0:
             return
         self.opp.to_csv(outfile, sep=",", index=False, header=False)
 
     def write_evt_csv(self, outfile):
+        """Write EVT to CSV file, no header."""
         if self.evt is None:
             return
         self.evt.to_csv(outfile, sep=",", index=False)
@@ -687,6 +712,11 @@ class EVT(object):
 # Functions to manage lists of local EVT files
 # ----------------------------------------------------------------------------
 def parse_file_list(files):
+    """Filter list of files to only keep EVT files.
+
+    If the first item in files is "-", assume input consists of lines of file
+    paths read from stdin. Any further items in files will be ignored.
+    """
     files_list = []
     if len(files) and files[0] == "-":
         for line in sys.stdin:
@@ -701,6 +731,7 @@ def parse_file_list(files):
 
 
 def find_evt_files(evt_dir):
+    """Return a sorted list of all EVT files in evt_dir."""
     evt_files = []
 
     for root, dirs, files in os.walk(evt_dir):
@@ -715,6 +746,7 @@ def find_evt_files(evt_dir):
 # AWS functions
 # ----------------------------------------------------------------------------
 def get_s3_bucket(s3, bucket_name):
+    """Get a boto3 S3 Bucket object"""
     bucket = s3.Bucket(bucket_name)
     exists = True
     try:
@@ -731,6 +763,7 @@ def get_s3_bucket(s3, bucket_name):
 
 
 def get_s3_files(cruise, bucket_name):
+    """Get list of S3 object keys for one cruise"""
     s3 = boto3.resource("s3")
     bucket = get_s3_bucket(s3, bucket_name)
     i = 0
@@ -930,6 +963,10 @@ def save_filter_params(dbpath, filter_options):
 # Utility functions
 # ----------------------------------------------------------------------------
 def gzip_file(path, print_timing=False):
+    """Gzip a file.
+
+    Try to use pigz, but fall back to gzip.
+    """
     gzipbin = "pigz"  # Default to using pigz
     devnull = open(os.devnull, "w")
     try:
