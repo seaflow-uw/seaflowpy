@@ -66,8 +66,8 @@ def main():
     p.add_argument("--cpus", required=False, type=int, default=1,
                    help="""Number of CPU cores to use in filtering
                         (optional)""")
-    p.add_argument("--gz_binary", default=False, action="store_true",
-                   help="gzip compress output binary files (optional)")
+    p.add_argument("--gz_opp", default=False, action="store_true",
+                   help="gzip compress output OPP files (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
     p.add_argument("--limit", type=int, default=None,
@@ -141,7 +141,7 @@ def filter_files(**kwargs):
         every - Percent progress output resolution
         s3 - Get EVT data from S3
         s3_bucket - S3 bucket name
-        gz_binary - Gzip binary OPP files
+        gz_opp - Gzip binary OPP files
         db = SQLite3 db path
         opp_dir = Directory for output binary OPP files
     """
@@ -153,7 +153,7 @@ def filter_files(**kwargs):
         "every": 10.0,
         "s3": False,
         "s3_bucket": None,
-        "gz_binary": False,
+        "gz_opp": False,
         "db": None,
         "opp_dir": None
     }
@@ -167,7 +167,7 @@ def filter_files(**kwargs):
         if dbdir and not os.path.isdir(dbdir):
             mkdir_p(dbdir)
         ensure_tables(o["db"])
-        o["filter_uuid"] = save_filter_params(o["db"], o["filter_options"])
+        o["filter_id"] = save_filter_params(o["db"], o["filter_options"])
 
     evt_count = 0
     opp_count = 0
@@ -281,7 +281,7 @@ def filter_one_file(**kwargs):
         evt.filter(**o["filter_options"])
 
         if o["db"]:
-            evt.save_opp_to_db(o["cruise"], o["filter_uuid"], o["db"])
+            evt.save_opp_to_db(o["cruise"], o["filter_id"], o["db"])
 
         if o["opp_dir"]:
             # Might have julian day, might not
@@ -294,7 +294,7 @@ def filter_one_file(**kwargs):
                 o["opp_dir"],
                 evt.get_julian_path() + ".opp"
             )
-            if o["gz_binary"]:
+            if o["gz_opp"]:
                 outfile += ".gz"
             evt.write_opp_binary(outfile)
 
@@ -588,7 +588,7 @@ class EVT(object):
             }
         return stats
 
-    def save_opp_to_db(self, cruise_name, filter_uuid, db):
+    def save_opp_to_db(self, cruise_name, filter_id, db):
         """Save aggregate statistics for filtered particle data to SQLite"""
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
@@ -625,7 +625,7 @@ class EVT(object):
             "chl_big_min",
             "chl_big_max",
             "chl_big_mean",
-            "filter_uuid",
+            "filter_id",
         ]
 
         vals = {
@@ -633,7 +633,7 @@ class EVT(object):
             "opp_count": self.opp_count, "evt_count": self.evt_count,
             "opp_evt_ratio": self.opp_evt_ratio, "notch1": self.notch1,
             "notch2": self.notch2, "offset": self.offset, "origin": self.origin,
-            "width": self.width, "filter_uuid": filter_uuid
+            "width": self.width, "filter_id": filter_id
         }
 
         stats = self.calc_opp_stats()
@@ -812,7 +812,7 @@ def ensure_tables(dbpath):
         fsc_perp REAL NOT NULL,
         pe REAL NOT NULL,
         chl_small REAL NOT NULL,
-        gating_uuid TEXT NOT NULL,
+        gating_id TEXT NOT NULL,
         PRIMARY KEY (cruise, file, pop)
     )""")
 
@@ -845,7 +845,7 @@ def ensure_tables(dbpath):
         chl_big_min REAL NOT NULL,
         chl_big_max REAL NOT NULL,
         chl_big_mean REAL NOT NULL,
-        filter_uuid TEXT NOT NULL,
+        filter_id TEXT NOT NULL,
         PRIMARY KEY (cruise, file)
     )""")
 
@@ -880,22 +880,22 @@ def ensure_tables(dbpath):
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS filter (
-        uuid TEXT NOT NULL,
+        id TEXT NOT NULL,
         date TEXT NOT NULL,
         notch1 REAL,
         notch2 REAL,
         offset REAL NOT NULL,
         origin REAL,
         width REAL NOT NULL,
-        PRIMARY KEY (uuid)
+        PRIMARY KEY (id)
     )""")
 
 
     cur.execute("""CREATE TABLE IF NOT EXISTS gating (
-        uuid TEXT NOT NULL,
+        id TEXT NOT NULL,
         date TEXT NOT NULL,
         pop_order TEXT NOT NULL,
-        PRIMARY KEY (uuid)
+        PRIMARY KEY (id)
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS poly (
@@ -906,7 +906,7 @@ def ensure_tables(dbpath):
         pe REAL,
         chl_small REAL,
         chl_big REAL,
-        gating_uuid TEXT NOT NULL
+        gating_id TEXT NOT NULL
     )""")
 
     con.commit()
@@ -949,14 +949,14 @@ def save_filter_params(dbpath, filter_options):
     opts = dict(filter_options)  # Make a copy to preserve original
     opts["id"] = None  # Autoincrement id
     opts["date"] = iso8601()  # Datestamp for right now
-    opts["uuid"] = str(uuid.uuid4())
-    values = "(:uuid, :date, :notch1, :notch2, :offset, :origin, :width)"
+    opts["id"] = str(uuid.uuid4())
+    values = "(:id, :date, :notch1, :notch2, :offset, :origin, :width)"
     sql = "INSERT INTO filter VALUES %s" % values
     con = sqlite3.connect(dbpath)
     con.execute(sql, opts)
     con.commit()
     con.close()
-    return opts["uuid"]
+    return opts["id"]
 
 
 # ----------------------------------------------------------------------------

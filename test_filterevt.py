@@ -288,14 +288,14 @@ class TestOutput:
     def test_sqlite3_filter_params(self, tmpout):
         opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
                 "width": 0.5}
-        filter_uuid = filterevt.save_filter_params(tmpout["db"], opts)
+        filter_id = filterevt.save_filter_params(tmpout["db"], opts)
         con = sqlite3.connect(tmpout["db"])
         con.row_factory = sqlite3.Row
         cur = con.cursor()
         cur.execute("SELECT * FROM filter")
         row = dict(cur.fetchone())
         del row["date"]  # Don't test date
-        opts["uuid"] = filter_uuid
+        opts["id"] = filter_id
         assert opts == row
 
     def test_sqlite3_opp_counts_and_params(self, tmpout):
@@ -309,7 +309,7 @@ class TestOutput:
 
         assert "testcruise" == sqlitedf.cruise[0]
         assert evt.get_julian_path() == sqlitedf.file[0]
-        assert "UUID" == sqlitedf.filter_uuid[0]
+        assert "UUID" == sqlitedf.filter_id[0]
         npt.assert_array_equal(
             [evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1, evt.notch2,
                 evt.offset, evt.origin, evt.width],
