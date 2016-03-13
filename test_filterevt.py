@@ -27,7 +27,7 @@ def tmpout(tmpdir, evt):
     return {
         "db": db,
         "evt": evt,
-        "opp": tmpdir.join(evt.path + ".opp").basename,
+        "opp": tmpdir.join(evt.path + ".opp.gz").basename,
         "oppdir": tmpdir.join("oppdir")
     }
 
@@ -370,8 +370,8 @@ class TestMultiFileFilter:
             evt.calc_opp_stats()
 
         opps = [
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp"))),
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp")))
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
         ]
 
         con = sqlite3.connect(tmpout["db"])
@@ -411,8 +411,8 @@ class TestMultiFileFilter:
             evt.calc_opp_stats()
 
         opps = [
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp"))),
-            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp")))
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
+            filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
         ]
 
         con = sqlite3.connect(tmpout["db"])
@@ -459,7 +459,7 @@ class TestMultiFileFilter:
         opps = []
         ints = filterevt.EVT.int_cols
         floats = filterevt.EVT.float_cols
-        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00.opp")):
+        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00.opp.gz")):
             opp = filterevt.EVT(str(f))
             # Make OPP evt dataframe look like dataframe that popcycle creates
             # without file and cruise columns

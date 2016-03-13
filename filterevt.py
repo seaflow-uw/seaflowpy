@@ -66,8 +66,6 @@ def main():
     p.add_argument("--cpus", required=False, type=int, default=1,
                    help="""Number of CPU cores to use in filtering
                         (optional)""")
-    p.add_argument("--gz_opp", default=False, action="store_true",
-                   help="gzip compress output OPP files (optional)")
     p.add_argument("--progress", type=float, default=10.0,
                    help="Progress update %% resolution (optional)")
     p.add_argument("--limit", type=int, default=None,
@@ -141,7 +139,6 @@ def filter_files(**kwargs):
         every - Percent progress output resolution
         s3 - Get EVT data from S3
         s3_bucket - S3 bucket name
-        gz_opp - Gzip binary OPP files
         db = SQLite3 db path
         opp_dir = Directory for output binary OPP files
     """
@@ -153,7 +150,6 @@ def filter_files(**kwargs):
         "every": 10.0,
         "s3": False,
         "s3_bucket": None,
-        "gz_opp": False,
         "db": None,
         "opp_dir": None
     }
@@ -292,10 +288,8 @@ def filter_one_file(**kwargs):
             mkdir_p(outdir)
             outfile = os.path.join(
                 o["opp_dir"],
-                evt.get_julian_path() + ".opp"
+                evt.get_julian_path() + ".opp.gz"
             )
-            if o["gz_opp"]:
-                outfile += ".gz"
             evt.write_opp_binary(outfile)
 
         result["ok"] = True
