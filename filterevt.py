@@ -322,11 +322,11 @@ class EVT(object):
     @staticmethod
     def is_evt(path):
         """Does the file specified by this path look like a valid EVT file?"""
-        parts = EVT.parse_evt_path(path)
+        parts = EVT._parse_evt_path(path)
         return bool(parts["file"] and EVT.file_re.match(parts["file"]))
 
     @staticmethod
-    def parse_evt_path(path):
+    def _parse_evt_path(path):
         """Return a dict with entries for 'julian' dir and 'file' name"""
         d = { "julian": None, "file": None }
         parts = splitpath(path)
@@ -340,7 +340,12 @@ class EVT(object):
 
     @staticmethod
     def transform(vals):
-        """Convert log SeaFlow data to linear"""
+        """Exponentiate logged SeaFlow data.
+
+        SeaFlow data is stored as log values over 3.5 decades on a 16-bit
+        linear scale. This functions exponentiates those values onto a linear
+        scale from 1 to 10**3.5.
+        """
         return 10**((vals / 2**16) * 3.5)
 
     def __init__(self, path=None, fileobj=None, read_data=True,
@@ -370,7 +375,7 @@ class EVT(object):
         self.stats = {}  # min, max, mean for each channel of OPP data
 
         if read_data:
-            self.read_evt()
+            self._read_evt()
 
         if transform:
             self.transform_evt()
@@ -385,7 +390,7 @@ class EVT(object):
     def __str__(self):
         return self.__repr__()
 
-    def isgz(self):
+    def _isgz(self):
         """Is file gzipped?"""
         return self.path and self.path.endswith(".gz")
 
@@ -395,7 +400,7 @@ class EVT(object):
         If there is no julian directory in path, just return file name. Always
         remove ".gz" extensions.
         """
-        parts = self.parse_evt_path(self.path)
+        parts = self._parse_evt_path(self.path)
         jpath = parts["file"]
         if parts["julian"]:
             jpath = os.path.join(parts["julian"], jpath)
@@ -403,24 +408,24 @@ class EVT(object):
             jpath = jpath[:-len(".gz")]
         return jpath
 
-    def open(self):
+    def _open(self):
         """Return an EVT file-like object for reading."""
         handle = None
         if self.fileobj:
-            if self.isgz():
+            if self._isgz():
                 handle = gzip.GzipFile(fileobj=self.fileobj)
             else:
                 handle = self.fileobj
         else:
-            if self.isgz():
+            if self._isgz():
                 handle = gzip.GzipFile(self.path, "rb")
             else:
                 handle = open(self.path, "rb")
         return handle
 
-    def read_evt(self):
+    def _read_evt(self):
         """Read an EVT binary file and return a Pandas DataFrame."""
-        with self.open() as fh:
+        with self._open() as fh:
             # Particle count (rows of data) is stored in an initial 32-bit
             # unsigned int
             buff = fh.read(4)
@@ -443,10 +448,14 @@ class EVT(object):
             particles = np.fromstring(buff, dtype="uint16", count=rowcnt*12)
             # Reshape into a matrix of 12 columns and one row per particle
             particles = np.reshape(particles, [rowcnt, 12])
-            # Create a Pandas DataFrame. The first two zeroed uint16s from
-            # start of each row are left out. These empty ints are an
-            # idiosyncrasy of LabVIEW's binary output format. Label each
-            # column with a descriptive name.
+            # Create a Pandas DataFrame with descriptive column names.
+            #
+            # The first two uint16s [0,10] from start of each row are left out.
+            # These ints are an idiosyncrasy of LabVIEW's binary output format.
+            # I believe they're supposed to serve as EOL signals (NULL,
+            # linefeed in ASCII), but because the last line doesn't have them
+            # it's easier to treat them as leading ints on each line after the
+            # header.
             self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
                                     columns=self.cols)
 
@@ -525,7 +534,7 @@ class EVT(object):
         self.width = width
 
     def transform_evt(self):
-        """Linearize EVT data in-place
+        """Unlog EVT data in-place
 
         Returns a reference to the EVT DataFrame
         """
@@ -535,7 +544,7 @@ class EVT(object):
         return self.transform_particles(self.evt, inplace=True)
 
     def transform_opp(self):
-        """Linearize OPP data in-place
+        """Unlog OPP data in-place
 
         Returns a reference to the OPP DataFrame
         """
@@ -545,7 +554,7 @@ class EVT(object):
         return self.transform_particles(self.opp, inplace=True)
 
     def transform_particles(self, particles, inplace=False):
-        """Linearize particle data.
+        """Unlog particle data.
 
         Arguments:
             inplace: Modify particles DataFrame in-place
@@ -562,15 +571,15 @@ class EVT(object):
         """Calculate min, max, mean for each channel of OPP data"""
         if self.opp_count == 0:
             return
-        return self.calc_stats(self.opp)
+        return self._calc_stats(self.opp)
 
     def calc_evt_stats(self):
         """Calculate min, max, mean for each channel of OPP data"""
         if self.evt_count == 0:
             return
-        return self.calc_stats(self.evt)
+        return self._calc_stats(self.evt)
 
-    def calc_stats(self, particles):
+    def _calc_stats(self, particles):
         """Calculate min, max, mean for each channel of particle data"""
         stats = {}
         df = self.transform_particles(particles)
@@ -667,12 +676,12 @@ class EVT(object):
             header.tofile(fh)
 
             # Write particle data
-            self.create_opp_for_binary().tofile(fh)
+            self._create_opp_for_binary().tofile(fh)
 
         if gz:
             gzip_file(outfile)
 
-    def create_opp_for_binary(self):
+    def _create_opp_for_binary(self):
         """Return a copy of opp ready to write to binary file"""
         if self.opp is None:
             return
