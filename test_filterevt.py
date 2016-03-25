@@ -1,16 +1,12 @@
 import filterevt
 import numpy as np
 import numpy.testing as npt
+import os
 import pandas as pd
 import pytest
 import sqlite3
 from subprocess import check_output
 
-
-scope1_local = pytest.mark.skipif(
-    not pytest.config.getoption("--scope1_local"),
-    reason="need --scope1_local option to run"
-)
 s3 = pytest.mark.skipif(
     not pytest.config.getoption("--s3"),
     reason="need --s3 option to run"
@@ -18,7 +14,7 @@ s3 = pytest.mark.skipif(
 
 @pytest.fixture()
 def evt():
-    return filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
+    return filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00")
 
 @pytest.fixture()
 def tmpout(tmpdir, evt):
@@ -34,37 +30,37 @@ def tmpout(tmpdir, evt):
 
 class TestOpen:
     def test_read_valid_evt(self):
-        evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00")
+        evt = filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00")
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
-        assert evt.path == "testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.path == "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00"
         assert evt.evt_transformed == False
 
     def test_read_valid_evt_and_transform(self):
-        evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-00-02+00-00",
+        evt = filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
                             transform=True)
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
-        assert evt.path == "testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.path == "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00"
         assert evt.evt_transformed == True
 
     def test_read_valid_gz_evt(self):
-        evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-03-02+00-00.gz")
+        evt = filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
-        assert evt.path == "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
+        assert evt.path == "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
 
     def test_read_empty_evt(self):
         with pytest.raises(filterevt.EVTFileError):
-            evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-06-02+00-00")
+            evt = filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_bad_header_count_evt(self):
         with pytest.raises(filterevt.EVTFileError):
-            evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-09-02+00-00")
+            evt = filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_short_header_evt(self):
         with pytest.raises(filterevt.EVTFileError):
-            evt = filterevt.EVT("testcruise/2014_185/2014-07-04T00-12-02+00-00")
+            evt = filterevt.EVT("tests/testcruise/2014_185/2014-07-04T00-12-02+00-00")
 
 class TestPathFilenameParsing:
     def test_is_evt(self):
@@ -134,23 +130,23 @@ class TestPathFilenameParsing:
 
     def test_parse_file_list(self):
         files = [
-            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
             "not_evt_file",
-            "testcruise/2014_185/100.evt",
-            "testcruise/2014_185/200.evt.gz",
+            "tests/testcruise/2014_185/100.evt",
+            "tests/testcruise/2014_185/200.evt.gz",
         ]
         parsed = filterevt.parse_file_list(files)
         assert parsed == (files[:2] + files[3:])
 
     def test_find_evt_files(self):
-        files = filterevt.find_evt_files("testcruise")
+        files = filterevt.find_evt_files("tests/testcruise")
         answer = [
-            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "testcruise/2014_185/2014-07-04T00-06-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-09-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise/2014_185/2014-07-04T00-06-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-09-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
         assert files == answer
 
@@ -348,12 +344,13 @@ class TestMultiFileFilter:
             filterevt.filter_files()
 
     def test_multi_file_filter_local(self, tmpout):
+        """Test multi-file filtering and ensure output can be read back OK"""
         files = [
-            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "testcruise/2014_185/2014-07-04T00-06-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-09-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise/2014_185/2014-07-04T00-06-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-09-02+00-00",
+            "tests/testcruise/2014_185/2014-07-04T00-12-02+00-00"
         ]
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
@@ -367,7 +364,7 @@ class TestMultiFileFilter:
         evts = [filterevt.EVT(files[0]), filterevt.EVT(files[1])]
         for evt in evts:
             evt.filter()
-            evt.calc_opp_stats()
+            evt.stats = evt.calc_opp_stats()
 
         opps = [
             filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
@@ -381,9 +378,11 @@ class TestMultiFileFilter:
             evt = evts[i]
             row = sqlitedf.iloc[i]
             for channel in evt.stats:
+                if channel in ["D1", "D2"]:
+                    continue
                 for stat in ["min", "max", "mean"]:
                     k = channel + "_" + stat
-                    assert evt.transform(evt.stats[channel][stat]) == row[k]
+                    assert evt.stats[channel][stat] == row[k]
             npt.assert_array_equal(
                 [
                     evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
@@ -396,6 +395,7 @@ class TestMultiFileFilter:
 
     @s3
     def test_multi_file_filter_S3(self, tmpout):
+        """Test S3 multi-file filtering and ensure output can be read back OK"""
         files = filterevt.get_s3_files("testcruise", filterevt.SEAFLOW_BUCKET)
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
@@ -405,10 +405,14 @@ class TestMultiFileFilter:
             db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             filter_options=filt_opts, s3=True, s3_bucket=filterevt.SEAFLOW_BUCKET)
 
-        evts = [filterevt.EVT(files[0]), filterevt.EVT(files[1])]
+        evts = [
+            filterevt.EVT(os.path.join("tests", files[0])),
+            filterevt.EVT(os.path.join("tests", files[1]))
+        ]
         for evt in evts:
             evt.filter()
             evt.calc_opp_stats()
+            evt.stats = evt.calc_opp_stats()
 
         opps = [
             filterevt.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
@@ -422,9 +426,11 @@ class TestMultiFileFilter:
             evt = evts[i]
             row = sqlitedf.iloc[i]
             for channel in evt.stats:
+                if channel in ["D1", "D2"]:
+                    continue
                 for stat in ["min", "max", "mean"]:
                     k = channel + "_" + stat
-                    assert evt.transform(evt.stats[channel][stat]) == row[k]
+                    assert evt.stats[channel][stat] == row[k]
             npt.assert_array_equal(
                 [
                     evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
@@ -435,14 +441,14 @@ class TestMultiFileFilter:
             )
             npt.assert_array_equal(evts[i].opp, opps[i].evt)
 
-    @scope1_local
-    def test_SCOPE_1_first_19_local_against_popcycle(self, tmpout):
-        files = filterevt.find_evt_files("SCOPE_1")
+    def test_multi_file_filter_against_popcycle(self, tmpout):
+        """Make sure Python filtering results equal popcycle deda9a8 results"""
+        files = filterevt.find_evt_files("tests/testcruise")
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
             "width": 0.5
         }
-        filterevt.filter_files(files=files[:19], cpus=2, cruise="SCOPE_1",
+        filterevt.filter_files(files=files[:19], cpus=2, cruise="testcruise",
                                db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
                                filter_options=filt_opts)
         con = sqlite3.connect(tmpout["db"])
@@ -451,7 +457,7 @@ class TestMultiFileFilter:
 
         # This db was created with the R script test_filter_SCOPE_1.R using
         # popcycle revision deda9a8.
-        con = sqlite3.connect("./popcycle-SCOPE_1-first20.db")
+        con = sqlite3.connect("tests/popcycle-testcruise.db")
         opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, particle", con)
         filter_R = pd.read_sql("SELECT * FROM filter ORDER BY file", con)
         con.close()
