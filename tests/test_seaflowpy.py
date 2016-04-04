@@ -443,60 +443,6 @@ class TestMultiFileFilter:
             )
             npt.assert_array_equal(evts[i].opp, opps[i].evt)
 
-    @s3
-    def test_multi_file_filter_S3(self, tmpout):
-        """Test S3 multi-file filtering and ensure output can be read back OK"""
-        files = sp.aws.get_s3_files("testcruise", "armbrustlab.seaflow")
-        files = sp.evt.parse_evt_file_list(files)
-        filt_opts = {
-            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 0.5
-        }
-
-        # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we set multiprocessing=False here
-        sp.filterevt.filter_evt_files(
-            files=files, cpus=1, cruise="testcruise",
-            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, s3=True, s3_bucket="armbrustlab.seaflow",
-            multiprocessing=False)
-
-        evts = [
-            sp.EVT(files[0]),
-            sp.EVT(files[1])
-        ]
-        for evt in evts:
-            evt.filter()
-            evt.calc_opp_stats()
-            evt.stats = evt.calc_opp_stats()
-
-        opps = [
-            sp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
-            sp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
-        ]
-
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp ORDER BY file", con)
-
-        for i in [0, 1]:
-            evt = evts[i]
-            row = sqlitedf.iloc[i]
-            for channel in evt.stats:
-                if channel in ["D1", "D2"]:
-                    continue
-                for stat in ["min", "max", "mean"]:
-                    k = channel + "_" + stat
-                    assert evt.stats[channel][stat] == row[k]
-            npt.assert_array_equal(
-                [
-                    evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
-                    evt.notch2, evt.offset, evt.origin, evt.width
-                ],
-                row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                    "notch2", "offset", "origin", "width"]].as_matrix()
-            )
-            npt.assert_array_equal(evts[i].opp, opps[i].evt)
-
     def test_multi_file_filter_against_popcycle(self, tmpout):
         """Make sure Python filtering results equal popcycle deda9a8 results"""
         files = sp.find_evt_files("tests/testcruise")
@@ -558,3 +504,57 @@ class TestMultiFileFilter:
         npt.assert_array_equal(
             filter_python["opp_evt_ratio"],
             filter_R["opp_evt_ratio"])
+
+    @s3
+    def test_multi_file_filter_S3(self, tmpout):
+        """Test S3 multi-file filtering and ensure output can be read back OK"""
+        files = sp.aws.get_s3_files("testcruise", "armbrustlab.seaflow")
+        files = sp.evt.parse_evt_file_list(files)
+        filt_opts = {
+            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+            "width": 0.5
+        }
+
+        # python setup.py test doesn't play nice with pytest and
+        # multiprocessing, so we set multiprocessing=False here
+        sp.filterevt.filter_evt_files(
+            files=files, cpus=1, cruise="testcruise",
+            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            filter_options=filt_opts, s3=True, s3_bucket="armbrustlab.seaflow",
+            multiprocessing=False)
+
+        evts = [
+            sp.EVT(os.path.join("tests", files[0])),
+            sp.EVT(os.path.join("tests", files[1]))
+        ]
+        for evt in evts:
+            evt.filter()
+            evt.calc_opp_stats()
+            evt.stats = evt.calc_opp_stats()
+
+        opps = [
+            sp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
+            sp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
+        ]
+
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM opp ORDER BY file", con)
+
+        for i in [0, 1]:
+            evt = evts[i]
+            row = sqlitedf.iloc[i]
+            for channel in evt.stats:
+                if channel in ["D1", "D2"]:
+                    continue
+                for stat in ["min", "max", "mean"]:
+                    k = channel + "_" + stat
+                    assert evt.stats[channel][stat] == row[k]
+            npt.assert_array_equal(
+                [
+                    evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
+                    evt.notch2, evt.offset, evt.origin, evt.width
+                ],
+                row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
+                    "notch2", "offset", "origin", "width"]].as_matrix()
+            )
+            npt.assert_array_equal(evts[i].opp, opps[i].evt)
