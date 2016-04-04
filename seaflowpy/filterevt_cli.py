@@ -25,7 +25,7 @@ def parse_args(args):
     g_in.add_argument("--evt_dir",
                    help="EVT directory path (required unless --files or --s3)")
     g_in.add_argument("--s3", default=False, action="store_true",
-                   help="""Read EVT files from s3://seaflowdata/CRUISE where
+                   help="""Read EVT files from s3://S3_BUCKET/CRUISE where
                         cruise is provided by --cruise (required unless --files
                         or --evt_dir)""")
 

@@ -14,12 +14,12 @@ import util
 class EVT(object):
     """Class for EVT data operations"""
     # Data columns
-    _cols = [
+    all_columns = [
         "time", "pulse_width", "D1", "D2", "fsc_small", "fsc_perp", "fsc_big",
         "pe", "chl_small", "chl_big"
     ]
-    _int_cols = _cols[:2]
-    _float_cols = _cols[2:]
+    all_int_columns = all_columns[:2]
+    all_float_columns = all_columns[2:]
 
     @staticmethod
     def transform(vals):
@@ -49,14 +49,15 @@ class EVT(object):
 
         # Columns to keep. None means keep all
         if columns is None:
-            self.columns = self._cols
+            self.columns = self.all_columns
         else:
             # Keep in file order
             # Only keep if name matches a real column
-            self.columns = [c for c in self._cols if c in columns]
-            # Update lists of integer and float columns
-            self._int_cols = [c for c in self._int_cols if c in columns]
-            self._float_cols = [c for c in self._float_cols if c in columns]
+            self.columns = [c for c in self.all_columns if c in columns]
+
+        # Update lists of integer and float columns
+        self.int_columns = [c for c in self.all_int_columns if c in self.columns]
+        self.float_columns = [c for c in self.all_float_columns if c in self.columns]
 
         # Set filter params to None
         # Should be set in filter()
@@ -149,10 +150,10 @@ class EVT(object):
             # it's easier to treat them as leading ints on each line after the
             # header.
             self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
-                                    columns=self._cols)
+                                    columns=self.all_columns)
             # Keep a subset of columns
-            if self.columns != self._cols:
-                todrop = [c for c in self._cols if c not in self.columns]
+            if self.columns != self.all_columns:
+                todrop = [c for c in self.all_columns if c not in self.columns]
                 self.evt = self.evt.drop(todrop, axis=1)
 
             # Convert to float64
@@ -260,8 +261,8 @@ class EVT(object):
         """
         if not inplace:
             particles = particles.copy()
-        if self._float_cols:
-            particles[self._float_cols] = self.transform(particles[self._float_cols])
+        if self.float_columns:
+            particles[self.float_columns] = self.transform(particles[self.float_columns])
         return particles
 
     def calc_opp_stats(self):
@@ -280,7 +281,7 @@ class EVT(object):
         """Calculate min, max, mean for each channel of particle data"""
         stats = {}
         df = self.transform_particles(particles)
-        for channel in self._float_cols:
+        for channel in self.float_columns:
             stats[channel] = {
                 "min": df[channel].min(),
                 "max": df[channel].max(),
@@ -337,7 +338,7 @@ class EVT(object):
         }
 
         stats = self.calc_opp_stats()
-        for channel in self._float_cols:
+        for channel in self.float_columns:
             if channel in ["D1", "D2"]:
                 continue
             vals[channel + "_min"] = stats[channel]["min"]
