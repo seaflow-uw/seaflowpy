@@ -14,7 +14,10 @@ cd seaflowpy
 python setup.py install
 ```
 
-You can now import a python package called `seaflowpy` and a new executable `filterevt` should be available in your path.
+This installs:
+
+* the `seaflowpy` Python package
+* `filterevt`, a command-line script for filtering EVT data
 
 ### Test
 You can test that `seaflowpy` is working properly on your system with
@@ -25,10 +28,10 @@ python setup.py test
 
 ## seaflowpy package
 
-See [https://github.com/armbrustlab/seaflowpy/blob/master/seaflowpy_example.ipynb](https://github.com/armbrustlab/seaflowpy/blob/master/seaflowpy_example.ipynb) for an iPython notebook walkthrough of using the seaflowpy package to read EVT files.
+See [https://github.com/armbrustlab/seaflowpy/blob/master/seaflowpy_example.ipynb](https://github.com/armbrustlab/seaflowpy/blob/master/seaflowpy_example.ipynb) for an iPython notebook walkthrough on using the seaflowpy package to read EVT files.
 
 ## Command-line filtering with filterevt
-filterevt will filter a set of EVT files and save aggregate statistics and filter parameters into a new `popcycle` SQLite3 database file. If `opp_dir` is specified the filtered particle data will be saved in a directory whose structure mirrors the original EVT directory.
+`filterevt` will filter a set of EVT files and save aggregate statistics and filter parameters into a new `popcycle` SQLite3 database file. If `opp_dir` is specified, the filtered particle data will be saved in a directory whose structure mirrors the original EVT directory.
 
 
 
