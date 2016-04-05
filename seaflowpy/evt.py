@@ -1,3 +1,4 @@
+import db
 import errors
 import glob
 import gzip
@@ -291,7 +292,7 @@ class EVT(object):
             }
         return stats
 
-    def save_opp_to_db(self, cruise_name, filter_id, db):
+    def save_opp_to_db(self, cruise_name, filter_id, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
@@ -347,14 +348,15 @@ class EVT(object):
             vals[channel + "_max"] = stats[channel]["max"]
             vals[channel + "_mean"] = stats[channel]["mean"]
 
+        # Erase existing entry first
+        sql_delete = "DELETE FROM opp WHERE cruise = '%s' AND file == '%s'" % \
+            (vals["cruise"], vals["file"])
+        db.execute(dbpath, sql_delete)
+
         # Construct values string with named placeholders
         values_str = ", ".join([":" + f for f in fields])
-
-        sql = "INSERT INTO opp VALUES (%s)" % values_str
-        con = sqlite3.connect(db, timeout=120)
-        cur = con.cursor()
-        cur.execute(sql, vals)
-        con.commit()
+        sql_insert = "INSERT INTO opp VALUES (%s)" % values_str
+        db.execute(dbpath, sql_insert, vals)
 
     def write_opp_binary(self, outfile):
         """Write opp to LabView binary file.

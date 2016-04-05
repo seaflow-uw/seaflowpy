@@ -144,13 +144,20 @@ def save_filter_params(dbpath, filter_options):
     Returns:
         UUID primary key for this entry in filter table
     """
-    opts = dict(filter_options)  # Make a copy to preserve original
-    opts["date"] = util.iso8601_now()  # Datestamp for right now
-    opts["id"] = str(uuid.uuid4())
-    values = "(:id, :date, :notch1, :notch2, :offset, :origin, :width)"
-    sql = "INSERT INTO filter VALUES %s" % values
-    con = sqlite3.connect(dbpath)
-    con.execute(sql, opts)
+    values = dict(filter_options)  # Make a copy to preserve original
+    values["date"] = util.iso8601_now()  # Datestamp for right now
+    values["id"] = str(uuid.uuid4())
+
+    values_str = "(:id, :date, :notch1, :notch2, :offset, :origin, :width)"
+    sql = "INSERT INTO filter VALUES %s" % values_str
+    execute(dbpath, sql, values)
+    return values["id"]
+
+def execute(dbpath, sql, values=None, timeout=120):
+    con = sqlite3.connect(dbpath, timeout=timeout)
+    if values is not None:
+        con.execute(sql, values)
+    else:
+        con.execute(sql)
     con.commit()
     con.close()
-    return opts["id"]

@@ -367,7 +367,7 @@ class TestOutput:
                 "notch2", "offset", "origin", "width"]].as_matrix()[0]
         )
 
-    def test_sqlite3_opp(self, tmpout_single):
+    def test_sqlite3_opp_stats(self, tmpout_single):
         tmpout = tmpout_single
         evt = tmpout["evt"]
         evt.filter(offset=0.0, width=0.5)
@@ -382,6 +382,26 @@ class TestOutput:
             for stat in ["min", "max", "mean"]:
                 k = channel + "_" + stat
                 assert stats[channel][stat] == row[k]
+
+    def test_sqlite3_opp_overwrite(self, tmpout_single):
+        tmpout = tmpout_single
+        opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+                "width": 0.5}
+        evt = tmpout["evt"]
+        evt.filter(**opts)
+        evt.save_opp_to_db("testcruise", "UUID1", tmpout["db"])
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
+        assert "UUID1" == sqlitedf.filter_id[0]
+        assert len(sqlitedf) == 1
+
+        evt.save_opp_to_db("testcruise", "UUID2", tmpout["db"])
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
+        # There should only be one filter entry and it should
+        # have filter_id == UUID2
+        assert "UUID2" == sqlitedf.filter_id[0]
+        assert len(sqlitedf) == 1
 
     def test_binary_opp(self, tmpout_single):
         tmpout = tmpout_single
