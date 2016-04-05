@@ -480,7 +480,8 @@ class TestMultiFileFilter:
         opps = []
         ints = sfp.EVT.all_int_columns
         floats = sfp.EVT.all_float_columns
-        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00.opp.gz")):
+        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00.opp.gz"),
+                                        sort=True):
             opp = sfp.EVT(str(f))
             # Make OPP evt dataframe look like dataframe that popcycle creates
             # without file and cruise columns
