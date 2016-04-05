@@ -28,6 +28,8 @@ class EVT(object):
         SeaFlow data is stored as log values over 3.5 decades on a 16-bit
         linear scale. This functions exponentiates those values onto a linear
         scale from 1 to 10**3.5.
+
+        Note: This will convert to float64
         """
         return 10**((vals / 2**16) * 3.5)
 
@@ -156,8 +158,8 @@ class EVT(object):
                 todrop = [c for c in self.all_columns if c not in self.columns]
                 self.evt = self.evt.drop(todrop, axis=1)
 
-            # Convert to float64
-            self.evt = self.evt.astype(np.float64)
+            # Convert to float32
+            self.evt = self.evt.astype(np.float32)
 
             # Record the original number of particles
             self.evt_count = len(self.evt.index)
