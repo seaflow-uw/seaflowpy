@@ -262,8 +262,18 @@ class TestFilter:
             'fsc_small': {'max': 1166.1984528866317, 'mean': 23.187903329680267, 'min': 1.1612919251372618},
             'pe': {'max': 1269.1578052463431, 'mean': 74.84328753100617, 'min': 1.0}
         }
-        assert evt_stats == evt_answer
-        assert opp_stats == opp_answer
+
+        # Results can differ in least significant digits depending on how numpy
+        # is installed and used (e.g. if you use the Intel Math Library), so
+        # convert to an array and compare with set precision.
+        def answer2array(answer):
+            array = []
+            for k in sorted(answer):  # D1, D2, chl_big, etc ...
+                array.append([answer[k]["max"], answer[k]["mean"], answer[k]["min"]])
+            return array
+
+        npt.assert_array_almost_equal(answer2array(evt_stats), answer2array(evt_answer), decimal=10)
+        npt.assert_array_almost_equal(answer2array(opp_stats), answer2array(opp_answer), decimal=10)
 
     def test_stats_does_not_modify(self, evt):
         evt.filter()
