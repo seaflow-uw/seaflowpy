@@ -168,6 +168,12 @@ class EVT(object):
             # Record the number of particles reported in the header
             self.headercnt = rowcnt
 
+    def erase_evt(self):
+        """Erase the evt particle data."""
+        self.evt = None
+        self.headercnt = 0
+        self.evt_count = 0
+
     def filter(self, notch1=None, notch2=None, offset=0.0,
                origin=None, width=0.5):
         """Filter EVT particle data."""
@@ -297,41 +303,6 @@ class EVT(object):
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
             return
 
-        # NOTE: values inserted must be in the same order as fields in opp
-        # table. Defining that order in a list here makes it easier to verify
-        # that the right order is used.
-        fields = [
-            "cruise",
-            "file",
-            "opp_count",
-            "evt_count",
-            "opp_evt_ratio",
-            "notch1",
-            "notch2",
-            "offset",
-            "origin",
-            "width",
-            "fsc_small_min",
-            "fsc_small_max",
-            "fsc_small_mean",
-            "fsc_perp_min",
-            "fsc_perp_max",
-            "fsc_perp_mean",
-            "fsc_big_min",
-            "fsc_big_max",
-            "fsc_big_mean",
-            "pe_min",
-            "pe_max",
-            "pe_mean",
-            "chl_small_min",
-            "chl_small_max",
-            "chl_small_mean",
-            "chl_big_min",
-            "chl_big_max",
-            "chl_big_mean",
-            "filter_id",
-        ]
-
         vals = {
             "cruise": cruise_name, "file": self.get_julian_path(),
             "opp_count": self.opp_count, "evt_count": self.evt_count,
@@ -348,15 +319,7 @@ class EVT(object):
             vals[channel + "_max"] = stats[channel]["max"]
             vals[channel + "_mean"] = stats[channel]["mean"]
 
-        # Erase existing entry first
-        sql_delete = "DELETE FROM opp WHERE cruise = '%s' AND file == '%s'" % \
-            (vals["cruise"], vals["file"])
-        db.execute(dbpath, sql_delete)
-
-        # Construct values string with named placeholders
-        values_str = ", ".join([":" + f for f in fields])
-        sql_insert = "INSERT INTO opp VALUES (%s)" % values_str
-        db.execute(dbpath, sql_insert, vals)
+        db.save_opp_stats(dbpath, vals)
 
     def write_opp_binary(self, outfile):
         """Write opp to LabView binary file.
@@ -462,3 +425,25 @@ def parse_evt_file_list(files):
             if is_evt(f):
                 files_list.append(f)
     return files_list
+
+def concat_evts(evts, chunksize=500):
+    """Concatenate evt DataFrames in a list of EVT objects.
+
+    This operation will erase the underlying EVT.evt DataFrames as they are
+    added to the single concatenated DataFrame in order to limit memory usage.
+    DataFrames are appended and erased in configurable chunks of the EVT list
+    to balance performance with reasonable memory management.
+    """
+    if evts:
+        evtdf = evts[0].evt.copy()
+        evts[0].erase_evt()
+
+        i = 1
+        while i < len(evts):
+            evtdf = evtdf.append([e.evt for e in evts[i:i+chunksize]])
+            for j in range(i, i + chunksize):
+                if j >= len(evts):
+                    break
+                    evts[j].erase_evt()
+            i += chunksize
+        return evtdf

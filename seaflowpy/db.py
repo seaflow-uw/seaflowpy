@@ -153,6 +153,54 @@ def save_filter_params(dbpath, filter_options):
     execute(dbpath, sql, values)
     return values["id"]
 
+
+def save_opp_stats(dbpath, vals):
+    # NOTE: values inserted must be in the same order as fields in opp
+    # table. Defining that order in a list here makes it easier to verify
+    # that the right order is used.
+    field_order = [
+        "cruise",
+        "file",
+        "opp_count",
+        "evt_count",
+        "opp_evt_ratio",
+        "notch1",
+        "notch2",
+        "offset",
+        "origin",
+        "width",
+        "fsc_small_min",
+        "fsc_small_max",
+        "fsc_small_mean",
+        "fsc_perp_min",
+        "fsc_perp_max",
+        "fsc_perp_mean",
+        "fsc_big_min",
+        "fsc_big_max",
+        "fsc_big_mean",
+        "pe_min",
+        "pe_max",
+        "pe_mean",
+        "chl_small_min",
+        "chl_small_max",
+        "chl_small_mean",
+        "chl_big_min",
+        "chl_big_max",
+        "chl_big_mean",
+        "filter_id",
+    ]
+
+    # Erase existing entry first
+    sql_delete = "DELETE FROM opp WHERE cruise = '%s' AND file == '%s'" % \
+        (vals["cruise"], vals["file"])
+    execute(dbpath, sql_delete)
+
+    # Construct values string with named placeholders
+    values_str = ", ".join([":" + f for f in field_order])
+    sql_insert = "INSERT INTO opp VALUES (%s)" % values_str
+    execute(dbpath, sql_insert, vals)
+
+
 def execute(dbpath, sql, values=None, timeout=120):
     con = sqlite3.connect(dbpath, timeout=timeout)
     if values is not None:

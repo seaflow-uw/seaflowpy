@@ -218,8 +218,8 @@ class TestFilter:
         assert evt.width == 0.75
         assert evt.offset == 100
         assert evt.origin == -1000
-        npt.assert_almost_equal(evt.notch1, 1.5, decimal=22)
-        npt.assert_almost_equal(evt.notch2, 1.1, decimal=22)
+        npt.assert_allclose(evt.notch1, 1.5)
+        npt.assert_allclose(evt.notch2, 1.1)
 
     def test_filter_twice_overwrites_old_results(self, evt):
         evt.filter()
@@ -235,8 +235,8 @@ class TestFilter:
         assert evt.width == 0.75
         assert evt.offset == 100
         assert evt.origin == -1000
-        npt.assert_almost_equal(evt.notch1, 1.5, decimal=22)
-        npt.assert_almost_equal(evt.notch2, 1.1, decimal=22)
+        npt.assert_allclose(evt.notch1, 1.5)
+        npt.assert_allclose(evt.notch2, 1.1)
 
     def test_stats(self, evt):
         evt.filter()
@@ -272,8 +272,8 @@ class TestFilter:
                 array.append([answer[k]["max"], answer[k]["mean"], answer[k]["min"]])
             return array
 
-        npt.assert_array_almost_equal(answer2array(evt_stats), answer2array(evt_answer), decimal=10)
-        npt.assert_array_almost_equal(answer2array(opp_stats), answer2array(opp_answer), decimal=10)
+        npt.assert_allclose(answer2array(evt_stats), answer2array(evt_answer))
+        npt.assert_allclose(answer2array(opp_stats), answer2array(opp_answer))
 
     def test_stats_does_not_modify(self, evt):
         evt.filter()
@@ -332,6 +332,20 @@ class TestTransform:
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_evt)
 
+class TestConcat:
+    def test_concat_evts(self, tmpout):
+        files = sfp.find_evt_files("tests/testcruise")
+        evts = []
+        try:
+            for f in files:
+                evts.append(sfp.EVT(f, transform=True))
+        except sfp.errors.EVTFileError as e:
+            pass
+        evts_n = sum([e.evt_count for e in evts])
+        evts_fsc_small_sum = sum([e.evt["fsc_small"].sum() for e in evts])
+        evt = sfp.concat_evts(evts)
+        assert evts_n == len(evt)
+        npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
 
 class TestOutput:
     def test_sqlite3_filter_params(self, tmpout):
@@ -510,10 +524,9 @@ class TestMultiFileFilter:
             opp.evt.insert(0, "particle", np.arange(1, opp.evt_count+1, dtype=np.int64))
             opps.append(opp)
         opp_python = pd.concat([o.evt for o in opps])
-        npt.assert_array_almost_equal(
+        npt.assert_allclose(
             opp_python.as_matrix(),
-            opp_R.drop(["cruise", "file"], axis=1).as_matrix(),
-            decimal=12
+            opp_R.drop(["cruise", "file"], axis=1).as_matrix()
         )
 
         npt.assert_array_equal(
@@ -585,6 +598,6 @@ class TestMultiFileFilter:
                     evt.notch2, evt.offset, evt.origin, evt.width
                 ],
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                    "notch2", "offset", "origin", "width"]].as_matrix()
+                    "notch2", "offset", "origin", "width"]]
             )
             npt.assert_array_equal(evts[i].opp, opps[i].evt)
