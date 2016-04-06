@@ -426,7 +426,7 @@ def parse_evt_file_list(files):
                 files_list.append(f)
     return files_list
 
-def concat_evts(evts, chunksize=500):
+def concat_evts(evts, chunksize=500, erase=False):
     """Concatenate evt DataFrames in a list of EVT objects.
 
     This operation will erase the underlying EVT.evt DataFrames as they are
@@ -436,7 +436,8 @@ def concat_evts(evts, chunksize=500):
     """
     if evts:
         evtdf = evts[0].evt.copy()
-        evts[0].erase_evt()
+        if erase:
+            evts[0].erase_evt()
 
         i = 1
         while i < len(evts):
@@ -444,6 +445,7 @@ def concat_evts(evts, chunksize=500):
             for j in range(i, i + chunksize):
                 if j >= len(evts):
                     break
-                    evts[j].erase_evt()
+                    if erase:
+                        evts[j].erase_evt()
             i += chunksize
         return evtdf

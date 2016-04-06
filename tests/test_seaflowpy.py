@@ -325,7 +325,7 @@ class TestTransform:
         orig_df = evt.evt.copy()
         t_evt = evt.transform_particles(evt.evt, inplace=False)
         # Returned a copy
-        assert not t_evt is evt.evt
+        assert t_evt is not evt.evt
         # The input is unchanged
         npt.assert_array_equal(orig_df, evt.evt)
         # The returned copy is different from original version of input
@@ -343,9 +343,18 @@ class TestConcat:
             pass
         evts_n = sum([e.evt_count for e in evts])
         evts_fsc_small_sum = sum([e.evt["fsc_small"].sum() for e in evts])
-        evt = sfp.concat_evts(evts)
+
+        evt = sfp.concat_evts(evts, chunksize=1)
         assert evts_n == len(evt)
         npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
+        assert evts[0].evt is not None
+
+        evt = sfp.concat_evts(evts, chunksize=1, erase=True)
+        assert evts_n == len(evt)
+        npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
+        assert evts[0].evt is None
+
+
 
 class TestOutput:
     def test_sqlite3_filter_params(self, tmpout):
