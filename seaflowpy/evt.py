@@ -1,18 +1,15 @@
 import db
 import errors
-import glob
-import gzip
 import numpy as np
-import os
 import pandas as pd
 import pprint
 import re
-import sqlite3
+import seaflowfile
 import sys
 import util
 
 
-class EVT(object):
+class EVT(seaflowfile.SeaflowFile):
     """Class for EVT data operations"""
     # Data columns
     all_columns = [
@@ -36,11 +33,7 @@ class EVT(object):
 
     def __init__(self, path=None, fileobj=None, read_data=True,
                  transform=False, columns=None):
-        # If fileobj is set, read data from this object. The path will be used
-        # to set the file name in the database and detect compression.
-        self.path = path  # EVT file path, local or in S3
-        self.fileobj = fileobj  # EVT data in file object
-
+        seaflowfile.SeaflowFile.__init__(self, path, fileobj)
         self.headercnt = 0
         self.evt_count = 0
         self.opp_count = 0
@@ -76,48 +69,12 @@ class EVT(object):
         if transform:
             self.transform_evt()
 
-    def __repr__(self):
+    def __str__(self):
         keys = [
             "evt_count", "opp_count", "notch1", "notch2", "offset", "origin",
             "width", "path", "headercnt", "columns"
         ]
         return pprint.pformat({ k: getattr(self, k) for k in keys }, indent=2)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def _isgz(self):
-        """Is file gzipped?"""
-        return self.path and self.path.endswith(".gz")
-
-    def get_julian_path(self):
-        """Get the file path with julian directory.
-
-        If there is no julian directory in path, just return file name. Always
-        remove ".gz" extensions.
-        """
-        parts = parse_evt_path(self.path)
-        jpath = parts["file"]
-        if parts["julian"]:
-            jpath = os.path.join(parts["julian"], jpath)
-        if jpath.endswith(".gz"):
-            jpath = jpath[:-len(".gz")]
-        return jpath
-
-    def _open(self):
-        """Return an EVT file-like object for reading."""
-        handle = None
-        if self.fileobj:
-            if self._isgz():
-                handle = gzip.GzipFile(fileobj=self.fileobj)
-            else:
-                handle = self.fileobj
-        else:
-            if self._isgz():
-                handle = gzip.GzipFile(self.path, "rb")
-            else:
-                handle = open(self.path, "rb")
-        return handle
 
     def _read_evt(self):
         """Read an EVT binary file and return a Pandas DataFrame."""
@@ -173,6 +130,10 @@ class EVT(object):
         self.evt = None
         self.headercnt = 0
         self.evt_count = 0
+
+    def add_vct(self, vct):
+        """Add population annotations from VCT object"""
+        self.evt["pop"] = vct.vct
 
     def filter(self, notch1=None, notch2=None, offset=0.0,
                origin=None, width=0.5):
@@ -383,22 +344,8 @@ def is_evt(file_path):
         r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(?:\.opp|\.evt)?|\d+\.evt)'
         r'(?:\.gz)?$'
     )
-    parts = parse_evt_path(file_path)
+    parts = seaflowfile.parse_path(file_path)
     return bool(parts["file"] and evt_re.match(parts["file"]))
-
-
-def parse_evt_path(file_path):
-    """Return a dict with entries for 'julian' dir and 'file' name"""
-    julian_re = re.compile(r'^20\d{2}_\d{1,3}$')
-    d = { "julian": None, "file": None }
-    parts = util.splitpath(file_path)
-    if len(parts) == 1:
-        d["file"] = parts[0]
-    elif len(parts) > 1:
-        d["file"] = parts[-1]
-        if julian_re.match(parts[-2]):
-            d["julian"] = parts[-2]
-    return d
 
 
 def find_evt_files(root_dir):
@@ -426,6 +373,7 @@ def parse_evt_file_list(files):
                 files_list.append(f)
     return files_list
 
+
 def concat_evts(evts, chunksize=500, erase=False):
     """Concatenate evt DataFrames in a list of EVT objects.
 
@@ -449,3 +397,14 @@ def concat_evts(evts, chunksize=500, erase=False):
                         evts[j].erase_evt()
             i += chunksize
         return evtdf
+
+
+def combine_evts_vcts(evts, vcts):
+    """Add VCT population annotations to EVTs, matched on julian path."""
+    vct_by_path = {v.get_julian_path(): v for v in vcts}
+    evt_by_path = {e.get_julian_path(): e for e in evts}
+    for evt_path, evtobj in evt_by_path.iteritems():
+        try:
+            evtobj.evt["pop"] = vct_by_path[evt_path].vct
+        except KeyError as e:
+            print "{} has no VCT file".format(evt_path)

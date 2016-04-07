@@ -39,6 +39,14 @@ def tmpout_single(tmpout, evt):
     return tmpout
 
 
+@pytest.fixture()
+def opps_vcts():
+    return {
+        "oppdir": "tests/testcruise_opp",
+        "vctdir": "tests/testcruise_vct"
+    }
+
+
 class TestOpen:
     def test_read_valid_evt(self):
         evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00")
@@ -132,44 +140,6 @@ class TestPathFilenameParsing:
             False, False, False, False, False, False
         ]
         assert results == answers
-
-    def test_get_paths_new_style(self):
-        evt = sfp.EVT("2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-
-        evt = sfp.EVT("2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
-
-        evt = sfp.EVT("foo/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-
-        evt = sfp.EVT("foo/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014_185/2014-07-04T00-00-02+00-00"
-
-        evt = sfp.EVT("foo/bar/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-
-        evt = sfp.EVT("foo/bar/2014-07-04T00-00-02+00-00.gz", read_data=False)
-        assert evt.get_julian_path() == "2014-07-04T00-00-02+00-00"
-
-    def test_get_paths_old_style(self):
-        evt = sfp.EVT("42.evt", read_data=False)
-        assert evt.get_julian_path() == "42.evt"
-
-        evt = sfp.EVT("2014_185/42.evt", read_data=False)
-        assert evt.get_julian_path() == "2014_185/42.evt"
-
-        evt = sfp.EVT("foo/42.evt", read_data=False)
-        assert evt.get_julian_path() == "42.evt"
-
-        evt = sfp.EVT("foo/2014_185/42.evt", read_data=False)
-        assert evt.get_julian_path() == "2014_185/42.evt"
-
-        evt = sfp.EVT("foo/bar/42.evt", read_data=False)
-        assert evt.get_julian_path() == "42.evt"
-
-        evt = sfp.EVT("foo/bar/42.evt.gz", read_data=False)
-        assert evt.get_julian_path() == "42.evt"
 
     def test_parse_evt_file_list(self):
         files = [
@@ -354,6 +324,13 @@ class TestConcat:
         npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
         assert evts[0].evt is None
 
+
+class TestVCTCombine:
+    def test_combine_evts_vcts(self, opps_vcts):
+        opps = [sfp.EVT(f) for f in sfp.find_evt_files(opps_vcts["oppdir"])]
+        vcts = [sfp.VCT(f) for f in sfp.find_vct_files(opps_vcts["vctdir"])]
+        sfp.combine_evts_vcts(opps, vcts)
+        assert "pop" in opps[0].evt.columns
 
 
 class TestOutput:
