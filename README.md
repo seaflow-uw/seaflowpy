@@ -1,5 +1,4 @@
-# seaflowpy
-A Python library for working with SeaFlow data.
+A Python library for SeaFlow data.
 
 ## Installation
 

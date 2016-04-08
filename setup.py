@@ -1,8 +1,16 @@
 from setuptools import setup
 
+try:
+    import pypandoc
+    long_description = pypandoc.convert('README.md', 'rst')
+except(IOError, ImportError):
+    long_description = open('README.md').read()
+
+
 setup(name='seaflowpy',
     version='0.1.0',
-    description='A Python library for processing SeaFlow data.',
+    description='A Python library for SeaFlow data.',
+    long_description=long_description,
     url='http://github.com/armbrustlab/seaflowpy',
     author='Chris T. Berthiaume',
     author_email='chrisbee@uw.edu',
