@@ -174,12 +174,12 @@ def filter_one_file(**kwargs):
             # Might have julian day, might not
             outdir = os.path.join(
                 o["opp_dir"],
-                os.path.dirname(evt_.get_julian_path())
+                os.path.dirname(evt_.file_id)
             )
             util.mkdir_p(outdir)
             outfile = os.path.join(
                 o["opp_dir"],
-                evt_.get_julian_path() + ".opp.gz"
+                evt_.file_id + ".opp.gz"
             )
             evt_.write_opp_binary(outfile)
 

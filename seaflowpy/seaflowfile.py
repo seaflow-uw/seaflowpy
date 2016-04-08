@@ -1,8 +1,10 @@
 import gzip
+import json
 import os
 import pprint
 import re
 import util
+from collections import OrderedDict
 
 
 class SeaflowFile(object):
@@ -13,9 +15,12 @@ class SeaflowFile(object):
         # to set the file name in the database and detect compression.
         self.path = path  # file path, local or in S3
         self.fileobj = fileobj  # data in file object
+        # Identifer to match across file types (EVT/OPP/VCT)
+        self.file_id = self._get_julian_path()
 
     def __str__(self):
-        return pprint.pformat({ "path": self.path })
+        keys = ["path", "file_id"]
+        return json.dumps(OrderedDict([(k, getattr(self, k)) for k in keys]), indent=2)
 
     def _isgz(self):
         """Is file gzipped?"""
@@ -36,7 +41,7 @@ class SeaflowFile(object):
                 handle = open(self.path)
         return handle
 
-    def get_julian_path(self, remove_ext=True):
+    def _get_julian_path(self, remove_ext=True):
         """Get the file path with julian directory.
 
         If there is no julian directory in path, just return file name. If

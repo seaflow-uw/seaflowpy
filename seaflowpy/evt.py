@@ -1,5 +1,6 @@
 import db
 import errors
+import json
 import numpy as np
 import pandas as pd
 import pprint
@@ -7,6 +8,7 @@ import re
 import seaflowfile
 import sys
 import util
+from collections import OrderedDict
 
 
 class EVT(seaflowfile.SeaflowFile):
@@ -71,10 +73,10 @@ class EVT(seaflowfile.SeaflowFile):
 
     def __str__(self):
         keys = [
-            "evt_count", "opp_count", "notch1", "notch2", "offset", "origin",
-            "width", "path", "headercnt", "columns"
+            "path", "file_id", "evt_count", "opp_count", "notch1", "notch2",
+            "offset", "origin", "width", "columns"
         ]
-        return pprint.pformat({ k: getattr(self, k) for k in keys }, indent=2)
+        return json.dumps(OrderedDict([(k, getattr(self, k)) for k in keys]), indent=2)
 
     def _read_evt(self):
         """Read an EVT binary file and return a Pandas DataFrame."""
@@ -265,7 +267,7 @@ class EVT(seaflowfile.SeaflowFile):
             return
 
         vals = {
-            "cruise": cruise_name, "file": self.get_julian_path(),
+            "cruise": cruise_name, "file": self.file_id,
             "opp_count": self.opp_count, "evt_count": self.evt_count,
             "opp_evt_ratio": self.opp_evt_ratio, "notch1": self.notch1,
             "notch2": self.notch2, "offset": self.offset, "origin": self.origin,
@@ -401,8 +403,8 @@ def concat_evts(evts, chunksize=500, erase=False):
 
 def combine_evts_vcts(evts, vcts):
     """Add VCT population annotations to EVTs, matched on julian path."""
-    vct_by_path = {v.get_julian_path(): v for v in vcts}
-    evt_by_path = {e.get_julian_path(): e for e in evts}
+    vct_by_path = {v.file_id: v for v in vcts}
+    evt_by_path = {e.file_id: e for e in evts}
     for evt_path, evtobj in evt_by_path.iteritems():
         try:
             evtobj.evt["pop"] = vct_by_path[evt_path].vct

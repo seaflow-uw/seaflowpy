@@ -113,6 +113,7 @@ class TestOpen:
         with pytest.raises(sfp.errors.EVTFileError):
             evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-12-02+00-00")
 
+
 class TestPathFilenameParsing:
     def test_is_evt(self):
         files = [
@@ -314,12 +315,12 @@ class TestConcat:
         evts_n = sum([e.evt_count for e in evts])
         evts_fsc_small_sum = sum([e.evt["fsc_small"].sum() for e in evts])
 
-        evt = sfp.concat_evts(evts, chunksize=1)
+        evt = sfp.evt.concat_evts(evts, chunksize=1)
         assert evts_n == len(evt)
         npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
         assert evts[0].evt is not None
 
-        evt = sfp.concat_evts(evts, chunksize=1, erase=True)
+        evt = sfp.evt.concat_evts(evts, chunksize=1, erase=True)
         assert evts_n == len(evt)
         npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
         assert evts[0].evt is None
@@ -358,7 +359,7 @@ class TestOutput:
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         assert "testcruise" == sqlitedf.cruise[0]
-        assert evt.get_julian_path() == sqlitedf.file[0]
+        assert evt.file_id == sqlitedf.file[0]
         assert "UUID" == sqlitedf.filter_id[0]
         npt.assert_array_equal(
             [evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1, evt.notch2,
@@ -412,6 +413,13 @@ class TestOutput:
         # Make sure OPP binary file written can be read back as EVT and is
         # exactly the same
         npt.assert_array_equal(evt.opp, opp.evt)
+
+        # Check that output opp binary file matches that produced by R code
+        # for popcycle 80d17f6
+        answer_md5 = check_output("gzip -dc tests/testcruise_opp/2014-07-04T00-00-02+00-00.opp.gz | openssl md5", shell=True)
+        answer_md5 = answer_md5.split()[1]
+        result_md5 = check_output("gzip -dc {} | openssl md5".format(tmpout["opp_path"]), shell=True)
+        result_md5 = result_md5.split()[1]
 
 
 class TestMultiFileFilter:

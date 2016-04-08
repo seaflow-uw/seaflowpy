@@ -1,9 +1,11 @@
-import pandas as pd
 import gzip
+import json
+import pandas as pd
 import pprint
 import re
 import seaflowfile
 import util
+from collections import OrderedDict
 
 
 class VCT(seaflowfile.SeaflowFile):
@@ -18,8 +20,8 @@ class VCT(seaflowfile.SeaflowFile):
             self._read_vct()
 
     def __str__(self):
-        keys = ["path", "vct_count"]
-        return pprint.pformat({ k: getattr(self, k) for k in keys })
+        keys = ["path", "file_id", "vct_count"]
+        return json.dumps(OrderedDict([(k, getattr(self, k)) for k in keys]), indent=2)
 
     def _read_vct(self):
         """Read a VCT text file and return a Pandas DataFrame."""
