@@ -8,7 +8,7 @@ except(IOError, ImportError):
 
 
 setup(name='seaflowpy',
-    version='0.1.1',
+    version='0.2.0',
     description='A Python library for SeaFlow data.',
     long_description=long_description,
     url='http://github.com/armbrustlab/seaflowpy',
