@@ -1,6 +1,9 @@
+import pandas as pd
 import sqlite3
 import uuid
 import util
+from collections import OrderedDict
+
 
 def ensure_tables(dbpath):
     """Ensure all popcycle tables exists."""
@@ -111,6 +114,7 @@ def ensure_tables(dbpath):
         pe REAL,
         chl_small REAL,
         chl_big REAL,
+        point_order INTEGER NOT NULL,
         gating_id TEXT NOT NULL
     )""")
 
@@ -201,11 +205,77 @@ def save_opp_stats(dbpath, vals):
     execute(dbpath, sql_insert, vals)
 
 
+def save_vct_stats(dbpath, vals):
+    # NOTE: values inserted must be in the same order as fields in opp
+    # table. Defining that order in a list here makes it easier to verify
+    # that the right order is used.
+    field_order = [
+        "cruise",
+        "file",
+        "pop",
+        "count",
+        "method",
+        "fsc_small",
+        "fsc_perp",
+        "pe",
+        "chl_small",
+        "gating_id"
+    ]
+
+    # Erase existing entry first
+    sql_delete = "DELETE FROM vct WHERE cruise = '%s' AND file == '%s'" % \
+        (vals[0]["cruise"], vals[0]["file"])
+    execute(dbpath, sql_delete)
+
+    # Construct values string with named placeholders
+    values_str = ", ".join([":" + f for f in field_order])
+    sql_insert = "INSERT INTO vct VALUES (%s)" % values_str
+    executemany(dbpath, sql_insert, vals)
+
+
+def get_gating_table(dbpath):
+    sql = "SELECT * FROM gating ORDER BY date"
+    with sqlite3.connect(dbpath) as dbcon:
+        gatingdf = pd.read_sql(sql, dbcon)
+    return gatingdf
+
+
+def get_poly(dbpath, gating_id):
+    sql = "SELECT * FROM gating WHERE id = '{}'".format(gating_id)
+    with sqlite3.connect(dbpath) as dbcon:
+        gatingdf = pd.read_sql(sql, dbcon)
+    if len(gatingdf) == 0:
+        raise ValueError("gating_id {} not found in database".format(gating_id))
+    pop_order = gatingdf.loc[0, "pop_order"].split(",")
+
+    poly = OrderedDict()
+
+    sql = "SElECT * FROM poly WHERE gating_id ='{}' ORDER BY point_order".format(gating_id)
+    with sqlite3.connect(dbpath) as dbcon:
+        polydf = pd.read_sql(sql, dbcon)
+        polydf = polydf.drop(["point_order", "gating_id"], axis=1)
+    for pop in pop_order:
+        popdf = polydf[polydf["pop"] == pop]  # get DataFrame for just this pop
+        not_null_cols = popdf.notnull().all()  # find columns with values
+        poly[pop] = popdf.loc[:, not_null_cols].drop("pop", axis=1) # only keep data columns with values
+
+    return poly
+
+
 def execute(dbpath, sql, values=None, timeout=120):
     con = sqlite3.connect(dbpath, timeout=timeout)
     if values is not None:
         con.execute(sql, values)
     else:
         con.execute(sql)
+    con.commit()
+    con.close()
+
+def executemany(dbpath, sql, values=None, timeout=120):
+    con = sqlite3.connect(dbpath, timeout=timeout)
+    if values is not None:
+        con.executemany(sql, values)
+    else:
+        con.executemany(sql)
     con.commit()
     con.close()

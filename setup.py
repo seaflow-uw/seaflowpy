@@ -8,7 +8,7 @@ except(IOError, ImportError):
 
 
 setup(name='seaflowpy',
-    version='0.1.0',
+    version='0.1.1',
     description='A Python library for SeaFlow data.',
     long_description=long_description,
     url='http://github.com/armbrustlab/seaflowpy',
@@ -25,7 +25,8 @@ setup(name='seaflowpy',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'filterevt=seaflowpy.filterevt_cli:main'
+            'seaflowpy_filter=seaflowpy.filterevt_cli:main',
+            'seaflowpy_classify=seaflowpy.classifyopp_cli:main'
         ]
     },
     zip_safe=False

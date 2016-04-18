@@ -1,9 +1,11 @@
+import gzip
 import numpy as np
 import numpy.testing as npt
 import os
 import pandas as pd
 import py.path
 import pytest
+import shutil
 import sqlite3
 from .context import seaflowpy as sfp
 from subprocess import check_output
@@ -22,6 +24,7 @@ def evt():
 
 @pytest.fixture()
 def tmpout(tmpdir):
+    """Setup to test complete filter workflow"""
     db = str(tmpdir.join("test.db"))
     sfp.db.ensure_tables(db)
     return {
@@ -33,18 +36,11 @@ def tmpout(tmpdir):
 
 @pytest.fixture()
 def tmpout_single(tmpout, evt):
+    """Setup to test a single EVT to OPP workflow"""
     evt_path = py.path.local(evt.path)
     tmpout["evt"] = evt
     tmpout["opp_path"] = tmpout["tmpdir"].join(str(evt_path.basename) + ".opp.gz")
     return tmpout
-
-
-@pytest.fixture()
-def opps_vcts():
-    return {
-        "oppdir": "tests/testcruise_opp",
-        "vctdir": "tests/testcruise_vct"
-    }
 
 
 class TestOpen:
@@ -121,6 +117,8 @@ class TestPathFilenameParsing:
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
             "testcruise/2014_185/100.evt",
+            "testcruise/2014_185/100.evt.opp",
+            "testcruise/2014_185/100.evt.opp.gz",
             "testcruise/2014_185/200.evt.gz",
             "2014_185/2014-07-04T00-00-02+00-00",
             "2014-07-04T00-00-02+00-00",
@@ -137,7 +135,7 @@ class TestPathFilenameParsing:
         ]
         results = [sfp.evt.is_evt(f) for f in files]
         answers = [
-            True, True, True, True, True, True, True, True,
+            True, True, True, True, True, True, True, True, True, True,
             False, False, False, False, False, False
         ]
         assert results == answers
@@ -150,7 +148,7 @@ class TestPathFilenameParsing:
             "testcruise/2014_185/2014-07-04T00-00-02+00-00",
             "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
         ]
-        parsed = sfp.evt.parse_evt_file_list(files)
+        parsed = sfp.evt.parse_file_list(files)
         assert parsed == (files[:2] + files[3:])
 
     def test_find_evt_files(self):
@@ -303,35 +301,24 @@ class TestTransform:
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_evt)
 
-class TestConcat:
-    def test_concat_evts(self, tmpout):
-        files = sfp.find_evt_files("tests/testcruise")
-        evts = []
-        try:
-            for f in files:
-                evts.append(sfp.EVT(f, transform=True))
-        except sfp.errors.EVTFileError as e:
-            pass
-        evts_n = sum([e.evt_count for e in evts])
-        evts_fsc_small_sum = sum([e.evt["fsc_small"].sum() for e in evts])
 
-        evt = sfp.evt.concat_evts(evts, chunksize=1)
-        assert evts_n == len(evt)
-        npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
-        assert evts[0].evt is not None
+class TestOPPVCT:
+    def test_add_vct(self):
+        opps = [sfp.EVT(f) for f in sfp.find_evt_files("tests/testcruise_opp")]
+        vcts = [sfp.vct.VCT(f) for f in sfp.vct.find_vct_files("tests/testcruise_vct")]
 
-        evt = sfp.evt.concat_evts(evts, chunksize=1, erase=True)
-        assert evts_n == len(evt)
-        npt.assert_allclose(evts_fsc_small_sum, evt["fsc_small"].sum())
-        assert evts[0].evt is None
+        # By directory
+        opps[0].add_vct("tests/testcruise_vct")
+        opps[1].add_vct("tests/testcruise_vct")
+        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].evt["pop"].values)
+        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].evt["pop"].values)
 
-
-class TestVCTCombine:
-    def test_combine_evts_vcts(self, opps_vcts):
-        opps = [sfp.EVT(f) for f in sfp.find_evt_files(opps_vcts["oppdir"])]
-        vcts = [sfp.VCT(f) for f in sfp.find_vct_files(opps_vcts["vctdir"])]
-        sfp.combine_evts_vcts(opps, vcts)
-        assert "pop" in opps[0].evt.columns
+        # By file path
+        opps = [sfp.EVT(f) for f in sfp.find_evt_files("tests/testcruise_opp")]
+        opps[0].add_vct(os.path.join("tests/testcruise_vct", opps[0].file_id + ".vct.gz"))
+        opps[1].add_vct(os.path.join("tests/testcruise_vct", opps[1].file_id + ".vct"))
+        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].evt["pop"].values)
+        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].evt["pop"].values)
 
 
 class TestOutput:
@@ -404,29 +391,27 @@ class TestOutput:
         assert "UUID2" == sqlitedf.filter_id[0]
         assert len(sqlitedf) == 1
 
-    def test_binary_opp(self, tmpout_single):
-        tmpout = tmpout_single
-        evt = tmpout["evt"]
-        evt.filter(offset=0.0, width=0.5)
-        evt.write_opp_binary(str(tmpout["opp_path"]))
-        opp = sfp.EVT(str(tmpout["opp_path"]))
-        # Make sure OPP binary file written can be read back as EVT and is
-        # exactly the same
-        npt.assert_array_equal(evt.opp, opp.evt)
+    def test_binary_opp(self, tmpdir):
+        oppdir = tmpdir.join("oppdir")
+        popcycle_opp_file = "tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz"
+        opp = sfp.EVT(popcycle_opp_file)
+        opp.opp = opp.evt  # move particle data to opp attribute
+        opp.opp_count = len(opp.opp)  # make sure count is updated
+        opp.write_opp_binary(str(oppdir))  # output to binary file
+
+        # Make sure OPP binary file written can be read back as EVT and
+        # DataFrame is the the same
+        reread_opp = sfp.EVT(str(oppdir.join("2014_185/2014-07-04T00-00-02+00-00.opp.gz")))
+        npt.assert_array_equal(opp.opp, reread_opp.evt)
 
         # Check that output opp binary file matches that produced by R code
         # for popcycle 80d17f6
-        answer_md5 = check_output("gzip -dc tests/testcruise_opp/2014-07-04T00-00-02+00-00.opp.gz | openssl md5", shell=True)
-        answer_md5 = answer_md5.split()[1]
-        result_md5 = check_output("gzip -dc {} | openssl md5".format(tmpout["opp_path"]), shell=True)
-        result_md5 = result_md5.split()[1]
+        popcycle_opp = gzip.open(popcycle_opp_file).read()
+        new_opp = gzip.open(str(oppdir.join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))).read()
+        assert popcycle_opp == new_opp
 
 
 class TestMultiFileFilter:
-    def test_filter_files_without_filter_options_raises_ValueError(self):
-        with pytest.raises(ValueError):
-            sfp.filterevt.filter_evt_files()
-
     def test_multi_file_filter_local(self, tmpout):
         """Test multi-file filtering and ensure output can be read back OK"""
         files = [
@@ -444,9 +429,9 @@ class TestMultiFileFilter:
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we set multiprocessing=False here
         sfp.filterevt.filter_evt_files(
-            files=files, cpus=1, cruise="testcruise",
-            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, multiprocessing=False)
+            files=files, process_count=1, cruise="testcruise",
+            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            filter_options=filt_opts, multiprocessing_flag=False)
 
         evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
         for evt in evts:
@@ -491,9 +476,9 @@ class TestMultiFileFilter:
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we set multiprocessing=False here
         sfp.filterevt.filter_evt_files(
-            files=files, cpus=1, cruise="testcruise",
-            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, multiprocessing=False)
+            files=files, process_count=1, cruise="testcruise",
+            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            filter_options=filt_opts, multiprocessing_flag=False)
         con = sqlite3.connect(tmpout["db"])
         filter_python = pd.read_sql("SELECT * FROM opp ORDER BY file", con)
         con.close()
@@ -555,10 +540,10 @@ class TestMultiFileFilter:
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we set multiprocessing=False here
         sfp.filterevt.filter_evt_files(
-            files=files, cpus=1, cruise="testcruise",
-            db=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            files=files, process_count=1, cruise="testcruise",
+            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             filter_options=filt_opts, s3=True, s3_bucket="armbrustlab.seaflow",
-            multiprocessing=False)
+            multiprocessing_flag=False)
 
         evts = [
             sfp.EVT(os.path.join("tests", files[0])),

@@ -13,8 +13,9 @@ class VCT(seaflowfile.SeaflowFile):
 
     def __init__(self, path=None, fileobj=None, read_data=True):
         seaflowfile.SeaflowFile.__init__(self, path, fileobj)
+        # DataFrame with list of population labels in "pop" column
+        self.vct = None
         self.vct_count = 0
-        self.vct = None  # DataFrame with list of population labels
 
         if read_data:
             self._read_vct()
@@ -34,7 +35,7 @@ def is_vct(file_path):
     """Does the file specified by this path look like a valid VCT file?"""
     # VCT file name regexes
     vct_re = re.compile(
-        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}\.vct|\d+\.vct)'
+        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(?:\..+)?\.vct|\d+\.evt(?:\..+)?\.vct)'
         r'(?:\.gz)?$'
     )
     parts = seaflowfile.parse_path(file_path)
@@ -42,13 +43,13 @@ def is_vct(file_path):
 
 
 def find_vct_files(root_dir):
-    """Return a sorted list of all VCT file paths in root_dir."""
+    """Return a chronologically sorted list of VCT file paths in root_dir."""
     files = util.find_files(root_dir)
-    files = parse_vct_file_list(files)
-    return sorted(files)
+    files = parse_file_list(files)
+    return seaflowfile.sorted_files(files)
 
 
-def parse_vct_file_list(files):
+def parse_file_list(files):
     """Filter list of files to only keep VCT files."""
     files_list = []
     for f in files:

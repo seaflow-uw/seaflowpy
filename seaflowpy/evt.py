@@ -1,14 +1,18 @@
 import db
 import errors
+import gzip
 import json
 import numpy as np
+import os
 import pandas as pd
 import pprint
 import re
 import seaflowfile
 import sys
 import util
+import vct
 from collections import OrderedDict
+from matplotlib.path import Path
 
 
 class EVT(seaflowfile.SeaflowFile):
@@ -72,11 +76,16 @@ class EVT(seaflowfile.SeaflowFile):
             self.transform_evt()
 
     def __str__(self):
-        keys = [
-            "path", "file_id", "evt_count", "opp_count", "notch1", "notch2",
-            "offset", "origin", "width", "columns"
-        ]
-        return json.dumps(OrderedDict([(k, getattr(self, k)) for k in keys]), indent=2)
+        keys = ["path", "file_id", "evt_count", "opp_count", "columns"]
+        tostringdict = OrderedDict([(k, getattr(self, k)) for k in keys])
+        tostringdict["filter_options"] = {
+            "notch1": self.notch1,
+            "notch2": self.notch2,
+            "offset": self.offset,
+            "origin": self.origin,
+            "width": self.width
+        }
+        return json.dumps(tostringdict, indent=2)
 
     def _read_evt(self):
         """Read an EVT binary file and return a Pandas DataFrame."""
@@ -261,6 +270,52 @@ class EVT(seaflowfile.SeaflowFile):
             }
         return stats
 
+    def calc_pop_stats(self):
+        stats = {}
+        if "pop" in self.evt.columns:
+            bypop = self.evt.groupby("pop")
+            means = bypop.mean()
+            counts = bypop.size()
+            for pop in bypop.groups:
+                stats[pop] = {
+                    "pop": pop,
+                    "count": counts[pop]
+                }
+                for column in ["fsc_small", "fsc_perp", "pe", "chl_small"]:
+                    if column in self.evt.columns:
+                        stats[pop][column] = means.loc[pop, column]
+        else:
+            raise ValueError("EVT DataFrame must contain pop column to run calculate population statistics")
+        return stats
+
+    def add_vct(self, vct_dir_or_file):
+        if os.path.isdir(vct_dir_or_file):
+            vct_file = os.path.join(vct_dir_or_file, self.file_id + ".vct")
+            if not os.path.exists(vct_file):
+                vct_file = vct_file + ".gz"
+        else:
+            vct_file = vct_dir_or_file
+
+        if not os.path.exists(vct_file):
+            raise IOError("VCT file for {} could not be found". format(self.file_id))
+
+        vctobj = vct.VCT(vct_file)
+        self.evt["pop"] = vctobj.vct["pop"]
+
+    def classify(self, pop_polys):
+        self.evt["pop"] = "unknown"
+        for pop, verts in pop_polys.iteritems():
+            # Convert polygon vertices for this pop into a matplotlib.Path
+            path = vertstopath(verts)
+
+            # Only test unknown particles
+            todo = self.evt["pop"] == "unknown"
+            # Test still unknown particles
+            pop_bool = path.contains_points(self.evt.loc[todo, verts.columns])
+            pop_idx = self.evt.loc[todo, :].loc[pop_bool, :].index
+            # Record population
+            self.evt.loc[pop_idx, "pop"] = pop
+
     def save_opp_to_db(self, cruise_name, filter_id, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
         if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
@@ -284,19 +339,36 @@ class EVT(seaflowfile.SeaflowFile):
 
         db.save_opp_stats(dbpath, vals)
 
-    def write_opp_binary(self, outfile):
-        """Write opp to LabView binary file.
+    def save_vct_to_db(self, cruise_name, gating_id, dbpath):
+        """Save population statistics to SQLite"""
+        if self.evt is None or self.evt_count == 0 or "pop" not in self.evt.columns:
+            return
 
-        If outfile ends with ".gz", gzip compress.
+        common_vals = {
+            "cruise": cruise_name, "file": self.file_id,
+            "gating_id": gating_id, "method": "Manual Gating"
+        }
+
+        stats = self.calc_pop_stats()
+        for item in stats.values():
+            item.update(common_vals)
+
+        db.save_vct_stats(dbpath, stats.values())
+
+    def write_opp_binary(self, opp_dir):
+        """Write opp to LabView binary file in opp_dir
         """
         if self.opp_count == 0:
             return
 
-        # Detect gzip output
-        gz = False
-        if outfile.endswith(".gz"):
-            gz = True
-            outfile = outfile[:-3]
+        # Might have julian day, might not
+        outdir = os.path.join(opp_dir, os.path.dirname(self.file_id))
+        util.mkdir_p(outdir)
+        outfile = os.path.join(opp_dir, self.file_id + ".opp")
+        if os.path.exists(outfile):
+            os.remove(outfile)
+        if os.path.exists(outfile + ".gz"):
+            os.remove(outfile + ".gz")
 
         with open(outfile, "wb") as fh:
             # Write 32-bit uint particle count header
@@ -306,8 +378,19 @@ class EVT(seaflowfile.SeaflowFile):
             # Write particle data
             self._create_opp_for_binary().tofile(fh)
 
-        if gz:
-            util.gzip_file(outfile)
+        util.gzip_file(outfile)
+
+    def write_vct_csv(self, vct_dir):
+        if "pop" not in self.evt.columns:
+            raise ValueError("EVT DataFrame must contain pop column to write VCT csv file")
+        outfile = os.path.join(vct_dir, self.file_id + ".vct")
+        util.mkdir_p(os.path.dirname(outfile))
+        if os.path.exists(outfile):
+            os.remove(outfile)
+        if os.path.exists(outfile + ".gz"):
+            os.remove(outfile + ".gz")
+        with gzip.open(outfile + ".gz", "wb") as f:
+            f.write("\n".join(self.evt["pop"].values) + "\n")
 
     def _create_opp_for_binary(self):
         """Return a copy of opp ready to write to binary file"""
@@ -326,24 +409,12 @@ class EVT(seaflowfile.SeaflowFile):
 
         return opp.as_matrix()
 
-    def write_opp_csv(self, outfile):
-        """Write OPP to CSV file, no header."""
-        if self.opp_count == 0:
-            return
-        self.opp.to_csv(outfile, sep=",", index=False, header=False)
-
-    def write_evt_csv(self, outfile):
-        """Write EVT to CSV file, no header."""
-        if self.evt is None:
-            return
-        self.evt.to_csv(outfile, sep=",", index=False)
-
 
 def is_evt(file_path):
     """Does the file specified by this path look like a valid EVT file?"""
     # EVT/OPP file name regexes
     evt_re = re.compile(
-        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(?:\.opp|\.evt)?|\d+\.evt)'
+        r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(?:\.evt)?(?:\.opp)?|\d+\.evt)(?:\.opp)?'
         r'(?:\.gz)?$'
     )
     parts = seaflowfile.parse_path(file_path)
@@ -351,13 +422,13 @@ def is_evt(file_path):
 
 
 def find_evt_files(root_dir):
-    """Return a sorted list of all EVT or OPP file paths in root_dir."""
+    """Return a chronologically sorted list of EVT or OPP file paths in root_dir."""
     files = util.find_files(root_dir)
-    files = parse_evt_file_list(files)
-    return sorted(files)
+    files = parse_file_list(files)
+    return seaflowfile.sorted_files(files)
 
 
-def parse_evt_file_list(files):
+def parse_file_list(files):
     """Filter list of files to only keep EVT files.
 
     If the first item in files is "-", assume input consists of lines of file
@@ -376,37 +447,12 @@ def parse_evt_file_list(files):
     return files_list
 
 
-def concat_evts(evts, chunksize=500, erase=False):
-    """Concatenate evt DataFrames in a list of EVT objects.
-
-    This operation will erase the underlying EVT.evt DataFrames as they are
-    added to the single concatenated DataFrame in order to limit memory usage.
-    DataFrames are appended and erased in configurable chunks of the EVT list
-    to balance performance with reasonable memory management.
-    """
-    if evts:
-        evtdf = evts[0].evt.copy()
-        if erase:
-            evts[0].erase_evt()
-
-        i = 1
-        while i < len(evts):
-            evtdf = evtdf.append([e.evt for e in evts[i:i+chunksize]])
-            for j in range(i, i + chunksize):
-                if j >= len(evts):
-                    break
-                    if erase:
-                        evts[j].erase_evt()
-            i += chunksize
-        return evtdf
-
-
-def combine_evts_vcts(evts, vcts):
-    """Add VCT population annotations to EVTs, matched on julian path."""
-    vct_by_path = {v.file_id: v for v in vcts}
-    evt_by_path = {e.file_id: e for e in evts}
-    for evt_path, evtobj in evt_by_path.iteritems():
-        try:
-            evtobj.evt["pop"] = vct_by_path[evt_path].vct
-        except KeyError as e:
-            print "{} has no VCT file".format(evt_path)
+def vertstopath(verts):
+    """Convert polygon vertices as 2 column pandas DataFrame to a matplotlib.Path"""
+    verts_list = verts.as_matrix().tolist()
+    verts_list.append(verts_list[0])  # close the polygon
+    codes = [Path.MOVETO]
+    for i in range(len(verts_list)-2):
+        codes.append(Path.LINETO)
+    codes.append(Path.CLOSEPOLY)
+    return Path(verts_list, codes)

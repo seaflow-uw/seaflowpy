@@ -10,49 +10,50 @@ from itertools import imap
 from multiprocessing import Pool
 
 
-def filter_evt_files(**kwargs):
+def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
+                     s3_bucket=None, process_count=1, every=10.0,
+                     multiprocessing_flag=True):
     """Filter a list of EVT files.
 
-    Keyword arguments:
+    Arguments arguments:
         files - paths to EVT files to filter
         cruise - cruise name
-        cpus - number of worker processes to use
         filter_options - Dictionary of filter params
             (notch1, notch2, width, offset, origin)
-        every - Percent progress output resolution
+        dbpath = SQLite3 db path
+        opp_dir = Directory for output binary OPP files
+
+    Keyword arguments:
         s3 - Get EVT data from S3
         s3_bucket - S3 bucket name
-        db = SQLite3 db path
-        opp_dir = Directory for output binary OPP files
-        multiprocessing = Use multiprocessing?
+        process_count - number of worker processes to use
+        every - Percent progress output resolution
+        multiprocessing_flag = Use multiprocessing?
     """
     o = {
-        "files": [],
-        "cruise": None,
-        "cpus": 1,
-        "filter_options": {},
-        "every": 10.0,
-        "s3": False,
-        "s3_bucket": None,
-        "db": None,
-        "opp_dir": None,
-        "multiprocessing": True
+        "file": None,  # fill in later
+        "cruise": cruise,
+        "process_count": process_count,
+        "filter_options": filter_options,
+        "every": every,
+        "s3": s3,
+        "s3_bucket": s3_bucket,
+        "dbpath": dbpath,
+        "opp_dir": opp_dir,
+        "multiprocessing_flag": multiprocessing_flag,
+        "filter_id": None  # fill in later
     }
-    o.update(kwargs)
 
-    if not o["filter_options"]:
-        raise ValueError("Must specify keyword arg filter_options in filter_files()")
-
-    if o["db"]:
-        dbdir = os.path.dirname(o["db"])
+    if dbpath:
+        dbdir = os.path.dirname(dbpath)
         if dbdir and not os.path.isdir(dbdir):
             util.mkdir_p(dbdir)
-        db.ensure_tables(o["db"])
-        o["filter_id"] = db.save_filter_params(o["db"], o["filter_options"])
+        db.ensure_tables(dbpath)
+        o["filter_id"] = db.save_filter_params(dbpath, filter_options)
 
-    if o["multiprocessing"]:
+    if multiprocessing_flag:
         # Create a pool of N worker processes
-        pool = Pool(o["cpus"])
+        pool = Pool(process_count)
         def mapper(worker, task_list):
             return pool.imap_unordered(worker, task_list)
     else:
@@ -65,14 +66,13 @@ def filter_evt_files(**kwargs):
 
     # Construct worker inputs
     inputs = []
-    files = o.pop("files")
     for f in files:
         inputs.append(copy.copy(o))
         inputs[-1]["file"] = f
 
     print ""
     print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
-        (len(files), o["every"])
+        (len(files), every)
 
     t0 = time.time()
 
@@ -89,7 +89,7 @@ def filter_evt_files(**kwargs):
         # Print progress periodically
         perc = float(i + 1) / len(files) * 100  # Percent completed
         # Round down to closest every%
-        milestone = int(perc / o["every"]) * o["every"]
+        milestone = int(perc / every) * every
         if milestone > last:
             now = time.time()
             evt_count += evt_count_block
@@ -138,14 +138,13 @@ def filter_evt_files(**kwargs):
 def do_work(options):
     """multiprocessing pool worker function"""
     try:
-        return filter_one_file(**options)
+        return filter_one_file(options)
     except KeyboardInterrupt as e:
         pass
 
 
-def filter_one_file(**kwargs):
+def filter_one_file(o):
     """Filter one EVT file, save to sqlite3, return filter stats"""
-    o = kwargs
     result = {
         "ok": False,
         "evt_count": 0,
@@ -167,21 +166,11 @@ def filter_one_file(**kwargs):
     else:
         evt_.filter(**o["filter_options"])
 
-        if o["db"]:
-            evt_.save_opp_to_db(o["cruise"], o["filter_id"], o["db"])
+        if o["dbpath"]:
+            evt_.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])
 
         if o["opp_dir"]:
-            # Might have julian day, might not
-            outdir = os.path.join(
-                o["opp_dir"],
-                os.path.dirname(evt_.file_id)
-            )
-            util.mkdir_p(outdir)
-            outfile = os.path.join(
-                o["opp_dir"],
-                evt_.file_id + ".opp.gz"
-            )
-            evt_.write_opp_binary(outfile)
+            evt_.write_opp_binary(o["opp_dir"])
 
         result["ok"] = True
         result["evt_count"] = evt_.evt_count

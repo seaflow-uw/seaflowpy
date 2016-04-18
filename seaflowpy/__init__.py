@@ -1,4 +1,5 @@
 import aws
+import classifyopp
 import db
 import errors
 import evt
@@ -7,6 +8,3 @@ import util
 import vct
 from evt import EVT
 from evt import find_evt_files
-from evt import combine_evts_vcts
-from vct import VCT
-from vct import find_vct_files
