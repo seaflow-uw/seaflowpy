@@ -7,6 +7,8 @@ import filterevt
 import botocore
 import pprint
 import sys
+from setuptools_scm import get_version
+
 
 # Global configuration variables for AWS
 # ######################################
@@ -55,6 +57,9 @@ def parse_args(args):
                    (optional)""")
     p.add_argument("-r", "--resolution", type=float, default=10.0, metavar="N",
                    help="Progress update resolution by %% (optional)")
+
+    version = get_version()
+    p.add_argument("--version", action="version", version="%(prog)s " + version)
 
 
     return p.parse_args(args)

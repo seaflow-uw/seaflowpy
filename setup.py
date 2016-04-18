@@ -8,7 +8,7 @@ except(IOError, ImportError):
 
 
 setup(name='seaflowpy',
-    version='0.2.0',
+    use_scm_version=True,
     description='A Python library for SeaFlow data.',
     long_description=long_description,
     url='http://github.com/armbrustlab/seaflowpy',
@@ -19,9 +19,10 @@ setup(name='seaflowpy',
     install_requires=[
         'boto3',
         'numpy',
-        'pandas'
+        'pandas',
+        'setuptools_scm'
     ],
-    setup_requires=['pytest-runner'],
+    setup_requires=['pytest-runner', 'setuptools_scm'],
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

@@ -6,6 +6,8 @@ import evt
 import pprint
 import seaflowfile
 import sys
+from setuptools_scm import get_version
+
 
 def parse_args(args):
     p = argparse.ArgumentParser(
@@ -39,6 +41,9 @@ def parse_args(args):
                    (optional)""")
     p.add_argument("-r", "--resolution", type=float, default=10.0, metavar="N",
                    help="Progress update resolution by %% (optional)")
+
+    version = get_version()
+    p.add_argument("--version", action="version", version="%(prog)s " + version)
 
     return p.parse_args(args)
 
