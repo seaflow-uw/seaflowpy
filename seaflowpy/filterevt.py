@@ -4,6 +4,7 @@ import db
 import evt
 import errors
 import os
+import sys
 import time
 import util
 from itertools import imap
@@ -102,6 +103,7 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
             msg += " Particles this block: %i / %i (%.06f) elapsed: %.2fs" % \
                 (opp_count_block, evt_count_block, ratio_block, now - t0)
             print msg
+            sys.stdout.flush()
             last = milestone
             evt_count_block = 0
             opp_count_block = 0

@@ -2,6 +2,7 @@ import db
 import evt
 import errors
 import os
+import sys
 import time
 from itertools import imap
 from multiprocessing import Pool
@@ -59,6 +60,7 @@ def classify_opp_files(files, cruise, gating_id, dbpath, vct_dir, process_count=
             msg = "File: %i/%i (%.2f%%)" % (i + 1, len(files), perc)
             msg += " elapsed: %.2fs" % (now - t0,)
             print msg
+            sys.stdout.flush()
             last = milestone
 
     t1 = time.time()

@@ -5,9 +5,9 @@ import db
 import evt
 import filterevt
 import botocore
+import pkg_resources
 import pprint
 import sys
-from setuptools_scm import get_version
 
 
 # Global configuration variables for AWS
@@ -16,8 +16,10 @@ from setuptools_scm import get_version
 SEAFLOW_BUCKET = "armbrustlab.seaflow"
 
 def parse_args(args):
+    version = pkg_resources.get_distribution("seaflowpy").version
+
     p = argparse.ArgumentParser(
-        description="Filter EVT data.",
+        description="A Python program to filter EVT data (version %s)" % version,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     p.add_argument("-e", "--evt_dir", metavar="DIR",
@@ -58,7 +60,6 @@ def parse_args(args):
     p.add_argument("-r", "--resolution", type=float, default=10.0, metavar="N",
                    help="Progress update resolution by %% (optional)")
 
-    version = get_version()
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
 
@@ -77,6 +78,7 @@ def main(cli_args=None):
     to_delete = [k for k in v if v[k] is None]
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
+    v["version"] = pkg_resources.get_distribution("seaflowpy").version
     print "\nDefined parameters:"
     pprint.pprint(v, indent=2)
 

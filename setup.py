@@ -19,8 +19,7 @@ setup(name='seaflowpy',
     install_requires=[
         'boto3',
         'numpy',
-        'pandas',
-        'setuptools_scm'
+        'pandas'
     ],
     setup_requires=['pytest-runner', 'setuptools_scm'],
     tests_require=['pytest'],
