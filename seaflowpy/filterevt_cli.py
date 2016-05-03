@@ -90,7 +90,7 @@ def main(cli_args=None):
         # launching child processes.
         try:
             files = aws.get_s3_files(args.cruise, args.s3_bucket)
-            files = evt.parse_evt_file_list(files)  # Only keep EVT files
+            files = evt.parse_file_list(files)  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
             print "Please configure aws first:"
             print "  $ conda install aws"

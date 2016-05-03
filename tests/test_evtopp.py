@@ -140,7 +140,7 @@ class TestPathFilenameParsing:
         ]
         assert results == answers
 
-    def test_parse_evt_file_list(self):
+    def test_parse_file_list(self):
         files = [
             "testcruise/2014_185/100.evt",
             "testcruise/2014_185/200.evt.gz",
@@ -531,7 +531,7 @@ class TestMultiFileFilter:
     def test_multi_file_filter_S3(self, tmpout):
         """Test S3 multi-file filtering and ensure output can be read back OK"""
         files = sfp.aws.get_s3_files("testcruise", "armbrustlab.seaflow")
-        files = sfp.evt.parse_evt_file_list(files)
+        files = sfp.evt.parse_file_list(files)
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
             "width": 0.5
