@@ -42,7 +42,7 @@ def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
 
     parser = argparse.ArgumentParser(
-        description='Insert SFL file data into a popcycle sqlite3 database (version %s)' % version)
+        description='A program to insert SFL file data into a popcycle sqlite3 database (version %s)' % version)
 
     parser.add_argument(
         '-c', '--cruise',
@@ -67,8 +67,7 @@ def parse_args(args):
         help='EVT data directory if specific SFL file not provided, e.g ~/SeaFlow/datafiles/evt/')
     group.add_argument(
         '-s', '--sfl',
-        help='''SFL file.  If not provided, all SFL files in EVT_DIR will be
-             imported.''')
+        help='SFL file if EVT directory is not provided.')
 
     parser.add_argument(
         '-d', '--db',
@@ -233,7 +232,7 @@ def main(cli_args=None):
     db.ensure_tables(args.db)
     db.ensure_indexes(args.db)
 
-    if not args.sfl:
+    if args.evt_dir:
         # Try to insert all SFl files in EVT dir
         insert_files_recursive(
             args.db, args.evt_dir, args.cruise, flow_rate=args.flow_rate,

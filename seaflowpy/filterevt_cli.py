@@ -19,7 +19,7 @@ def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
 
     p = argparse.ArgumentParser(
-        description="A Python program to filter EVT data (version %s)" % version,
+        description="A program to filter EVT data (version %s)" % version,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     p.add_argument("-e", "--evt_dir", metavar="DIR",

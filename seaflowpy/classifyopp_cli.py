@@ -13,7 +13,7 @@ def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
 
     p = argparse.ArgumentParser(
-        description="A Python program to classify OPP data (version %s)" % version,
+        description="A program to classify OPP data (version %s)" % version,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     p.add_argument("-o", "--opp_dir", metavar="DIR", required=True,

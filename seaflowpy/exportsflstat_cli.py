@@ -8,8 +8,8 @@ import sys
 def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
     parser = argparse.ArgumentParser(
-        description="""Export sfl table or stat table/view as CSV.""")
-    parser.add_argument("db", help="Popcycle V1 SQLite3 DB file")
+        description="A program to export sfl table or stat table/view as CSV (version %s)" % version)
+    parser.add_argument("db", help="Popcycle SQLite3 DB file")
     parser.add_argument("table", choices=["sfl", "stats"],
         help="Name of table/view to output")
     parser.add_argument("--version", action="version", version="%(prog)s " + version)
