@@ -66,7 +66,7 @@ def parse_args(args):
 
     # Validate args
     if not args.evt_dir and not args.s3:
-        sys.stderr.write("Error: One of --evt_dir or --s3 must be provided\n")
+        sys.stderr.write("Error: One of --evt_dir or --s3 must be provided\n\n")
         p.print_help()
         sys.exit(1)
 
