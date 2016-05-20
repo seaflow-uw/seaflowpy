@@ -62,8 +62,15 @@ def parse_args(args):
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
+    args = p.parse_args(args)
 
-    return p.parse_args(args)
+    # Validate args
+    if not args.evt_dir and not args.s3:
+        sys.stderr.write("Error: One of --evt_dir or --s3 must be provided\n")
+        p.print_help()
+        sys.exit(1)
+
+    return args
 
 
 def main(cli_args=None):

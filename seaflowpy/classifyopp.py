@@ -85,8 +85,9 @@ def classify_one_file(opp_file, cruise, gating_id, poly, dbpath, vct_dir):
                       columns=["fsc_small", "fsc_perp", "pe", "chl_small"])
     except errors.EVTFileError as e:
         print "Could not parse file %s: %s" % (opp_file, repr(e))
-    except:
-        print "Unexpected error for file %s" % opp_file
+    except Exception as e:
+        print "Unexpected error for file %s: %s" % (opp_file, repr(e))
+
     else:
         opp.classify(poly)
         opp.write_vct_csv(vct_dir)

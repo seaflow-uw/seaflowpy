@@ -163,8 +163,9 @@ def filter_one_file(o):
         evt_ = evt.EVT(path=evt_file, fileobj=fileobj)
     except errors.EVTFileError as e:
         print "Could not parse file %s: %s" % (evt_file, repr(e))
-    except:
-        print "Unexpected error for file %s" % evt_file
+    except Exception as e:
+        print "Unexpected error for file %s: %s" % (evt_file, repr(e))
+
     else:
         evt_.filter(**o["filter_options"])
 
