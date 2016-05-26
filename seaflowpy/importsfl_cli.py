@@ -49,10 +49,6 @@ def parse_args(args):
         required=True,
         help='cruise name, e.g. CMOP_3')
     parser.add_argument(
-        '-f', '--flow_rate', type=float,
-        help='''Specify a custom flow rate if not present in SFL files. 12 is
-        usually a good value if in doubt.''')
-    parser.add_argument(
         '-g', "--gga", action='store_true',
         help='lat/lon input is in GGA format. Convert to decimal degree.')
     parser.add_argument(
@@ -80,8 +76,7 @@ def parse_args(args):
     return parser.parse_args()
 
 
-def fix_one_sfl_line(data, header, cruise, flow_rate=None, gga=False,
-                     west=False):
+def fix_one_sfl_line(data, header, cruise, gga=False, west=False):
     """Convert one line of SFL file into dict ready for db insert"""
     dbcolumn_to_fixed_data = {}
 
@@ -130,8 +125,6 @@ def fix_one_sfl_line(data, header, cruise, flow_rate=None, gga=False,
     # there is an ocean_tmp entry here.
     values["ocean_tmp"] = dbcolumn_to_fixed_data['OCEAN_TEMP']
 
-    if flow_rate is not None:
-        values["flow_rate"] = float(flow_rate)
     if values["lon"] is not None:
         if gga:
             values["lon"] = geo.gga2dd(values["lon"])
@@ -143,28 +136,24 @@ def fix_one_sfl_line(data, header, cruise, flow_rate=None, gga=False,
     return values
 
 
-def insert_files(sfl_files, dbpath, cruise, flow_rate=None, gga=False,
-                 west=False):
+def insert_files(sfl_files, dbpath, cruise, gga=False, west=False):
     for sfl_file in sfl_files:
         lines = open(sfl_file).readlines()
         header = lines[0].split('\t')
         to_insert = []
         for line in lines[1:]:
             data = line.split('\t')
-            record = fix_one_sfl_line(data, header, cruise, flow_rate=flow_rate,
-                                      gga=gga, west=west)
+            record = fix_one_sfl_line(data, header, cruise, gga=gga, west=west)
             to_insert.append(record)
         db.save_sfl(dbpath, to_insert)
 
 
-def insert_files_recursive(dbpath, evt_path, cruise, flow_rate=None, gga=False,
-                           west=False):
+def insert_files_recursive(dbpath, evt_path, cruise, gga=False, west=False):
     dbpath = os.path.expanduser(dbpath)
     evt_path = os.path.expanduser(evt_path)
     if not os.path.isdir(evt_path):
         raise ValueError("%s is not directory or does not exist" % evt_path)
-    insert_files(find_sfl_files(evt_path), dbpath, cruise, flow_rate=flow_rate,
-                 gga=gga, west=west)
+    insert_files(find_sfl_files(evt_path), dbpath, cruise, gga=gga, west=west)
 
 
 def find_sfl_files(evt_path):
@@ -235,15 +224,11 @@ def main(cli_args=None):
     if args.evt_dir:
         # Try to insert all SFl files in EVT dir
         insert_files_recursive(
-            args.db, args.evt_dir, args.cruise, flow_rate=args.flow_rate,
-            gga=args.gga, west=args.west
-        )
+            args.db, args.evt_dir, args.cruise, gga=args.gga, west=args.west)
     else:
         # User specified SFL file
         insert_files(
-            [args.sfl], args.db, args.cruise, flow_rate=args.flow_rate,
-            gga=args.gga, west=args.west
-        )
+            [args.sfl], args.db, args.cruise, gga=args.gga, west=args.west)
 
 
 if __name__ == "__main__":
