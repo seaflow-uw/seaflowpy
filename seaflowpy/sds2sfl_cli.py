@@ -22,7 +22,7 @@ def parse_args(args):
 
     parser = ArgumentParser(
         description="""Convert old Seaflow SDS file format to SFL, with STREAM
-        PRESSURE converted to FLOW RATE with user supplied ratio.""")
+        PRESSURE converted to FLOW RATE with user supplied ratio (version %s)""" % version)
     parser.add_argument('--sds', required=True, help='Input SDS file')
     parser.add_argument('--sfl', required=True, help='Output SFL file.')
     parser.add_argument('--serial', required=True, help='Seaflow instrument serial number')

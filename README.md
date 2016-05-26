@@ -18,7 +18,8 @@ This installs the `seaflowpy` Python package as well as the following command-li
 * `seaflowpy_filter` - filter EVT data
 * `seaflowpy_classify` - classify OPP data
 * `seaflowpy_importsfl` - import SFL files to a SQLite3 database
-* 'seaflowpy_exportsflstat` - export SFL and population tables from a SQLite3 database
+* `seaflowpy_exportsflstat` - export SFL and population tables from a SQLite3 database
+* `seaflowpy_sds2sfl` - convert a legacy SDS file to SFL format
 
 
 ### Test
@@ -46,7 +47,7 @@ usage: seaflowpy_filter [-h] [-e DIR] [-s] [-b NAME] [-l N] -d FILE [-o DIR]
                         -c NAME [--notch1 N] [--notch2 N] [--width N]
                         [--origin N] [--offset N] [-p N] [-r N] [--version]
 
-A program to filter EVT data (version 0.2.4)
+A program to filter EVT data (version 0.2.5)
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -98,7 +99,7 @@ Defined parameters:
   'resolution': 20.0,
   's3': False,
   's3_bucket': 'armbrustlab.seaflow',
-  'version': '0.2.4',
+  'version': '0.2.5',
   'width': 0.5}
 
 Filtering 19 EVT files. Progress every 20% (approximately)
@@ -127,7 +128,7 @@ The gating polygons used to define each population should have already been defi
 usage: seaflowpy_classify [-h] -o DIR [-s FILE] [-e FILE] [-l N] -g ID -c NAME
                           -d FILE [-v DIR] [-p N] [-r N] [--version]
 
-A program to classify OPP data (version 0.2.4)
+A program to classify OPP data (version 0.2.5)
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -172,7 +173,7 @@ Defined parameters:
   'process_count': 1,
   'resolution': 20.0,
   'vct_dir': 'SCOPE_1_vct',
-  'version': '0.2.4'}
+  'version': '0.2.5'}
 
 Classifying 19 OPP files. Progress every 20% (approximately)
 File: 4/19 (21.05%) elapsed: 1.39s
@@ -221,18 +222,16 @@ Classified 7 OPP files in 1.01 seconds
 
 ### Usage
 ```
-usage: seaflowpy_importsfl [-h] -c CRUISE [-f FLOW_RATE] [-g] [-w]
-                           (-e EVT_DIR | -s SFL) -d DB [--version]
+usage: seaflowpy_importsfl [-h] -c CRUISE [-g] [-w] (-e EVT_DIR | -s SFL) -d
+                           DB [--version]
 
-Insert SFL file data into a popcycle sqlite3 database (version 0.2.4)
+A program to insert SFL file data into a popcycle sqlite3 database (version
+0.2.5)
 
 optional arguments:
   -h, --help            show this help message and exit
   -c CRUISE, --cruise CRUISE
                         cruise name, e.g. CMOP_3
-  -f FLOW_RATE, --flow_rate FLOW_RATE
-                        Specify a custom flow rate if not present in SFL
-                        files. 12 is usually a good value if in doubt.
   -g, --gga             lat/lon input is in GGA format. Convert to decimal
                         degree.
   -w, --west            Some ships don't provide E/W designations for
@@ -256,7 +255,7 @@ optional arguments:
 ```
 usage: seaflowpy_exportsflstat [-h] [--version] db {sfl,stats}
 
-Export sfl table or stat table/view as CSV (version 0.2.4)
+Export sfl table or stat table/view as CSV (version 0.2.5)
 
 positional arguments:
   db           Popcycle SQLite3 DB file
@@ -265,4 +264,24 @@ positional arguments:
 optional arguments:
   -h, --help   show this help message and exit
   --version    show program's version number and exit
+```
+
+## Convert a legacy SDS file to SFL
+
+`seaflowpy_sds2sfl` converts an old SDS file to the current SFL format. A SeaFlow instrument serial number must be provided to convert stream pressure to flow rate.
+
+### Usage
+```
+seaflowpy_sds2sfl -h
+usage: seaflowpy_sds2sfl [-h] --sds SDS --sfl SFL --serial SERIAL [--version]
+
+Convert old Seaflow SDS file format to SFL, with STREAM PRESSURE converted to
+FLOW RATE with user supplied ratio (version 0.2.5)
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --sds SDS        Input SDS file
+  --sfl SFL        Output SFL file.
+  --serial SERIAL  Seaflow instrument serial number
+  --version        show program's version number and exit
 ```
