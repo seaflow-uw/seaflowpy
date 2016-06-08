@@ -82,8 +82,8 @@ def fix_one_sfl_line(data, header, cruise, gga=False, west=False):
 
     for d, h in zip(data, header):
         h = h.upper()
-        h = h.strip('\n')
-        d = d.strip('\n')
+        h = h.rstrip()
+        d = d.rstrip()
         if h in FLOATS:
             h = h.strip().replace(' ', '_')
             try:
