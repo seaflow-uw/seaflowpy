@@ -127,8 +127,8 @@ class EVT(seaflowfile.SeaflowFile):
                 todrop = [c for c in self.all_columns if c not in self.columns]
                 self.evt = self.evt.drop(todrop, axis=1)
 
-            # Convert to float32
-            self.evt = self.evt.astype(np.float32)
+            # Convert to float64
+            self.evt = self.evt.astype(np.float64)
 
             # Record the original number of particles
             self.evt_count = len(self.evt.index)
@@ -186,12 +186,12 @@ class EVT(seaflowfile.SeaflowFile):
         if notch1 is None:
             min1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
             max1 = aligned[aligned["D1"] == min1]["fsc_small"].max()
-            notch1 = max1 / (min1 + 10**4)
+            notch1 = max1 / min1
 
         if notch2 is None:
             min2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
             max2 = aligned[aligned["D2"] == min2]["fsc_small"].max()
-            notch2 = max2 / (min2 + 10**4)
+            notch2 = max2 / min2
 
         # Filter focused particles (fsc_small > D + notch)
         oppD1 = aligned["fsc_small"] > ((aligned["D1"] * notch1) - (offset * 10**4))
@@ -205,8 +205,10 @@ class EVT(seaflowfile.SeaflowFile):
         except ZeroDivisionError:
             self.opp_evt_ratio = 0.0
 
-        self.notch1 = notch1
-        self.notch2 = notch2
+        # convert from numpy.float64 for better downstream compatibility
+        # e.g. with json.dumps
+        self.notch1 = float(notch1)
+        self.notch2 = float(notch2)
         self.offset = offset
         self.origin = origin
         self.width = width
@@ -250,18 +252,27 @@ class EVT(seaflowfile.SeaflowFile):
         """Calculate min, max, mean for each channel of OPP data"""
         if self.opp_count == 0:
             return
-        return self._calc_stats(self.opp)
+        if self.opp_transformed:
+            return self._calc_stats(self.opp, transform=False)
+        else:
+            return self._calc_stats(self.opp, transform=True)
 
     def calc_evt_stats(self):
         """Calculate min, max, mean for each channel of OPP data"""
         if self.evt_count == 0:
             return
-        return self._calc_stats(self.evt)
+        if self.evt_transformed:
+            return self._calc_stats(self.evt, transform=False)
+        else:
+            return self._calc_stats(self.evt, transform=True)
 
-    def _calc_stats(self, particles):
+    def _calc_stats(self, particles, transform=True):
         """Calculate min, max, mean for each channel of particle data"""
         stats = {}
-        df = self.transform_particles(particles)
+        if transform:
+            df = self.transform_particles(particles)
+        else:
+            df = particles
         for channel in self.float_columns:
             stats[channel] = {
                 "min": df[channel].min(),
@@ -285,7 +296,7 @@ class EVT(seaflowfile.SeaflowFile):
                     if column in self.evt.columns:
                         stats[pop][column] = means.loc[pop, column]
         else:
-            raise ValueError("EVT DataFrame must contain pop column to run calculate population statistics")
+            raise ValueError("EVT DataFrame must contain pop column to calculate population statistics")
         return stats
 
     def add_vct(self, vct_dir_or_file):

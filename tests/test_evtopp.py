@@ -174,12 +174,12 @@ class TestFilter:
 
     def test_filter_default(self, evt):
         evt.filter()
-        assert evt.opp_count == 345
+        assert evt.opp_count == 311
         assert evt.width == 0.5
         assert evt.offset == 0.0
         assert evt.origin == -1792
-        npt.assert_almost_equal(evt.notch1, 0.7668803418803419313932, decimal=22)
-        npt.assert_almost_equal(evt.notch2, 0.7603813559322033510668, decimal=22)
+        npt.assert_almost_equal(evt.notch1, 0.885080147965475, decimal=15)
+        npt.assert_almost_equal(evt.notch2, 0.876434676434676, decimal=15)
 
     def test_filter_with_set_params(self, evt):
         evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
@@ -192,12 +192,8 @@ class TestFilter:
 
     def test_filter_twice_overwrites_old_results(self, evt):
         evt.filter()
-        assert evt.opp_count == 345
         assert evt.width == 0.5
         assert evt.offset == 0.0
-        assert evt.origin == -1792
-        npt.assert_almost_equal(evt.notch1, 0.7668803418803419313932, decimal=22)
-        npt.assert_almost_equal(evt.notch2, 0.7603813559322033510668, decimal=22)
 
         evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
         assert evt.opp_count == 2812
@@ -208,29 +204,38 @@ class TestFilter:
         npt.assert_allclose(evt.notch2, 1.1)
 
     def test_stats(self, evt):
-        evt.filter()
+        # Create made up evt and opp data for stats calculations
+        evt = sfp.EVT("fake/path", read_data=False)
+        evt.evt = pd.DataFrame()
+        evt.opp = pd.DataFrame()
+        # Make sure evt isn't transformed during stat calculations
+        evt.evt_transformed = True
+        evt.opp_transformed = True
+        i = 0
+        for c in evt.columns:
+            evt.evt[c] = np.arange(i*100, i*100+10)
+            evt.opp[c] = 2 * np.arange(i*100, i*100+10)  # opp will be double evt
+            i += 1
+        evt.evt_count = 10
+        evt.opp_count = 10
         evt_stats = evt.calc_evt_stats()
         opp_stats = evt.calc_opp_stats()
         evt_answer = {
-            'D1': {'max': 2963.4783432410418, 'mean': 73.08622879073846, 'min': 1.0},
-            'D2': {'max': 3156.0618662237976, 'mean': 79.54512712808497, 'min': 1.0},
-            'chl_big': {'max': 53.64042220069004, 'mean': 53.45042450208166, 'min': 53.357532766135428},
-            'chl_small': {'max': 2696.4112647346287, 'mean': 4.369003421372767, 'min': 1.1734940610013915},
-            'fsc_big': {'max': 4.1313203017805806, 'mean': 2.2051450385182534, 'min': 1.2319020328264516},
-            'fsc_perp': {'max': 58.68563380375862, 'mean': 58.41150116848148, 'min': 58.29722577023179},
-            'fsc_small': {'max': 1652.0286629483903, 'mean': 2.8114101351566445, 'min': 1.0},
-            'pe': {'max': 1779.1855898687629, 'mean': 8.329553221519069, 'min': 1.0}
+            'D1': {'max': 209.0, 'mean': 204.5, 'min': 200.0},
+            'D2': {'max': 309.0, 'mean': 304.5, 'min': 300.0},
+            'fsc_small': {'max': 409.0, 'mean': 404.5, 'min': 400.0},
+            'fsc_perp': {'max': 509.0, 'mean': 504.5, 'min': 500.0},
+            'fsc_big': {'max': 609.0, 'mean': 604.5, 'min': 600.0},
+            'pe': {'max': 709.0, 'mean': 704.5, 'min': 700.0},
+            'chl_small': {'max': 809.0, 'mean': 804.5, 'min': 800.0},
+            'chl_big': {'max': 909.0, 'mean': 904.5, 'min': 900.0}
         }
-        opp_answer = {
-            'D1': {'max': 2946.0375718383511, 'mean': 27.57584311733493, 'min': 1.0755143540156189},
-            'D2': {'max': 3156.0618662237976, 'mean': 27.027957147404216, 'min': 1.0},
-            'chl_big': {'max': 53.64042220069004, 'mean': 53.46595431797728, 'min': 53.357532766135428},
-            'chl_small': {'max': 922.19096252450186, 'mean': 22.266367429741198, 'min': 1.3345760374616036},
-            'fsc_big': {'max': 3.380108678220699, 'mean': 2.2238485381723674, 'min': 1.4249794251756174},
-            'fsc_perp': {'max': 58.642349877876896, 'mean': 58.42582313084556, 'min': 58.340254959965897},
-            'fsc_small': {'max': 1166.1984528866317, 'mean': 23.187903329680267, 'min': 1.1612919251372618},
-            'pe': {'max': 1269.1578052463431, 'mean': 74.84328753100617, 'min': 1.0}
-        }
+        opp_answer = {}
+        for channel in evt_answer:
+            for stat in evt_answer[channel]:
+                if not channel in opp_answer:
+                    opp_answer[channel] = {}
+                opp_answer[channel][stat] = evt_answer[channel][stat] * 2
 
         # Results can differ in least significant digits depending on how numpy
         # is installed and used (e.g. if you use the Intel Math Library), so
@@ -464,68 +469,6 @@ class TestMultiFileFilter:
                     "notch2", "offset", "origin", "width"]].as_matrix()
             )
             npt.assert_array_equal(evts[i].opp, opps[i].evt)
-
-    def test_multi_file_filter_against_popcycle(self, tmpout):
-        """Make sure Python filtering results equal popcycle deda9a8 results"""
-        files = sfp.find_evt_files("tests/testcruise")
-        filt_opts = {
-            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 0.5
-        }
-
-        # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we set multiprocessing=False here
-        sfp.filterevt.filter_evt_files(
-            files=files, process_count=1, cruise="testcruise",
-            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, multiprocessing_flag=False)
-        con = sqlite3.connect(tmpout["db"])
-        filter_python = pd.read_sql("SELECT * FROM opp ORDER BY file", con)
-        con.close()
-
-        # This db was created with the R script test_filter_testcruise.R using
-        # popcycle revision deda9a8.
-        con = sqlite3.connect("tests/popcycle-testcruise.db")
-        opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, particle", con)
-        filter_R = pd.read_sql("SELECT * FROM filter ORDER BY file", con)
-        con.close()
-
-        opps = []
-        ints = sfp.EVT.all_int_columns
-        floats = sfp.EVT.all_float_columns
-        for f in tmpout["oppdir"].visit(fil=lambda x: str(x).endswith("+00-00.opp.gz"),
-                                        sort=True):
-            opp = sfp.EVT(str(f))
-            # Make OPP evt dataframe look like dataframe that popcycle creates
-            # without file and cruise columns
-            opp.evt[ints] = opp.evt[ints].astype(np.int64)
-            opp.evt[floats] = sfp.EVT.transform(opp.evt[floats])
-            opp.evt.insert(0, "particle", np.arange(1, opp.evt_count+1, dtype=np.int64))
-            opps.append(opp)
-        opp_python = pd.concat([o.evt for o in opps])
-        npt.assert_allclose(
-            opp_python.as_matrix(),
-            opp_R.drop(["cruise", "file"], axis=1).as_matrix()
-        )
-
-        npt.assert_array_equal(
-            filter_python[["cruise", "file"]],
-            filter_R[["cruise", "file"]])
-        # Compare whole arrays to two decimal places because R code rounds
-        # notch1 and notch2 to two decimal places.
-        filter_python = filter_python.drop(["cruise", "file"], axis=1)
-        filter_python = filter_python[["opp_count", "evt_count",
-            "opp_evt_ratio", "notch1", "notch2", "offset", "origin",
-            "width"]]
-        npt.assert_array_almost_equal(
-            filter_python.as_matrix(),
-            filter_R.drop(["cruise", "file"], axis=1).as_matrix(),
-            decimal=2)
-        # R code saves opp_evt_ratio with full precision so compare these
-        # these columns with no decimal precision setting.
-        npt.assert_array_equal(
-            filter_python["opp_evt_ratio"],
-            filter_R["opp_evt_ratio"])
 
     @s3
     def test_multi_file_filter_S3(self, tmpout):
