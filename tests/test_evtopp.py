@@ -19,7 +19,7 @@ s3 = pytest.mark.skipif(
 
 @pytest.fixture()
 def evt():
-    return sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00")
+    return sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
 
 
 @pytest.fixture()
@@ -45,33 +45,33 @@ def tmpout_single(tmpout, evt):
 
 class TestOpen:
     def test_read_valid_evt(self):
-        evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00")
+        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
-        assert evt.path == "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
         assert evt.evt_transformed == False
 
     def test_read_valid_evt_and_transform(self):
-        evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                       transform=True)
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
-        assert evt.path == "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
         assert evt.evt_transformed == True
 
     def test_read_valid_gz_evt(self):
-        evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz")
+        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert evt.headercnt == 40000
         assert evt.evt_count == 40000
-        assert evt.path == "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz"
+        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
 
     def test_read_valid_evt_subselect_columns(self):
-        evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00")
+        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         evtanswer = evt.evt.drop(
             ["time", "pulse_width", "D1", "D2", "fsc_perp", "fsc_big", "chl_big"],
             axis=1
         )
-        evtsub = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+        evtsub = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                          columns=["fsc_small", "chl_small", "pe"])
         assert evtsub.columns == ["fsc_small", "pe", "chl_small"]
         npt.assert_array_equal(
@@ -81,13 +81,13 @@ class TestOpen:
         npt.assert_array_equal(evtsub.evt, evtanswer)
 
     def test_read_valid_evt_subselect_columns_and_transform(self):
-        evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                       transform=True)
         evtanswer = evt.evt.drop(
             ["time", "pulse_width", "D1", "D2", "fsc_perp", "fsc_big", "chl_big"],
             axis=1
         )
-        evtsub = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
+        evtsub = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                          columns=["fsc_small", "chl_small", "pe"],
                          transform=True)
         assert evtsub.columns == ["fsc_small", "pe", "chl_small"]
@@ -99,15 +99,15 @@ class TestOpen:
 
     def test_read_empty_evt(self):
         with pytest.raises(sfp.errors.EVTFileError):
-            evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-06-02+00-00")
+            evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_bad_header_count_evt(self):
         with pytest.raises(sfp.errors.EVTFileError):
-            evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-09-02+00-00")
+            evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_short_header_evt(self):
         with pytest.raises(sfp.errors.EVTFileError):
-            evt = sfp.EVT("tests/testcruise/2014_185/2014-07-04T00-12-02+00-00")
+            evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
 
 class TestPathFilenameParsing:
@@ -152,13 +152,13 @@ class TestPathFilenameParsing:
         assert parsed == (files[:2] + files[3:])
 
     def test_find_evt_files(self):
-        files = sfp.find_evt_files("tests/testcruise")
+        files = sfp.find_evt_files("tests/testcruise_evt")
         answer = [
-            "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "tests/testcruise/2014_185/2014-07-04T00-06-02+00-00",
-            "tests/testcruise/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
         ]
         assert files == answer
 
@@ -420,11 +420,11 @@ class TestMultiFileFilter:
     def test_multi_file_filter_local(self, tmpout):
         """Test multi-file filtering and ensure output can be read back OK"""
         files = [
-            "tests/testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "tests/testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "tests/testcruise/2014_185/2014-07-04T00-06-02+00-00",
-            "tests/testcruise/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
         ]
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,

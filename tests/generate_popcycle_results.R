@@ -19,7 +19,7 @@ if (length(args) < 2) {
 cruise <- "testcruise"
 paramsdb <- file.path(testdir, "testcruise_paramsonly.db")
 db <- file.path(wd, "testcruise.db")
-evt.dir <- file.path(testdir, "testcruise")
+evt.dir <- file.path(testdir, "testcruise_evt")
 opp.dir <- file.path(wd, "opp")
 vct.dir <- file.path(wd, "vct")
 

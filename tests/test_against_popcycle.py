@@ -25,7 +25,7 @@ def test_against_popcycle(tmpdir):
     os.chmod(dbfile, 0664)  # make the db writeable
     gatingdf = sfp.db.get_gating_table(dbfile)
     gating_id = gatingdf["id"].values[0]
-    evt_files = sfp.evt.find_evt_files("tests/testcruise")
+    evt_files = sfp.evt.find_evt_files("tests/testcruise_evt")
     filt_opts = {
         "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
         "width": 0.5
