@@ -27,7 +27,7 @@ class SeaflowFile(object):
         """Is file gzipped?"""
         return self.path and self.path.endswith(".gz")
 
-    def _open(self):
+    def open(self):
         """Return a file-like object for reading."""
         handle = None
         if self.fileobj:

@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 import argparse
 import aws
+import botocore
 import db
 import evt
 import filterevt
-import botocore
+import json
 import pkg_resources
-import pprint
 import sys
 
 
@@ -53,6 +53,9 @@ def parse_args(args):
                    help="Origin (optional)")
     p.add_argument("--offset", type=float, default=0.0, metavar="N",
                    help="Offset (optional)")
+    p.add_argument("--twopass", default=False, action="store_true",
+                   help="""Perform two-pass filter process to autocalculate
+                   parameters.""")
 
     p.add_argument("-p", "--process_count", required=False, type=int, default=1,
                    metavar="N", help="""Number of processes to use in filtering
@@ -86,8 +89,9 @@ def main(cli_args=None):
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
     v["version"] = pkg_resources.get_distribution("seaflowpy").version
-    print "\nDefined parameters:"
-    pprint.pprint(v, indent=2)
+    print "Defined parameters:"
+    print json.dumps(v, indent=2)
+    print ""
 
     # Find EVT files
     if args.evt_dir:
@@ -115,9 +119,14 @@ def main(cli_args=None):
     filter_options = dict((k, getattr(args, k)) for k in filter_keys)
 
     # Filter
-    filterevt.filter_evt_files(files, args.cruise, filter_options, args.db,
-                               args.opp_dir, s3=args.s3, s3_bucket=args.s3_bucket,
-                               process_count=args.process_count, every=args.resolution)
+    if args.twopass:
+        filterer = filterevt.two_pass_filter
+    else:
+        filterer = filterevt.filter_evt_files
+    filterer(files, args.cruise, filter_options, args.db,
+             args.opp_dir, s3=args.s3, s3_bucket=args.s3_bucket,
+             process_count=args.process_count, every=args.resolution)
+
     # Index
     if args.db:
         db.ensure_indexes(args.db)

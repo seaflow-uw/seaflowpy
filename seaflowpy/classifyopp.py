@@ -90,5 +90,5 @@ def classify_one_file(opp_file, cruise, gating_id, poly, dbpath, vct_dir):
 
     else:
         opp.classify(poly)
-        opp.write_vct_csv(vct_dir)
+        opp.write_vct(vct_dir)
         opp.save_vct_to_db(cruise, gating_id, dbpath)

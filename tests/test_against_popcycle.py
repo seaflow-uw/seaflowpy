@@ -56,7 +56,7 @@ def test_against_popcycle(tmpdir):
     opps_R = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(popcycledir.join("opp")))]
     assert len(opps_py) == len(opps_R)
     for i in range(len(opps_py)):
-        npt.assert_array_equal(opps_py[i].evt, opps_R[i].evt)
+        npt.assert_array_equal(opps_py[i].df, opps_R[i].df)
 
     # Compare VCT file output
     vcts_py = [sfp.vct.VCT(v) for v in sfp.vct.find_vct_files(str(tmpdir.join("vct")))]

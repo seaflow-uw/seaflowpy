@@ -22,6 +22,15 @@ class TestOpen:
         assert vct.vct.columns == ["pop"]
 
 
+class TestOutput:
+    def test_write_vct(self, tmpdir):
+        vcts = [sfp.vct.VCT(f) for f in sfp.vct.find_vct_files("tests/testcruise_vct")]
+        vcts[0].write_vct(str(tmpdir))
+        # Now read back new VCT and make sure it matches original
+        reread_vct = sfp.vct.VCT(str(tmpdir.join(vcts[0].file_id)) + ".vct.gz")
+        assert "\n".join(vcts[0].vct) == "\n".join(reread_vct.vct)
+
+
 class TestPathFilenamParsing:
     def test_is_vct(self):
         files = [
