@@ -21,12 +21,13 @@ def ensure_tables(dbpath):
     pe REAL NOT NULL,
     chl_small REAL NOT NULL,
     gating_id TEXT NOT NULL,
-    PRIMARY KEY (cruise, file, pop)
+    PRIMARY KEY (cruise, file, pop, gating_id)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS opp (
     cruise TEXT NOT NULL,
     file TEXT NOT NULL,
+    all_count INTEGER NOT NULL,
     opp_count INTEGER NOT NULL,
     evt_count INTEGER NOT NULL,
     opp_evt_ratio REAL NOT NULL,
@@ -54,7 +55,7 @@ def ensure_tables(dbpath):
     chl_big_max REAL NOT NULL,
     chl_big_mean REAL NOT NULL,
     filter_id TEXT NOT NULL,
-    PRIMARY KEY (cruise, file)
+    PRIMARY KEY (cruise, file, filter_id)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
@@ -184,6 +185,7 @@ def save_opp_stats(dbpath, vals):
     field_order = [
         "cruise",
         "file",
+        "all_count",
         "opp_count",
         "evt_count",
         "opp_evt_ratio",
@@ -212,12 +214,6 @@ def save_opp_stats(dbpath, vals):
         "chl_big_mean",
         "filter_id",
     ]
-
-    # Erase existing entry first
-    sql_delete = "DELETE FROM opp WHERE cruise = '%s' AND file == '%s'" % \
-        (vals["cruise"], vals["file"])
-    execute(dbpath, sql_delete)
-
     # Construct values string with named placeholders
     values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT INTO opp VALUES (%s)" % values_str
@@ -280,10 +276,28 @@ def save_sfl(dbpath, vals):
 
 
 def get_gating_table(dbpath):
-    sql = "SELECT * FROM gating ORDER BY date"
+    sql = "SELECT * FROM gating ORDER BY date ASC"
     with sqlite3.connect(dbpath) as dbcon:
         gatingdf = pd.read_sql(sql, dbcon)
     return gatingdf
+
+def get_filter_table(dbpath):
+    sql = "SELECT * FROM filter ORDER BY date ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        filterdf = pd.read_sql(sql, dbcon)
+    return filterdf
+
+def get_latest_filter(dbpath):
+    sql = "SELECT * FROM filter ORDER BY date ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        filterdf = pd.read_sql(sql, dbcon)
+    return filterdf.tail(1)
+
+def get_opp(dbpath, filter_id):
+    sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file".format(filter_id)
+    with sqlite3.connect(dbpath) as dbcon:
+        oppdf = pd.read_sql(sql, dbcon)
+    return oppdf
 
 
 def get_poly(dbpath, gating_id):

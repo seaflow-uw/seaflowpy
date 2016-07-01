@@ -40,14 +40,12 @@ class EVT(seaflowfile.SeaflowFile):
     def __init__(self, path=None, fileobj=None, read_data=True,
                  transform=False, columns=None):
         seaflowfile.SeaflowFile.__init__(self, path, fileobj)
-        self.headercnt = 0
-        self.evt_count = 0
-        self.opp_count = 0
-        self.opp_evt_ratio = 0.0
-        self.evt = None
-        self.opp = None
-        self.evt_transformed = False
-        self.opp_transformed = False
+        self.headercnt = 0  # first 4 byte uint in binary file reporting number of rows
+        self.particle_count = 0
+        self.df = None  # particle DataFrame
+        self.transformed = False  # are the float columns exponentiated?
+        self.evt_parent = None  # if this is filtered data, a reference to unfiltered EVT parent object
+        self.evt_signal_count = None  # The noise filtered EVT particle count
 
         # Columns to keep. None means keep all
         if columns is None:
@@ -70,13 +68,13 @@ class EVT(seaflowfile.SeaflowFile):
         self.width = None
 
         if read_data:
-            self._read_evt()
+            self._read_binary()
 
         if transform:
-            self.transform_evt()
+            self.transform_particles()
 
     def __str__(self):
-        keys = ["path", "file_id", "evt_count", "opp_count", "columns"]
+        keys = ["path", "file_id", "headercnt", "particle_count", "columns"]
         tostringdict = OrderedDict([(k, getattr(self, k)) for k in keys])
         tostringdict["filter_options"] = {
             "notch1": self.notch1,
@@ -87,9 +85,9 @@ class EVT(seaflowfile.SeaflowFile):
         }
         return json.dumps(tostringdict, indent=2)
 
-    def _read_evt(self):
-        """Read an EVT binary file and return a Pandas DataFrame."""
-        with self._open() as fh:
+    def _read_binary(self):
+        """Read an EVT/OPP binary file into a Pandas DataFrame."""
+        with self.open() as fh:
             # Particle count (rows of data) is stored in an initial 32-bit
             # unsigned int
             buff = fh.read(4)
@@ -120,36 +118,65 @@ class EVT(seaflowfile.SeaflowFile):
             # linefeed in ASCII), but because the last line doesn't have them
             # it's easier to treat them as leading ints on each line after the
             # header.
-            self.evt = pd.DataFrame(np.delete(particles, [0, 1], 1),
-                                    columns=self.all_columns)
+            self.df = pd.DataFrame(np.delete(particles, [0, 1], 1),
+                                   columns=self.all_columns)
             # Keep a subset of columns
             if self.columns != self.all_columns:
                 todrop = [c for c in self.all_columns if c not in self.columns]
-                self.evt = self.evt.drop(todrop, axis=1)
+                self.df = self.df.drop(todrop, axis=1)
 
             # Convert to float64
-            self.evt = self.evt.astype(np.float64)
+            self.df = self.df.astype(np.float64)
 
-            # Record the original number of particles
-            self.evt_count = len(self.evt.index)
+            # Record the original number of particles read from file
+            self.particle_count = len(self.df.index)
 
             # Record the number of particles reported in the header
-            self.headercnt = rowcnt
+            self.headercnt = int(rowcnt)
 
-    def erase_evt(self):
-        """Erase the evt particle data."""
-        self.evt = None
-        self.headercnt = 0
-        self.evt_count = 0
+    def filter_noise(self):
+        """
+        Filter data below noise threshold.
+
+        This function does not modify the actual particle DataFrame. Only
+        particles with D1, D2, and fsc_small values > 1 will be kept. Sets
+        self.evt_signal_count.
+
+        Returns:
+            Reference to subset of particle DataFrame passing threshold.
+        """
+        if len(set(self.columns).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
+            raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
+        # Only keep particles detected by fsc_small, D1, D2
+        keep = (self.df["fsc_small"] > 1) & (self.df["D1"] > 1) & (self.df["D2"] > 1)
+        self.evt_signal_count = len(self.df[keep].index)
+        return self.df[keep]
+
+    def filter_noise_old(self):
+        """
+        Old method to filter data below noise threshold.
+
+        Only on particles with fsc_small values > 1 will be kept. This function
+        does not modify the actual particle DataFrame.
+
+        Returns:
+            Reference to subset of particle DataFrame passing threshold.
+        """
+
+        if len(set(self.columns).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
+            raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
+        # Only keep particles detected by fsc_small, D1, D2
+        keep = (self.df["fsc_small"] > 1)
+        return self.df[keep]
 
     def add_vct(self, vct):
         """Add population annotations from VCT object"""
-        self.evt["pop"] = vct.vct
+        self.df["pop"] = vct.vct
 
     def filter(self, notch1=None, notch2=None, offset=0.0,
                origin=None, width=0.5):
-        """Filter EVT particle data."""
-        if self.evt is None or self.evt_count == 0:
+        """Filter EVT particle data and return a new EVT object"""
+        if self.df is None or len(self.df.index) == 0:
             return
 
         if (width is None) or (offset is None):
@@ -168,18 +195,21 @@ class EVT(seaflowfile.SeaflowFile):
         if not notch2 is None:
             notch2 = float(notch2)
 
+        # Apply noise filter
+        df = self.filter_noise()
+        evt_count = len(df.index)
+
         # Correction for the difference in sensitivity between D1 and D2
         if origin is None:
-            origin = (self.evt["D2"] - self.evt["D1"]).median()
+            origin = (df["D2"] - df["D1"]).median()
 
-        # Only keep particles detected by fsc_small
-        opp = self.evt[self.evt["fsc_small"] > 1].copy()
+        #df = self.filter_noise_old()
 
         # Filter aligned particles (D1 = D2), with correction for D1 D2
         # sensitivity difference
-        alignedD1 = (opp["D1"] + origin) < (opp["D2"] + (width * 10**4))
-        alignedD2 = opp["D2"] < (opp["D1"] + origin + (width * 10**4))
-        aligned = opp[alignedD1 & alignedD2]
+        alignedD1 = (df["D1"] + origin) < (df["D2"] + (width * 10**4))
+        alignedD2 = df["D2"] < (df["D1"] + origin + (width * 10**4))
+        aligned = df[alignedD1 & alignedD2]
 
         fsc_small_max = aligned["fsc_small"].max()
 
@@ -196,44 +226,40 @@ class EVT(seaflowfile.SeaflowFile):
         # Filter focused particles (fsc_small > D + notch)
         oppD1 = aligned["fsc_small"] > ((aligned["D1"] * notch1) - (offset * 10**4))
         oppD2 = aligned["fsc_small"] > ((aligned["D2"] * notch2) - (offset * 10**4))
-        opp = aligned[oppD1 & oppD2].copy()
+        oppdf = aligned[oppD1 & oppD2].copy()
 
-        self.opp = opp
-        self.opp_count = len(self.opp.index)
-        try:
-            self.opp_evt_ratio = float(self.opp_count) / self.evt_count
-        except ZeroDivisionError:
-            self.opp_evt_ratio = 0.0
+        opp = self.clone_with_filtered(oppdf, notch1, notch2, offset, origin, width)
+        return opp
 
-        # convert from numpy.float64 for better downstream compatibility
-        # e.g. with json.dumps
-        self.notch1 = float(notch1)
-        self.notch2 = float(notch2)
-        self.offset = offset
-        self.origin = origin
-        self.width = width
+    def clone_with_filtered(self, oppdf, notch1, notch2, offset, origin, width):
+        """Clone this object with new OPP DataFrame."""
+        clone = EVT(path=self.path, read_data=False, transform=False)
+        clone.df = oppdf
+        if clone.df is not None:
+            clone.evt_signal_count = self.evt_signal_count  # with noise filter applied
+            clone.particle_count = len(clone.df.index)
+            clone.headercnt = None
+            clone.transformed = self.transformed
+            # convert from numpy.float64 for better downstream compatibility
+            # e.g. with json.dumps
+            clone.notch1 = float(notch1)
+            clone.notch2 = float(notch2)
+            clone.offset = offset
+            clone.origin = origin
+            clone.width = width
 
-    def transform_evt(self):
-        """Unlog EVT data in-place
+            clone.int_columns = self.int_columns
+            clone.float_columns = self.float_columns
+            clone.evt_parent = self
 
-        Returns a reference to the EVT DataFrame
-        """
-        if self.evt_count == 0:
-            return
-        self.evt_transformed = True
-        return self.transform_particles(self.evt, inplace=True)
+            try:
+                clone.opp_evt_ratio = float(clone.particle_count) / clone.evt_signal_count
+            except ZeroDivisionError:
+                clone.opp_evt_ratio = 0.0
 
-    def transform_opp(self):
-        """Unlog OPP data in-place
+        return clone
 
-        Returns a reference to the OPP DataFrame
-        """
-        if self.opp_count == 0:
-            return
-        self.opp_transformed = True
-        return self.transform_particles(self.opp, inplace=True)
-
-    def transform_particles(self, particles, inplace=False):
+    def transform_particles(self, inplace=True):
         """Unlog particle data.
 
         Arguments:
@@ -242,37 +268,22 @@ class EVT(seaflowfile.SeaflowFile):
         Returns:
             Reference to original particles DataFrame or to a copy
         """
-        if not inplace:
-            particles = particles.copy()
-        if self.float_columns:
+        if inplace:
+            particles = self.df
+            self.transformed = True
+        else:
+            particles = self.df.copy()
+        if self.float_columns and self.particle_count > 0:
             particles[self.float_columns] = self.transform(particles[self.float_columns])
         return particles
 
-    def calc_opp_stats(self):
-        """Calculate min, max, mean for each channel of OPP data"""
-        if self.opp_count == 0:
-            return
-        if self.opp_transformed:
-            return self._calc_stats(self.opp, transform=False)
-        else:
-            return self._calc_stats(self.opp, transform=True)
-
-    def calc_evt_stats(self):
-        """Calculate min, max, mean for each channel of OPP data"""
-        if self.evt_count == 0:
-            return
-        if self.evt_transformed:
-            return self._calc_stats(self.evt, transform=False)
-        else:
-            return self._calc_stats(self.evt, transform=True)
-
-    def _calc_stats(self, particles, transform=True):
+    def calc_particle_stats(self):
         """Calculate min, max, mean for each channel of particle data"""
         stats = {}
-        if transform:
-            df = self.transform_particles(particles)
+        if not self.transformed:
+            df = self.transform_particles(inplace=False)
         else:
-            df = particles
+            df = self.df
         for channel in self.float_columns:
             stats[channel] = {
                 "min": df[channel].min(),
@@ -283,8 +294,12 @@ class EVT(seaflowfile.SeaflowFile):
 
     def calc_pop_stats(self):
         stats = {}
-        if "pop" in self.evt.columns:
-            bypop = self.evt.groupby("pop")
+        if not self.transformed:
+            df = self.transform_particles(inplace=False)
+        else:
+            df = self.df
+        if "pop" in df.columns:
+            bypop = df.groupby("pop")
             means = bypop.mean()
             counts = bypop.size()
             for pop in bypop.groups:
@@ -293,10 +308,12 @@ class EVT(seaflowfile.SeaflowFile):
                     "count": counts[pop]
                 }
                 for column in ["fsc_small", "fsc_perp", "pe", "chl_small"]:
-                    if column in self.evt.columns:
+                    if column in df.columns:
                         stats[pop][column] = means.loc[pop, column]
         else:
-            raise ValueError("EVT DataFrame must contain pop column to calculate population statistics")
+            raise ValueError(
+                "Particle DataFrame must contain pop column to calculate population statistics"
+            )
         return stats
 
     def add_vct(self, vct_dir_or_file):
@@ -311,36 +328,43 @@ class EVT(seaflowfile.SeaflowFile):
             raise IOError("VCT file for {} could not be found". format(self.file_id))
 
         vctobj = vct.VCT(vct_file)
-        self.evt["pop"] = vctobj.vct["pop"]
+        self.df["pop"] = vctobj.vct["pop"]
 
     def classify(self, pop_polys):
-        self.evt["pop"] = "unknown"
+        if not self.transformed:
+            df = self.transform(inplace=False)
+        else:
+            df = self.df
+        df["pop"] = "unknown"
         for pop, verts in pop_polys.iteritems():
             # Convert polygon vertices for this pop into a matplotlib.Path
             path = vertstopath(verts)
 
             # Only test unknown particles
-            todo = self.evt["pop"] == "unknown"
+            todo = df["pop"] == "unknown"
             # Test still unknown particles
-            pop_bool = path.contains_points(self.evt.loc[todo, verts.columns])
-            pop_idx = self.evt.loc[todo, :].loc[pop_bool, :].index
+            pop_bool = path.contains_points(df.loc[todo, verts.columns])
+            pop_idx = df.loc[todo, :].loc[pop_bool, :].index
             # Record population
-            self.evt.loc[pop_idx, "pop"] = pop
+            df.loc[pop_idx, "pop"] = pop
+        if not self.transformed:
+            self.df["pop"] = df["pop"]
 
     def save_opp_to_db(self, cruise_name, filter_id, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
-        if self.opp is None or self.evt_count == 0 or self.opp_count == 0:
+        if self.df is None or self.particle_count == 0:
             return
 
         vals = {
             "cruise": cruise_name, "file": self.file_id,
-            "opp_count": self.opp_count, "evt_count": self.evt_count,
+            "all_count": self.evt_parent.particle_count,
+            "opp_count": self.particle_count, "evt_count": self.evt_signal_count,
             "opp_evt_ratio": self.opp_evt_ratio, "notch1": self.notch1,
             "notch2": self.notch2, "offset": self.offset, "origin": self.origin,
             "width": self.width, "filter_id": filter_id
         }
 
-        stats = self.calc_opp_stats()
+        stats = self.calc_particle_stats()
         for channel in self.float_columns:
             if channel in ["D1", "D2"]:
                 continue
@@ -352,7 +376,7 @@ class EVT(seaflowfile.SeaflowFile):
 
     def save_vct_to_db(self, cruise_name, gating_id, dbpath):
         """Save population statistics to SQLite"""
-        if self.evt is None or self.evt_count == 0 or "pop" not in self.evt.columns:
+        if self.df is None or self.particle_count == 0 or "pop" not in self.df.columns:
             return
 
         common_vals = {
@@ -366,16 +390,18 @@ class EVT(seaflowfile.SeaflowFile):
 
         db.save_vct_stats(dbpath, stats.values())
 
-    def write_opp_binary(self, opp_dir):
-        """Write opp to LabView binary file in opp_dir
+    def write_binary(self, outdir, opp=True):
+        """Write particle to LabView binary file in outdir
         """
-        if self.opp_count == 0:
+        if self.df is None or self.particle_count == 0:
             return
 
         # Might have julian day, might not
-        outdir = os.path.join(opp_dir, os.path.dirname(self.file_id))
-        util.mkdir_p(outdir)
-        outfile = os.path.join(opp_dir, self.file_id + ".opp")
+        root = os.path.join(outdir, os.path.dirname(self.file_id))
+        util.mkdir_p(root)
+        outfile = os.path.join(outdir, self.file_id)
+        if opp:
+             outfile += ".opp"
         if os.path.exists(outfile):
             os.remove(outfile)
         if os.path.exists(outfile + ".gz"):
@@ -383,42 +409,36 @@ class EVT(seaflowfile.SeaflowFile):
 
         with open(outfile, "wb") as fh:
             # Write 32-bit uint particle count header
-            header = np.array([self.opp_count], np.uint32)
+            header = np.array([self.particle_count], np.uint32)
             header.tofile(fh)
 
             # Write particle data
-            self._create_opp_for_binary().tofile(fh)
+            self._create_particle_matrix().tofile(fh)
 
         util.gzip_file(outfile)
 
-    def write_vct_csv(self, vct_dir):
-        if "pop" not in self.evt.columns:
+    def write_vct(self, outdir):
+        if "pop" not in self.df.columns:
             raise ValueError("EVT DataFrame must contain pop column to write VCT csv file")
-        outfile = os.path.join(vct_dir, self.file_id + ".vct")
-        util.mkdir_p(os.path.dirname(outfile))
-        if os.path.exists(outfile):
-            os.remove(outfile)
-        if os.path.exists(outfile + ".gz"):
-            os.remove(outfile + ".gz")
-        with gzip.open(outfile + ".gz", "wb") as f:
-            f.write("\n".join(self.evt["pop"].values) + "\n")
+        vct_ = vct.VCT(path=self.path, vct=self.df["pop"].values)
+        vct_.write_vct(outdir)
 
-    def _create_opp_for_binary(self):
-        """Return a copy of opp ready to write to binary file"""
-        if self.opp is None:
+    def _create_particle_matrix(self):
+        """Return a copy of df ready to write to binary file"""
+        if self.df is None:
             return
 
         # Convert back to original type
-        opp = self.opp.astype(np.uint16)
+        df = self.df.astype(np.uint16)
 
         # Add leading 4 bytes to match LabViews binary format
-        zeros = np.zeros([self.opp_count, 1], dtype=np.uint16)
+        zeros = np.zeros([self.particle_count, 1], dtype=np.uint16)
         tens = np.copy(zeros)
         tens.fill(10)
-        opp.insert(0, "tens", tens)
-        opp.insert(1, "zeros", zeros)
+        df.insert(0, "tens", tens)
+        df.insert(1, "zeros", zeros)
 
-        return opp.as_matrix()
+        return df.as_matrix()
 
 
 def is_evt(file_path):

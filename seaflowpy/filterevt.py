@@ -3,12 +3,70 @@ import copy
 import db
 import evt
 import errors
+import json
 import os
 import sys
 import time
 import util
 from itertools import imap
 from multiprocessing import Pool
+
+def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
+                     s3_bucket=None, process_count=1, every=10.0,
+                     multiprocessing_flag=True):
+    """
+    Filter a list of EVT files in two passes.
+
+    The first pass uses reasonable default or autocalculated filter parameters.
+    The second pass uses the average filter parameter values obtained from the
+    first pass.
+
+    Arguments arguments:
+        files - paths to EVT files to filter
+        cruise - cruise name
+        filter_options - Dictionary of filter params
+            (notch1, notch2, width, offset, origin)
+        dbpath = SQLite3 db path
+        opp_dir = Directory for output binary OPP files
+
+    Keyword arguments:
+        s3 - Get EVT data from S3
+        s3_bucket - S3 bucket name
+        process_count - number of worker processes to use
+        every - Percent progress output resolution
+        multiprocessing_flag = Use multiprocessing?
+    """
+    print "Beginning two-pass filter process"
+    print "*********************************"
+    print "PASS 1"
+    print "*********************************"
+    filter_evt_files(files, cruise, filter_options, dbpath, None, s3=s3,
+                     s3_bucket=s3_bucket, process_count=process_count,
+                     every=every, multiprocessing_flag=multiprocessing_flag)
+
+
+    filter_latest = db.get_latest_filter(dbpath)
+    opps = db.get_opp(dbpath, filter_latest["id"].values[0])
+    avg = opps.median()
+    filter_options["notch1"] = avg["notch1"]
+    filter_options["notch2"] = avg["notch2"]
+    filter_options["origin"] = avg["origin"]
+    filter_options["offset"] = avg["offset"]
+    filter_options["width"] = avg["width"]
+    # Get filter parameters here
+    # 1) get latest filter parameters
+    # 2) get opp associated with this filter id
+    # 3) calculate average values
+    # 4) update filter_options object
+    print ""
+    print "*********************************"
+    print "PASS 2"
+    print "*********************************"
+    print "Average filter parameters:"
+    print json.dumps(filter_options, indent=2)
+    filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=s3,
+                     s3_bucket=s3_bucket, process_count=process_count,
+                     every=every, multiprocessing_flag=multiprocessing_flag)
 
 
 def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
@@ -62,6 +120,7 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
             return imap(worker, task_list)
 
     evt_count = 0
+    evt_signal_count = 0
     opp_count = 0
     files_ok = 0
 
@@ -79,11 +138,13 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
 
     last = 0  # Last progress milestone in increments of every
     evt_count_block = 0  # EVT particles in this block (between milestones)
+    evt_signal_count_block = 0  # EVT noise filtered particles in this block
     opp_count_block = 0  # OPP particles in this block
 
     # Filter particles in parallel with process pool
     for i, res in enumerate(mapper(do_work, inputs)):
         evt_count_block += res["evt_count"]
+        evt_signal_count_block += res["evt_signal_count"]
         opp_count_block += res["opp_count"]
         files_ok += 1 if res["ok"] else 0
 
@@ -94,46 +155,42 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         if milestone > last:
             now = time.time()
             evt_count += evt_count_block
+            evt_signal_count += evt_signal_count_block
             opp_count += opp_count_block
-            try:
-                ratio_block = float(opp_count_block) / evt_count_block
-            except ZeroDivisionError:
-                ratio_block = 0.0
+            ratio_signal_block = zerodiv(opp_count_block, evt_signal_count_block)
+            ratio_block = zerodiv(opp_count_block, evt_count_block)
             msg = "File: %i/%i (%.02f%%)" % (i + 1, len(files), perc)
-            msg += " Particles this block: %i / %i (%.06f) elapsed: %.2fs" % \
-                (opp_count_block, evt_count_block, ratio_block, now - t0)
+            msg += " Particles this block: %i / %i (%i) %.04f (%.04f) elapsed: %.2fs" % \
+                (opp_count_block, evt_signal_count_block, evt_count_block,
+                ratio_signal_block, ratio_block, now - t0)
             print msg
             sys.stdout.flush()
             last = milestone
             evt_count_block = 0
+            evt_signal_count_block = 0
             opp_count_block = 0
     # If any particle count data is left, add it to totals
     if evt_count_block > 0:
         evt_count += evt_count_block
+        evt_signal_count += evt_signal_count_block
         opp_count += opp_count_block
 
-    try:
-        opp_evt_ratio = float(opp_count) / evt_count
-    except ZeroDivisionError:
-        opp_evt_ratio = 0.0
+    opp_evt_signal_ratio = zerodiv(opp_count, evt_signal_count)
+    opp_evt_ratio = zerodiv(opp_count, evt_count)
 
     t1 = time.time()
     delta = t1 - t0
-    try:
-        evtrate = float(evt_count) / delta
-    except ZeroDivisionError:
-        evtrate = 0.0
-    try:
-        opprate = float(opp_count) / delta
-    except ZeroDivisionError:
-        opprate = 0.0
+    evtrate = zerodiv(evt_count, delta)
+    evtsignalrate = zerodiv(evt_signal_count, delta)
+    opprate = zerodiv(opp_count, delta)
 
     print ""
     print "Input EVT files = %i" % len(files)
     print "Parsed EVT files = %i" % files_ok
     print "EVT particles = %s (%.2f p/s)" % (evt_count, evtrate)
+    print "EVT noise filtered particles = %s (%.2f p/s)" % (evt_signal_count, evtsignalrate)
     print "OPP particles = %s (%.2f p/s)" % (opp_count, opprate)
-    print "OPP/EVT ratio = %.06f" % opp_evt_ratio
+    print "OPP/EVT ratio = %.04f (%.04f)" % (opp_evt_signal_ratio, opp_evt_ratio)
     print "Filtering completed in %.2f seconds" % (delta,)
 
 
@@ -150,6 +207,7 @@ def filter_one_file(o):
     result = {
         "ok": False,
         "evt_count": 0,
+        "evt_signal_count": 0,
         "opp_count": 0,
         "path": o["file"]
     }
@@ -167,16 +225,25 @@ def filter_one_file(o):
         print "Unexpected error for file %s: %s" % (evt_file, repr(e))
 
     else:
-        evt_.filter(**o["filter_options"])
+        opp = evt_.filter(**o["filter_options"])
 
         if o["dbpath"]:
-            evt_.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])
+            opp.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])
 
         if o["opp_dir"]:
-            evt_.write_opp_binary(o["opp_dir"])
+            opp.write_binary(o["opp_dir"], opp=True)
 
         result["ok"] = True
-        result["evt_count"] = evt_.evt_count
-        result["opp_count"] = evt_.opp_count
+        result["evt_count"] = opp.evt_parent.particle_count
+        result["evt_signal_count"] = opp.evt_signal_count
+        result["opp_count"] = opp.particle_count
 
     return result
+
+def zerodiv(x, y):
+    """Divide x by y, floating point, and default to 0.0 if divisor is 0"""
+    try:
+        answer = float(x) / float(y)
+    except ZeroDivisionError:
+        answer = 0.0
+    return answer

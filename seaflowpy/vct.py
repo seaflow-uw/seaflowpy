@@ -1,5 +1,6 @@
 import gzip
 import json
+import os
 import pandas as pd
 import pprint
 import re
@@ -11,24 +12,38 @@ from collections import OrderedDict
 class VCT(seaflowfile.SeaflowFile):
     """Class for VCT per-particle population annotations"""
 
-    def __init__(self, path=None, fileobj=None, read_data=True):
+    def __init__(self, path=None, fileobj=None, read_data=True, vct=None):
         seaflowfile.SeaflowFile.__init__(self, path, fileobj)
         # DataFrame with list of population labels in "pop" column
-        self.vct = None
-        self.vct_count = 0
+        if vct is None:
+            self.vct = []
+            self.vct_count = 0
+        else:
+            self.vct = vct
+            self.vct_count = len(vct)
 
-        if read_data:
-            self._read_vct()
+        if read_data and vct is None:
+            self.read_vct()
 
     def __str__(self):
         keys = ["path", "file_id", "vct_count"]
         return json.dumps(OrderedDict([(k, getattr(self, k)) for k in keys]), indent=2)
 
-    def _read_vct(self):
+    def read_vct(self):
         """Read a VCT text file and return a Pandas DataFrame."""
-        with self._open() as fh:
+        with self.open() as fh:
             self.vct = pd.read_csv(fh, header=None, names=["pop"])
             self.vct_count = len(self.vct)
+
+    def write_vct(self, outdir):
+        outfile = os.path.join(outdir, self.file_id + ".vct")
+        util.mkdir_p(os.path.dirname(outfile))
+        if os.path.exists(outfile):
+            os.remove(outfile)
+        if os.path.exists(outfile + ".gz"):
+            os.remove(outfile + ".gz")
+        with gzip.open(outfile + ".gz", "wb") as f:
+            f.write("\n".join(self.vct) + "\n")
 
 
 def is_vct(file_path):

@@ -47,27 +47,28 @@ class TestOpen:
     def test_read_valid_evt(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert evt.headercnt == 40000
-        assert evt.evt_count == 40000
+        assert evt.particle_count == 40000
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.evt_transformed == False
+        assert evt.transformed == False
 
     def test_read_valid_evt_and_transform(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                       transform=True)
         assert evt.headercnt == 40000
-        assert evt.evt_count == 40000
+        assert evt.particle_count == 40000
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.evt_transformed == True
+        assert evt.transformed == True
 
     def test_read_valid_gz_evt(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert evt.headercnt == 40000
-        assert evt.evt_count == 40000
+        assert evt.particle_count == 40000
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
+        assert evt.transformed == False
 
     def test_read_valid_evt_subselect_columns(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
-        evtanswer = evt.evt.drop(
+        evtanswer = evt.df.drop(
             ["time", "pulse_width", "D1", "D2", "fsc_perp", "fsc_big", "chl_big"],
             axis=1
         )
@@ -75,15 +76,15 @@ class TestOpen:
                          columns=["fsc_small", "chl_small", "pe"])
         assert evtsub.columns == ["fsc_small", "pe", "chl_small"]
         npt.assert_array_equal(
-            evtsub.evt.columns,
+            evtsub.df.columns,
             ["fsc_small", "pe", "chl_small"]
         )
-        npt.assert_array_equal(evtsub.evt, evtanswer)
+        npt.assert_array_equal(evtsub.df, evtanswer)
 
     def test_read_valid_evt_subselect_columns_and_transform(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                       transform=True)
-        evtanswer = evt.evt.drop(
+        evtanswer = evt.df.drop(
             ["time", "pulse_width", "D1", "D2", "fsc_perp", "fsc_big", "chl_big"],
             axis=1
         )
@@ -92,10 +93,10 @@ class TestOpen:
                          transform=True)
         assert evtsub.columns == ["fsc_small", "pe", "chl_small"]
         npt.assert_array_equal(
-            evtsub.evt.columns,
+            evtsub.df.columns,
             ["fsc_small", "pe", "chl_small"]
         )
-        npt.assert_array_equal(evtsub.evt, evtanswer)
+        npt.assert_array_equal(evtsub.df, evtanswer)
 
     def test_read_empty_evt(self):
         with pytest.raises(sfp.errors.EVTFileError):
@@ -173,54 +174,60 @@ class TestFilter:
             evt.filter(offset=None)
 
     def test_filter_default(self, evt):
-        evt.filter()
-        assert evt.opp_count == 311
-        assert evt.width == 0.5
-        assert evt.offset == 0.0
-        assert evt.origin == -1792
-        npt.assert_almost_equal(evt.notch1, 0.885080147965475, decimal=15)
-        npt.assert_almost_equal(evt.notch2, 0.876434676434676, decimal=15)
+        opp = evt.filter()
+        assert opp.evt_signal_count == 6141
+        assert opp.particle_count == 305
+        assert opp.width == 0.5
+        assert opp.offset == 0.0
+        assert opp.origin == -1792
+        npt.assert_almost_equal(opp.notch1, 0.885080147965475, decimal=15)
+        npt.assert_almost_equal(opp.notch2, 0.876434676434676, decimal=15)
+        assert opp.evt_parent == evt
 
     def test_filter_with_set_params(self, evt):
-        evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        assert evt.opp_count == 2812
-        assert evt.width == 0.75
-        assert evt.offset == 100
-        assert evt.origin == -1000
-        npt.assert_allclose(evt.notch1, 1.5)
-        npt.assert_allclose(evt.notch2, 1.1)
+        opp = evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
+        assert opp.evt_signal_count == 6141
+        assert opp.particle_count == 2803
+        assert opp.width == 0.75
+        assert opp.offset == 100
+        assert opp.origin == -1000
+        npt.assert_allclose(opp.notch1, 1.5)
+        npt.assert_allclose(opp.notch2, 1.1)
+        assert opp.evt_parent == evt
 
-    def test_filter_twice_overwrites_old_results(self, evt):
-        evt.filter()
-        assert evt.width == 0.5
-        assert evt.offset == 0.0
+    def test_noise_filter(self, evt):
+        assert np.all(evt.df["D1"] > 1) == False
+        assert np.all(evt.df["D2"] > 1) == False
+        assert np.all(evt.df["fsc_small"] > 1) == False
+        assert np.any(evt.df["D1"] > 1) == True
+        assert np.any(evt.df["D2"] > 1) == True
+        assert np.any(evt.df["fsc_small"] > 1) == True
 
-        evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        assert evt.opp_count == 2812
-        assert evt.width == 0.75
-        assert evt.offset == 100
-        assert evt.origin == -1000
-        npt.assert_allclose(evt.notch1, 1.5)
-        npt.assert_allclose(evt.notch2, 1.1)
+        signal = evt.filter_noise()
 
+        assert signal is not evt.df
+        assert len(signal.index) < len(evt.df.index)
+        assert len(signal.index) == 6141
+        assert evt.evt_signal_count == len(signal.index)
+        assert np.all(signal["D1"] > 1) == True
+        assert np.all(signal["D2"] > 1) == True
+        assert np.all(signal["fsc_small"] > 1) == True
+
+
+class TestParticleStats:
     def test_stats(self, evt):
         # Create made up evt and opp data for stats calculations
         evt = sfp.EVT("fake/path", read_data=False)
-        evt.evt = pd.DataFrame()
-        evt.opp = pd.DataFrame()
+        evt.df = pd.DataFrame()
         # Make sure evt isn't transformed during stat calculations
-        evt.evt_transformed = True
-        evt.opp_transformed = True
+        evt.transformed = True
         i = 0
         for c in evt.columns:
-            evt.evt[c] = np.arange(i*100, i*100+10)
-            evt.opp[c] = 2 * np.arange(i*100, i*100+10)  # opp will be double evt
+            evt.df[c] = np.arange(i*100, i*100+10)
             i += 1
-        evt.evt_count = 10
-        evt.opp_count = 10
-        evt_stats = evt.calc_evt_stats()
-        opp_stats = evt.calc_opp_stats()
-        evt_answer = {
+        evt.particle_count = 10
+        stats = evt.calc_particle_stats()
+        answer = {
             'D1': {'max': 209.0, 'mean': 204.5, 'min': 200.0},
             'D2': {'max': 309.0, 'mean': 304.5, 'min': 300.0},
             'fsc_small': {'max': 409.0, 'mean': 404.5, 'min': 400.0},
@@ -230,12 +237,6 @@ class TestFilter:
             'chl_small': {'max': 809.0, 'mean': 804.5, 'min': 800.0},
             'chl_big': {'max': 909.0, 'mean': 904.5, 'min': 900.0}
         }
-        opp_answer = {}
-        for channel in evt_answer:
-            for stat in evt_answer[channel]:
-                if not channel in opp_answer:
-                    opp_answer[channel] = {}
-                opp_answer[channel][stat] = evt_answer[channel][stat] * 2
 
         # Results can differ in least significant digits depending on how numpy
         # is installed and used (e.g. if you use the Intel Math Library), so
@@ -246,17 +247,7 @@ class TestFilter:
                 array.append([answer[k]["max"], answer[k]["mean"], answer[k]["min"]])
             return array
 
-        npt.assert_allclose(answer2array(evt_stats), answer2array(evt_answer))
-        npt.assert_allclose(answer2array(opp_stats), answer2array(opp_answer))
-
-    def test_stats_does_not_modify(self, evt):
-        evt.filter()
-        orig_evt = evt.evt.copy()
-        orig_opp = evt.opp.copy()
-        _ = evt.calc_evt_stats()
-        _ = evt.calc_opp_stats()
-        npt.assert_array_equal(orig_evt, evt.evt)
-        npt.assert_array_equal(orig_opp, evt.opp)
+        npt.assert_allclose(answer2array(stats), answer2array(answer))
 
 
 class TestTransform:
@@ -264,47 +255,25 @@ class TestTransform:
         npt.assert_almost_equal(sfp.EVT.transform(56173.714285714275),
             1000.0, decimal=10)
 
-    def test_transform_inplace(self, evt):
-        orig_df = evt.evt.copy()
-        orig_df_copy = orig_df.copy()
-        t_df = evt.transform_particles(orig_df, inplace=True)
-        # Returned the same object
-        assert orig_df is t_df
-        # Transformation happened in place
+    def test_transform(self, evt):
+        orig_df = evt.df.copy()
+        npt.assert_array_equal(orig_df, evt.df)
+        assert evt.transformed == False
+        t_df = evt.transform_particles()
+        assert evt.transformed == True
+        assert t_df is evt.df
         with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df_copy, t_df)
+            npt.assert_array_equal(orig_df, t_df)
 
-        orig_df = evt.evt.copy()
-        assert evt.evt_transformed == False
-        t_df = evt.transform_evt()
-        assert evt.evt_transformed == True
-        # Returned the same object
-        assert t_df is evt.evt
-        # Transformation happened in place
+    def test_transform_copy(self, evt):
+        orig_df = evt.df.copy()
+        npt.assert_array_equal(orig_df, evt.df)
+        assert evt.transformed == False
+        t_df = evt.transform_particles(inplace=False)
+        assert evt.transformed == False
+        assert t_df is not evt.df
         with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df, evt.evt)
-
-        evt.filter()
-        orig_df = evt.opp.copy()
-        assert evt.opp_transformed == False
-        t_df = evt.transform_opp()
-        assert evt.opp_transformed == True
-        # Returned the same object
-        assert t_df is evt.opp
-        # Transformation happened in place
-        with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df, evt.opp)
-
-    def test_transform_not_inplace(self, evt):
-        orig_df = evt.evt.copy()
-        t_evt = evt.transform_particles(evt.evt, inplace=False)
-        # Returned a copy
-        assert t_evt is not evt.evt
-        # The input is unchanged
-        npt.assert_array_equal(orig_df, evt.evt)
-        # The returned copy is different from original version of input
-        with pytest.raises(AssertionError):
-            npt.assert_array_equal(orig_df, t_evt)
+            npt.assert_array_equal(orig_df, t_df)
 
 
 class TestOPPVCT:
@@ -315,15 +284,15 @@ class TestOPPVCT:
         # By directory
         opps[0].add_vct("tests/testcruise_vct")
         opps[1].add_vct("tests/testcruise_vct")
-        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].evt["pop"].values)
-        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].evt["pop"].values)
+        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].df["pop"].values)
+        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].df["pop"].values)
 
         # By file path
         opps = [sfp.EVT(f) for f in sfp.find_evt_files("tests/testcruise_opp")]
         opps[0].add_vct(os.path.join("tests/testcruise_vct", opps[0].file_id + ".vct.gz"))
         opps[1].add_vct(os.path.join("tests/testcruise_vct", opps[1].file_id + ".vct"))
-        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].evt["pop"].values)
-        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].evt["pop"].values)
+        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].df["pop"].values)
+        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].df["pop"].values)
 
 
 class TestOutput:
@@ -344,28 +313,30 @@ class TestOutput:
         tmpout = tmpout_single
         opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
                 "width": 0.5}
-        evt = tmpout["evt"]
-        evt.filter(**opts)
-        evt.save_opp_to_db("testcruise", "UUID", tmpout["db"])
+        opp = tmpout["evt"].filter(**opts)
+        opp.save_opp_to_db("testcruise", "UUID", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         assert "testcruise" == sqlitedf.cruise[0]
-        assert evt.file_id == sqlitedf.file[0]
+        assert opp.file_id == sqlitedf.file[0]
         assert "UUID" == sqlitedf.filter_id[0]
         npt.assert_array_equal(
-            [evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1, evt.notch2,
-                evt.offset, evt.origin, evt.width],
-            sqlitedf[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                "notch2", "offset", "origin", "width"]].as_matrix()[0]
+            [
+                opp.particle_count, opp.evt_signal_count, opp.opp_evt_ratio,
+                opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
+            ],
+            sqlitedf[[
+                "opp_count", "evt_count", "opp_evt_ratio", "notch1",
+                "notch2", "offset", "origin", "width"]
+            ].as_matrix()[0]
         )
 
     def test_sqlite3_opp_stats(self, tmpout_single):
         tmpout = tmpout_single
-        evt = tmpout["evt"]
-        evt.filter(offset=0.0, width=0.5)
-        stats = evt.calc_opp_stats()
-        evt.save_opp_to_db("testcruise", "UUID", tmpout["db"])
+        opp = tmpout["evt"].filter(offset=0.0, width=0.5)
+        stats = opp.calc_particle_stats()
+        opp.save_opp_to_db("testcruise", "UUID", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
         row = sqlitedf.iloc[0]
@@ -376,44 +347,37 @@ class TestOutput:
                 k = channel + "_" + stat
                 assert stats[channel][stat] == row[k]
 
-    def test_sqlite3_opp_overwrite(self, tmpout_single):
-        tmpout = tmpout_single
-        opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-                "width": 0.5}
-        evt = tmpout["evt"]
-        evt.filter(**opts)
-        evt.save_opp_to_db("testcruise", "UUID1", tmpout["db"])
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-        assert "UUID1" == sqlitedf.filter_id[0]
-        assert len(sqlitedf) == 1
+    def test_binary_evt_output(self, tmpdir):
+        evtdir = tmpdir.join("evtdir")
+        evt_file = "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
+        evt = sfp.EVT(evt_file)
+        evt.write_binary(str(evtdir), opp=False)  # output to binary file
 
-        evt.save_opp_to_db("testcruise", "UUID2", tmpout["db"])
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-        # There should only be one filter entry and it should
-        # have filter_id == UUID2
-        assert "UUID2" == sqlitedf.filter_id[0]
-        assert len(sqlitedf) == 1
+        # Make sure EVT binary file written can be read back as EVT and
+        # DataFrame is the the same
+        reread_evt = sfp.EVT(str(evtdir.join("2014_185/2014-07-04T00-00-02+00-00.gz")))
+        npt.assert_array_equal(evt.df, reread_evt.df)
 
-    def test_binary_opp(self, tmpdir):
+        # Check that output evt binary file matches input file
+        input_evt = open(evt_file).read()
+        new_evt = gzip.open(str(evtdir.join("2014_185/2014-07-04T00-00-02+00-00.gz"))).read()
+        assert input_evt == new_evt
+
+    def test_binary_opp_output(self, tmpdir):
         oppdir = tmpdir.join("oppdir")
-        popcycle_opp_file = "tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz"
-        opp = sfp.EVT(popcycle_opp_file)
-        opp.opp = opp.evt  # move particle data to opp attribute
-        opp.opp_count = len(opp.opp)  # make sure count is updated
-        opp.write_opp_binary(str(oppdir))  # output to binary file
+        opp_file = "tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz"
+        opp = sfp.EVT(opp_file)
+        opp.write_binary(str(oppdir))  # output to binary file
 
         # Make sure OPP binary file written can be read back as EVT and
         # DataFrame is the the same
         reread_opp = sfp.EVT(str(oppdir.join("2014_185/2014-07-04T00-00-02+00-00.opp.gz")))
-        npt.assert_array_equal(opp.opp, reread_opp.evt)
+        npt.assert_array_equal(opp.df, reread_opp.df)
 
-        # Check that output opp binary file matches that produced by R code
-        # for popcycle 80d17f6
-        popcycle_opp = gzip.open(popcycle_opp_file).read()
+        # Check that output opp binary file matches input file
+        input_opp = gzip.open(opp_file).read()
         new_opp = gzip.open(str(oppdir.join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))).read()
-        assert popcycle_opp == new_opp
+        assert input_opp == new_opp
 
 
 class TestMultiFileFilter:
@@ -439,11 +403,12 @@ class TestMultiFileFilter:
             filter_options=filt_opts, multiprocessing_flag=False)
 
         evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
+        opps = []
         for evt in evts:
-            evt.filter()
-            evt.stats = evt.calc_opp_stats()
+            opps.append(evt.filter())
+            opps[-1].stats = opps[-1].calc_particle_stats()
 
-        opps = [
+        outfiles = [
             sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
             sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
         ]
@@ -453,27 +418,28 @@ class TestMultiFileFilter:
 
         for i in [0, 1]:
             evt = evts[i]
+            opp = opps[i]
             row = sqlitedf.iloc[i]
-            for channel in evt.stats:
+            for channel in opp.stats:
                 if channel in ["D1", "D2"]:
                     continue
                 for stat in ["min", "max", "mean"]:
                     k = channel + "_" + stat
-                    assert evt.stats[channel][stat] == row[k]
+                    assert opp.stats[channel][stat] == row[k]
             npt.assert_array_equal(
                 [
-                    evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
-                    evt.notch2, evt.offset, evt.origin, evt.width
+                    opp.particle_count, opp.evt_signal_count, opp.opp_evt_ratio,
+                    opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
                 ],
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                    "notch2", "offset", "origin", "width"]].as_matrix()
+                    "notch2", "offset", "origin", "width"]]
             )
-            npt.assert_array_equal(evts[i].opp, opps[i].evt)
+            npt.assert_array_equal(opps[i].df, outfiles[i].df)
 
     @s3
     def test_multi_file_filter_S3(self, tmpout):
         """Test S3 multi-file filtering and ensure output can be read back OK"""
-        files = sfp.aws.get_s3_files("testcruise", "armbrustlab.seaflow")
+        files = sfp.aws.get_s3_files("testcruise_evt", "armbrustlab.seaflow")
         files = sfp.evt.parse_file_list(files)
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
@@ -492,12 +458,12 @@ class TestMultiFileFilter:
             sfp.EVT(os.path.join("tests", files[0])),
             sfp.EVT(os.path.join("tests", files[1]))
         ]
+        opps = []
         for evt in evts:
-            evt.filter()
-            evt.calc_opp_stats()
-            evt.stats = evt.calc_opp_stats()
+            opps.append(evt.filter())
+            opps[-1].stats = opps[-1].calc_particle_stats()
 
-        opps = [
+        outfiles = [
             sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
             sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
         ]
@@ -507,19 +473,20 @@ class TestMultiFileFilter:
 
         for i in [0, 1]:
             evt = evts[i]
+            opp = opps[i]
             row = sqlitedf.iloc[i]
-            for channel in evt.stats:
+            for channel in opp.stats:
                 if channel in ["D1", "D2"]:
                     continue
                 for stat in ["min", "max", "mean"]:
                     k = channel + "_" + stat
-                    assert evt.stats[channel][stat] == row[k]
+                    assert opp.stats[channel][stat] == row[k]
             npt.assert_array_equal(
                 [
-                    evt.opp_count, evt.evt_count, evt.opp_evt_ratio, evt.notch1,
-                    evt.notch2, evt.offset, evt.origin, evt.width
+                    opp.particle_count, opp.evt_signal_count, opp.opp_evt_ratio,
+                    opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
                 ],
                 row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                    "notch2", "offset", "origin", "width"]]
+                    "notch2", "offset", "origin", "width"]].as_matrix()
             )
-            npt.assert_array_equal(evts[i].opp, opps[i].evt)
+            npt.assert_array_equal(opps[i].df, outfiles[i].df)
