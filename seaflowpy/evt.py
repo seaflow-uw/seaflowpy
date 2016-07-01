@@ -201,7 +201,7 @@ class EVT(seaflowfile.SeaflowFile):
 
         # Correction for the difference in sensitivity between D1 and D2
         if origin is None:
-            origin = (self.df["D2"] - self.df["D1"]).median()
+            origin = (df["D2"] - df["D1"]).median()
 
         #df = self.filter_noise_old()
 
@@ -357,6 +357,7 @@ class EVT(seaflowfile.SeaflowFile):
 
         vals = {
             "cruise": cruise_name, "file": self.file_id,
+            "all_count": self.evt_parent.particle_count,
             "opp_count": self.particle_count, "evt_count": self.evt_signal_count,
             "opp_evt_ratio": self.opp_evt_ratio, "notch1": self.notch1,
             "notch2": self.notch2, "offset": self.offset, "origin": self.origin,

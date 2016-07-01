@@ -27,6 +27,7 @@ def ensure_tables(dbpath):
     cur.execute("""CREATE TABLE IF NOT EXISTS opp (
     cruise TEXT NOT NULL,
     file TEXT NOT NULL,
+    all_count INTEGER NOT NULL,
     opp_count INTEGER NOT NULL,
     evt_count INTEGER NOT NULL,
     opp_evt_ratio REAL NOT NULL,
@@ -184,6 +185,7 @@ def save_opp_stats(dbpath, vals):
     field_order = [
         "cruise",
         "file",
+        "all_count",
         "opp_count",
         "evt_count",
         "opp_evt_ratio",

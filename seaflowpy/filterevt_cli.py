@@ -47,7 +47,7 @@ def parse_args(args):
                    help="Notch 1 (optional)")
     p.add_argument("--notch2", type=float, metavar="N",
                    help="Notch 2 (optional)")
-    p.add_argument("--width", type=float, default=0.5, metavar="N",
+    p.add_argument("--width", type=float, default=1.0, metavar="N",
                    help="Width (optional)")
     p.add_argument("--origin", type=float, metavar="N",
                    help="Origin (optional)")
