@@ -53,7 +53,7 @@ def parse_args(args):
                    help="Origin (optional)")
     p.add_argument("--offset", type=float, default=0.0, metavar="N",
                    help="Offset (optional)")
-    p.add_argument("--twopass", default=False, action="store_true",
+    p.add_argument("-t", "--twopass", default=False, action="store_true",
                    help="""Perform two-pass filter process to autocalculate
                    parameters.""")
 
