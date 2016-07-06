@@ -46,7 +46,8 @@ def tmpout_single(tmpout, evt):
 class TestOpen:
     def test_read_valid_evt(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
-        assert evt.headercnt == 40000
+        assert evt.header_count == 40000
+        assert evt.event_count == 40000
         assert evt.particle_count == 40000
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
         assert evt.transformed == False
@@ -54,14 +55,16 @@ class TestOpen:
     def test_read_valid_evt_and_transform(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
                       transform=True)
-        assert evt.headercnt == 40000
+        assert evt.header_count == 40000
+        assert evt.event_count == 40000
         assert evt.particle_count == 40000
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
         assert evt.transformed == True
 
     def test_read_valid_gz_evt(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
-        assert evt.headercnt == 40000
+        assert evt.header_count == 40000
+        assert evt.event_count == 40000
         assert evt.particle_count == 40000
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
         assert evt.transformed == False
@@ -175,25 +178,27 @@ class TestFilter:
 
     def test_filter_default(self, evt):
         opp = evt.filter()
-        assert opp.evt_signal_count == 6141
-        assert opp.particle_count == 305
+        assert opp.parent.event_count == 40000
+        assert opp.parent.particle_count == 6141
+        assert opp.particle_count == 289
         assert opp.width == 0.5
         assert opp.offset == 0.0
-        assert opp.origin == -1792
+        assert opp.origin == -752.0
         npt.assert_almost_equal(opp.notch1, 0.885080147965475, decimal=15)
         npt.assert_almost_equal(opp.notch2, 0.876434676434676, decimal=15)
-        assert opp.evt_parent == evt
+        assert opp.parent == evt
 
     def test_filter_with_set_params(self, evt):
         opp = evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        assert opp.evt_signal_count == 6141
+        assert opp.parent.event_count == 40000
+        assert opp.parent.particle_count == 6141
         assert opp.particle_count == 2803
         assert opp.width == 0.75
         assert opp.offset == 100
         assert opp.origin == -1000
         npt.assert_allclose(opp.notch1, 1.5)
         npt.assert_allclose(opp.notch2, 1.1)
-        assert opp.evt_parent == evt
+        assert opp.parent == evt
 
     def test_noise_filter(self, evt):
         assert np.all(evt.df["D1"] > 1) == False
@@ -208,7 +213,7 @@ class TestFilter:
         assert signal is not evt.df
         assert len(signal.index) < len(evt.df.index)
         assert len(signal.index) == 6141
-        assert evt.evt_signal_count == len(signal.index)
+        assert evt.particle_count == len(signal.index)
         assert np.all(signal["D1"] > 1) == True
         assert np.all(signal["D2"] > 1) == True
         assert np.all(signal["fsc_small"] > 1) == True
@@ -323,13 +328,14 @@ class TestOutput:
         assert "UUID" == sqlitedf.filter_id[0]
         npt.assert_array_equal(
             [
-                opp.particle_count, opp.evt_signal_count, opp.opp_evt_ratio,
+                opp.particle_count, opp.parent.particle_count,
+                opp.parent.event_count, opp.opp_evt_ratio,
                 opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
             ],
             sqlitedf[[
-                "opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                "notch2", "offset", "origin", "width"]
-            ].as_matrix()[0]
+                "opp_count", "evt_count", "all_count", "opp_evt_ratio",
+                "notch1", "notch2", "offset", "origin", "width"
+            ]].as_matrix()[0]
         )
 
     def test_sqlite3_opp_stats(self, tmpout_single):
@@ -428,11 +434,12 @@ class TestMultiFileFilter:
                     assert opp.stats[channel][stat] == row[k]
             npt.assert_array_equal(
                 [
-                    opp.particle_count, opp.evt_signal_count, opp.opp_evt_ratio,
+                    opp.particle_count, opp.parent.particle_count,
+                    opp.parent.event_count, opp.opp_evt_ratio,
                     opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
                 ],
-                row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                    "notch2", "offset", "origin", "width"]]
+                row[["opp_count", "evt_count", "all_count", "opp_evt_ratio",
+                    "notch1", "notch2", "offset", "origin", "width"]]
             )
             npt.assert_array_equal(opps[i].df, outfiles[i].df)
 
@@ -483,10 +490,13 @@ class TestMultiFileFilter:
                     assert opp.stats[channel][stat] == row[k]
             npt.assert_array_equal(
                 [
-                    opp.particle_count, opp.evt_signal_count, opp.opp_evt_ratio,
+                    opp.particle_count, opp.parent.particle_count,
+                    opp.parent.event_count, opp.opp_evt_ratio,
                     opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
                 ],
-                row[["opp_count", "evt_count", "opp_evt_ratio", "notch1",
-                    "notch2", "offset", "origin", "width"]].as_matrix()
+                row[[
+                    "opp_count", "evt_count", "all_count", "opp_evt_ratio",
+                    "notch1", "notch2", "offset", "origin", "width"
+                ]].as_matrix()
             )
             npt.assert_array_equal(opps[i].df, outfiles[i].df)

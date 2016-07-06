@@ -234,8 +234,8 @@ def filter_one_file(o):
             opp.write_binary(o["opp_dir"], opp=True)
 
         result["ok"] = True
-        result["evt_count"] = opp.evt_parent.particle_count
-        result["evt_signal_count"] = opp.evt_signal_count
+        result["evt_count"] = opp.parent.event_count
+        result["evt_signal_count"] = opp.parent.particle_count
         result["opp_count"] = opp.particle_count
 
     return result
