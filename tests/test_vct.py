@@ -9,14 +9,14 @@ from .context import seaflowpy as sfp
 class TestOpen:
     def test_read_VCT(self):
         vct = sfp.vct.VCT("tests/testcruise_vct/2014_185/2014-07-04T00-03-02+00-00.vct")
-        assert vct.vct_count == 366
+        assert vct.vct_count == 416
         assert vct.path == "tests/testcruise_vct/2014_185/2014-07-04T00-03-02+00-00.vct"
         assert vct.vct_count == len(vct.vct)
         assert vct.vct.columns == ["pop"]
 
     def test_read_VCT_gz(self):
         vct = sfp.vct.VCT("tests/testcruise_vct/2014_185/2014-07-04T00-00-02+00-00.vct.gz")
-        assert vct.vct_count == 311
+        assert vct.vct_count == 386
         assert vct.path == "tests/testcruise_vct/2014_185/2014-07-04T00-00-02+00-00.vct.gz"
         assert vct.vct_count == len(vct.vct)
         assert vct.vct.columns == ["pop"]

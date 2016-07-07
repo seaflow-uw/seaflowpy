@@ -180,8 +180,8 @@ class TestFilter:
         opp = evt.filter()
         assert opp.parent.event_count == 40000
         assert opp.parent.particle_count == 6141
-        assert opp.particle_count == 289
-        assert opp.width == 0.5
+        assert opp.particle_count == 386
+        assert opp.width == 1.0
         assert opp.offset == 0.0
         assert opp.origin == -752.0
         npt.assert_almost_equal(opp.notch1, 0.885080147965475, decimal=15)
@@ -398,7 +398,7 @@ class TestMultiFileFilter:
         ]
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 0.5
+            "width": 1.0
         }
 
         # python setup.py test doesn't play nice with pytest and
@@ -450,7 +450,7 @@ class TestMultiFileFilter:
         files = sfp.evt.parse_file_list(files)
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 0.5
+            "width": 1.0
         }
 
         # python setup.py test doesn't play nice with pytest and
@@ -500,3 +500,51 @@ class TestMultiFileFilter:
                 ]].as_matrix()
             )
             npt.assert_array_equal(opps[i].df, outfiles[i].df)
+
+    def test_2pass_filter(self, tmpout):
+        """Test 2 pass filtering"""
+        files = [
+            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
+        ]
+        filt_opts = {
+            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
+            "width": 1.0
+        }
+
+        # python setup.py test doesn't play nice with pytest and
+        # multiprocessing, so we set multiprocessing=False here
+        sfp.filterevt.two_pass_filter(
+            files=files, process_count=1, cruise="testcruise",
+            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            filter_options=filt_opts, multiprocessing_flag=False)
+
+        evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
+
+        outfiles = [
+            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
+            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
+        ]
+
+        con = sqlite3.connect(tmpout["db"])
+        filterdf = pd.read_sql_query("SELECT id FROM filter ORDER BY date DESC", con)
+        filterid1 = filterdf["id"].values[0]
+        filterid2 = filterdf["id"].values[1]
+        pass1 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid1), con)
+        pass2 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid2), con)
+
+        npt.assert_array_equal(pass1["opp_count"], [386, 416])
+        npt.assert_array_equal(pass2["opp_count"], [350, 461])
+        # Are the pass2 values actually the median of pass 1?
+        assert pass1["notch1"].median() == pass2["notch1"].values[0]
+        assert pass1["notch1"].median() == pass2["notch1"].values[1]
+        assert pass1["notch2"].median() == pass2["notch2"].values[0]
+        assert pass1["notch2"].median() == pass2["notch2"].values[1]
+        assert pass1["origin"].median() == pass2["origin"].values[0]
+        assert pass1["origin"].median() == pass2["origin"].values[1]
+
+        # Do the OPP output files represent pass2?
+        npt.assert_array_equal(pass2["opp_count"], [outfiles[0].particle_count, outfiles[1].particle_count])

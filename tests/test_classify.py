@@ -35,8 +35,8 @@ def test_multi_file_classify(tmpdir):
 
     # Make sure population counts are correct
     sums = sqldf.groupby("pop").sum()
-    assert sums.loc["beads"]["count"] == 84.0
-    assert sums.loc["picoeuks"]["count"] == 19.0
-    assert sums.loc["prochloro"]["count"] == 459.0
-    assert sums.loc["synecho"]["count"] == 108.0
-    assert sums.loc["unknown"]["count"] == 7.0
+    assert sums.loc["beads"]["count"] == 135.0
+    assert sums.loc["picoeuks"]["count"] == 36.0
+    assert sums.loc["prochloro"]["count"] == 466.0
+    assert sums.loc["synecho"]["count"] == 152.0
+    assert sums.loc["unknown"]["count"] == 13.0

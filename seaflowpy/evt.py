@@ -188,7 +188,7 @@ class EVT(seaflowfile.SeaflowFile):
         return self.df[keep]
 
     def filter(self, notch1=None, notch2=None, offset=0.0,
-               origin=None, width=0.5):
+               origin=None, width=1.0):
         """Filter EVT particle data and return a new EVT object"""
         if not self.has_data():
             return
