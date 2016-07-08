@@ -230,13 +230,13 @@ class EVT(seaflowfile.SeaflowFile):
         fsc_small_max = aligned["fsc_small"].max()
         if notch1 is None:
             min1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
-            notch1 = fsc_small_max / min1
+            notch1 = fsc_small_max / (min1 - offset * 10**4)
 
             # double check that old code matches new code for now
             assert fsc_small_max == aligned[aligned["D1"] == min1]["fsc_small"].max()
         if notch2 is None:
             min2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
-            notch2 = fsc_small_max / min2
+            notch2 = fsc_small_max / (min2 - offset * 10**4)
 
             # double check that old code matches new code for now
             assert fsc_small_max == aligned[aligned["D2"] == min2]["fsc_small"].max()
