@@ -23,7 +23,7 @@ def get_s3_bucket(s3, bucket_name):
 
 
 def get_s3_files(folder, bucket_name):
-    """Get list of S3 object keys for one cruise"""
+    """Get list of S3 object keys below one folder/prefix"""
     while folder.endswith("/"):
         folder = folder[:-1]
     folder = folder + "/"

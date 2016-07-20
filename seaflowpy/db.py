@@ -288,7 +288,7 @@ def get_filter_table(dbpath):
     return filterdf
 
 def get_latest_filter(dbpath):
-    sql = "SELECT * FROM filter ORDER BY date ASC"
+    sql = "SELECT * FROM filter ORDER BY date DESC"
     with sqlite3.connect(dbpath) as dbcon:
         filterdf = pd.read_sql(sql, dbcon)
     return filterdf.tail(1)

@@ -530,7 +530,7 @@ class TestMultiFileFilter:
         ]
 
         con = sqlite3.connect(tmpout["db"])
-        filterdf = pd.read_sql_query("SELECT id FROM filter ORDER BY date DESC", con)
+        filterdf = pd.read_sql_query("SELECT id FROM filter ORDER BY date ASC", con)
         filterid1 = filterdf["id"].values[0]
         filterid2 = filterdf["id"].values[1]
         pass1 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid1), con)

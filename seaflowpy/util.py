@@ -72,10 +72,9 @@ def splitpath(path):
 def iso8601_now():
     """Create an ISO8601 date string for now.
 
-    Format will be YYYY-MM-DDTHH:MM:SS+0000
+    Format will be YYYY-MM-DDTHH:MM:SS.SSSSSS+0000
     """
     now = datetime.datetime.utcnow()
-    now = now.replace(microsecond=0)
     iso = now.isoformat() + "+0000"
     return iso
 

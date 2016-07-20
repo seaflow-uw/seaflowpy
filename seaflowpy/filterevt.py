@@ -44,7 +44,11 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
                      s3_bucket=s3_bucket, process_count=process_count,
                      every=every, multiprocessing_flag=multiprocessing_flag)
 
-
+    # Get filter parameters here
+    # 1) get latest filter parameters
+    # 2) get opp associated with this filter id
+    # 3) calculate average values
+    # 4) update filter_options object
     filter_latest = db.get_latest_filter(dbpath)
     opps = db.get_opp(dbpath, filter_latest["id"].values[0])
     avg = opps.median()
@@ -53,11 +57,7 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     filter_options["origin"] = avg["origin"]
     filter_options["offset"] = avg["offset"]
     filter_options["width"] = avg["width"]
-    # Get filter parameters here
-    # 1) get latest filter parameters
-    # 2) get opp associated with this filter id
-    # 3) calculate average values
-    # 4) update filter_options object
+
     print ""
     print "*********************************"
     print "PASS 2"
