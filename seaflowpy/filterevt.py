@@ -110,7 +110,7 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         db.ensure_tables(dbpath)
         o["filter_id"] = db.save_filter_params(dbpath, filter_options)
 
-    if multiprocessing_flag:
+    if process_count > 1:
         # Create a pool of N worker processes
         pool = Pool(process_count)
         def mapper(worker, task_list):
