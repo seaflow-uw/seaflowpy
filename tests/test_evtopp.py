@@ -402,11 +402,11 @@ class TestMultiFileFilter:
         }
 
         # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we set multiprocessing=False here
+        # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
             files=files, process_count=1, cruise="testcruise",
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, multiprocessing_flag=False)
+            filter_options=filt_opts)
 
         evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
         opps = []
@@ -454,12 +454,11 @@ class TestMultiFileFilter:
         }
 
         # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we set multiprocessing=False here
+        # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
             files=files, process_count=1, cruise="testcruise",
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, s3=True, s3_bucket="armbrustlab.seaflow",
-            multiprocessing_flag=False)
+            filter_options=filt_opts, s3=True, s3_bucket="armbrustlab.seaflow")
 
         evts = [
             sfp.EVT(os.path.join("tests", files[0])),
@@ -516,11 +515,11 @@ class TestMultiFileFilter:
         }
 
         # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we set multiprocessing=False here
+        # multiprocessing, so we use one core here
         sfp.filterevt.two_pass_filter(
             files=files, process_count=1, cruise="testcruise",
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, multiprocessing_flag=False)
+            filter_options=filt_opts)
 
         evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
 

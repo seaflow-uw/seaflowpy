@@ -12,8 +12,7 @@ from itertools import imap
 from multiprocessing import Pool
 
 def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
-                     s3_bucket=None, process_count=1, every=10.0,
-                     multiprocessing_flag=True):
+                     s3_bucket=None, process_count=1, every=10.0):
     """
     Filter a list of EVT files in two passes.
 
@@ -34,7 +33,6 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         s3_bucket - S3 bucket name
         process_count - number of worker processes to use
         every - Percent progress output resolution
-        multiprocessing_flag = Use multiprocessing?
     """
     print "Beginning two-pass filter process"
     print "*********************************"
@@ -42,7 +40,7 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     print "*********************************"
     filter_evt_files(files, cruise, filter_options, dbpath, None, s3=s3,
                      s3_bucket=s3_bucket, process_count=process_count,
-                     every=every, multiprocessing_flag=multiprocessing_flag)
+                     every=every)
 
     # Get filter parameters here
     # 1) get latest filter parameters
@@ -66,12 +64,11 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     print json.dumps(filter_options, indent=2)
     filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=s3,
                      s3_bucket=s3_bucket, process_count=process_count,
-                     every=every, multiprocessing_flag=multiprocessing_flag)
+                     every=every)
 
 
 def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
-                     s3_bucket=None, process_count=1, every=10.0,
-                     multiprocessing_flag=True):
+                     s3_bucket=None, process_count=1, every=10.0):
     """Filter a list of EVT files.
 
     Arguments arguments:
@@ -87,7 +84,6 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         s3_bucket - S3 bucket name
         process_count - number of worker processes to use
         every - Percent progress output resolution
-        multiprocessing_flag = Use multiprocessing?
     """
     o = {
         "file": None,  # fill in later
@@ -99,7 +95,6 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         "s3_bucket": s3_bucket,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
-        "multiprocessing_flag": multiprocessing_flag,
         "filter_id": None  # fill in later
     }
 
@@ -226,17 +221,19 @@ def filter_one_file(o):
 
     else:
         opp = evt_.filter(**o["filter_options"])
+        if opp is None:
+            print "All particles in file %s were noise filtered" % (evt_file)
+        else:
+            if o["dbpath"]:
+                opp.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])
 
-        if o["dbpath"]:
-            opp.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])
+            if o["opp_dir"]:
+                opp.write_binary(o["opp_dir"], opp=True)
 
-        if o["opp_dir"]:
-            opp.write_binary(o["opp_dir"], opp=True)
-
-        result["ok"] = True
-        result["evt_count"] = opp.parent.event_count
-        result["evt_signal_count"] = opp.parent.particle_count
-        result["opp_count"] = opp.particle_count
+            result["ok"] = True
+            result["evt_count"] = opp.parent.event_count
+            result["evt_signal_count"] = opp.parent.particle_count
+            result["opp_count"] = opp.particle_count
 
     return result
 

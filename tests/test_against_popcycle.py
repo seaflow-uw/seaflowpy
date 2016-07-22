@@ -31,12 +31,11 @@ def test_against_popcycle(tmpdir):
         "width": 0.5
     }
     sfp.filterevt.filter_evt_files(
-        evt_files, "testcruise", filt_opts, dbfile, str(tmpdir.join("opp")),
-        multiprocessing_flag=False)
+        evt_files, "testcruise", filt_opts, dbfile, str(tmpdir.join("opp")))
     opp_files = sfp.evt.find_evt_files(str(tmpdir.join("opp")))
     sfp.classifyopp.classify_opp_files(
         opp_files, "testcruise", gating_id, dbfile,
-        str(tmpdir.join("vct")), multiprocessing_flag=False)
+        str(tmpdir.join("vct")))
 
     # Compare opp/vct table output
     with sqlite3.connect(dbfile) as con_py:

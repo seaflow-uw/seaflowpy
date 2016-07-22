@@ -211,43 +211,47 @@ class EVT(seaflowfile.SeaflowFile):
 
         # Apply noise filter
         df = self.filter_noise()
+        if len(df.index) == 0:
+            # All data is noise filtered
+            opp = None
+        else:
+            # Correction for the difference in sensitivity between D1 and D2
+            if origin is None:
+                origin = (df["D2"] - df["D1"]).median()
 
-        # Correction for the difference in sensitivity between D1 and D2
-        if origin is None:
-            origin = (df["D2"] - df["D1"]).median()
+            # Old method
+            #if origin is None:
+            #    origin = (self.df["D2"] - self.df["D1"]).median()
+            #df = self.filter_noise_old()
 
-        # Old method
-        #if origin is None:
-        #    origin = (self.df["D2"] - self.df["D1"]).median()
-        #df = self.filter_noise_old()
+            # Filter aligned particles (D1 = D2), with correction for D1 D2
+            # sensitivity difference
+            alignedD1 = (df["D1"] + origin) < (df["D2"] + (width * 10**4))
+            alignedD2 = df["D2"] < (df["D1"] + origin + (width * 10**4))
+            aligned = df[alignedD1 & alignedD2]
 
-        # Filter aligned particles (D1 = D2), with correction for D1 D2
-        # sensitivity difference
-        alignedD1 = (df["D1"] + origin) < (df["D2"] + (width * 10**4))
-        alignedD2 = df["D2"] < (df["D1"] + origin + (width * 10**4))
-        aligned = df[alignedD1 & alignedD2]
+            fsc_small_max = aligned["fsc_small"].max()
+            if notch1 is None:
+                min1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
+                notch1 = fsc_small_max / (min1 - offset * 10**4)
 
-        fsc_small_max = aligned["fsc_small"].max()
-        if notch1 is None:
-            min1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
-            notch1 = fsc_small_max / (min1 - offset * 10**4)
+                # double check that old code matches new code for now
+                assert fsc_small_max == aligned[aligned["D1"] == min1]["fsc_small"].max()
+            if notch2 is None:
+                min2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
+                notch2 = fsc_small_max / (min2 - offset * 10**4)
 
-            # double check that old code matches new code for now
-            assert fsc_small_max == aligned[aligned["D1"] == min1]["fsc_small"].max()
-        if notch2 is None:
-            min2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
-            notch2 = fsc_small_max / (min2 - offset * 10**4)
-
-            # double check that old code matches new code for now
-            assert fsc_small_max == aligned[aligned["D2"] == min2]["fsc_small"].max()
+                # double check that old code matches new code for now
+                assert fsc_small_max == aligned[aligned["D2"] == min2]["fsc_small"].max()
 
 
-        # Filter focused particles (fsc_small > D * notch)
-        oppD1 = aligned["fsc_small"] >= ((aligned["D1"] * notch1) - (offset * 10**4))
-        oppD2 = aligned["fsc_small"] >= ((aligned["D2"] * notch2) - (offset * 10**4))
-        oppdf = aligned[oppD1 & oppD2].copy()
+            # Filter focused particles (fsc_small > D * notch)
+            oppD1 = aligned["fsc_small"] >= ((aligned["D1"] * notch1) - (offset * 10**4))
+            oppD2 = aligned["fsc_small"] >= ((aligned["D2"] * notch2) - (offset * 10**4))
+            oppdf = aligned[oppD1 & oppD2].copy()
 
-        opp = self.clone_with_filtered(oppdf, notch1, notch2, offset, origin, width)
+            opp = self.clone_with_filtered(oppdf, notch1, notch2, offset, origin, width)
+
         return opp
 
     def clone_with_filtered(self, oppdf, notch1, notch2, offset, origin, width):
