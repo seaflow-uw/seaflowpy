@@ -1,3 +1,16 @@
+"""
+This module contains classes for interfacing with various cloud providers. Each
+class should provide at least the following public methods:
+
+start() - Starts cloud instances
+cleanup() - Frees cloud resources managed by this class
+get_files() - Get a list of files within a folder in cloud storage
+download_file_memory() - Download a file from cloud storage to memory
+
+These methods are intended to be independent of any specific cloud provider,
+making it simple to replace one provider for another.
+"""
+
 import boto3
 import botocore
 import io
@@ -6,6 +19,10 @@ import time
 
 
 class AWS(object):
+    """
+    A class for high-level operations in EC2 and S3.
+    """
+
     block_device_mapping = [
         {
             "DeviceName": "/dev/sdf",
