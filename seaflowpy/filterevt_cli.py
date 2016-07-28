@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 import argparse
-import aws
 import botocore
+import clouds
+import conf
 import db
 import evt
 import filterevt
@@ -9,11 +10,6 @@ import json
 import pkg_resources
 import sys
 
-
-# Global configuration variables for AWS
-# ######################################
-# Default name of Seaflow bucket
-SEAFLOW_BUCKET = "armbrustlab.seaflow"
 
 def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
@@ -28,8 +24,6 @@ def parse_args(args):
                    help="""Read EVT files from s3://S3_BUCKET/CRUISE where
                    CRUISE is provided by --cruise (required unless
                    --evt_dir)""")
-    p.add_argument("-b", "--s3_bucket", default=SEAFLOW_BUCKET, metavar="NAME",
-                   help="S3 bucket name (optional)")
     p.add_argument("-l", "--limit", type=int, default=None, metavar="N",
                    help="""Limit how many files to process. Useful for testing.
                    (optional)""")
@@ -97,10 +91,13 @@ def main(cli_args=None):
     if args.evt_dir:
         files = evt.find_evt_files(args.evt_dir)
     elif args.s3:
+        # Make sure configuration for s3 is ready to go
+        config = conf.get_aws_config(s3_only=True)
+        cloud = clouds.AWS(config.items("aws"))
         # Make sure try to access S3 up front to setup AWS credentials before
         # launching child processes.
         try:
-            files = aws.get_s3_files(args.cruise, args.s3_bucket)
+            files = cloud.get_files(args.cruise)
             files = evt.parse_file_list(files)  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
             print "Please configure aws first:"
@@ -124,8 +121,8 @@ def main(cli_args=None):
     else:
         filterer = filterevt.filter_evt_files
     filterer(files, args.cruise, filter_options, args.db,
-             args.opp_dir, s3=args.s3, s3_bucket=args.s3_bucket,
-             process_count=args.process_count, every=args.resolution)
+             args.opp_dir, s3=args.s3, process_count=args.process_count,
+             every=args.resolution)
 
     # Index
     if args.db:

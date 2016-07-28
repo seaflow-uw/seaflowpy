@@ -37,16 +37,11 @@ def gzip_file(path, print_timing=False):
 
 
 def mkdir_p(path):
-    """Create directory tree for path.
-
-    Doesn't raise an error if a directory in the path already exists.
-
-    From http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-    """
+    """Create directory tree for path."""
     try:
         os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
+    except OSError as e:
+        if e.errno == errno.EEXIST and os.path.isdir(path):
             pass
         else:
             raise

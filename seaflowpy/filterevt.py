@@ -1,4 +1,5 @@
-import aws
+import clouds
+import conf
 import copy
 import db
 import evt
@@ -12,7 +13,7 @@ from itertools import imap
 from multiprocessing import Pool
 
 def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
-                     s3_bucket=None, process_count=1, every=10.0):
+                    process_count=1, every=10.0):
     """
     Filter a list of EVT files in two passes.
 
@@ -30,7 +31,6 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
 
     Keyword arguments:
         s3 - Get EVT data from S3
-        s3_bucket - S3 bucket name
         process_count - number of worker processes to use
         every - Percent progress output resolution
     """
@@ -39,8 +39,7 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     print "PASS 1"
     print "*********************************"
     filter_evt_files(files, cruise, filter_options, dbpath, None, s3=s3,
-                     s3_bucket=s3_bucket, process_count=process_count,
-                     every=every)
+                     process_count=process_count, every=every)
 
     # Get filter parameters here
     # 1) get latest filter parameters
@@ -63,12 +62,11 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     print "Average filter parameters:"
     print json.dumps(filter_options, indent=2)
     filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=s3,
-                     s3_bucket=s3_bucket, process_count=process_count,
-                     every=every)
+                     process_count=process_count, every=every)
 
 
 def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
-                     s3_bucket=None, process_count=1, every=10.0):
+                     process_count=1, every=10.0):
     """Filter a list of EVT files.
 
     Arguments arguments:
@@ -81,7 +79,6 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
 
     Keyword arguments:
         s3 - Get EVT data from S3
-        s3_bucket - S3 bucket name
         process_count - number of worker processes to use
         every - Percent progress output resolution
     """
@@ -92,7 +89,7 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         "filter_options": filter_options,
         "every": every,
         "s3": s3,
-        "s3_bucket": s3_bucket,
+        "cloud_config_items": None,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
         "filter_id": None  # fill in later
@@ -104,6 +101,10 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
             util.mkdir_p(dbdir)
         db.ensure_tables(dbpath)
         o["filter_id"] = db.save_filter_params(dbpath, filter_options)
+
+    if s3:
+        config = conf.get_aws_config(s3_only=True)
+        o["cloud_config_items"] = config.items("aws")
 
     if process_count > 1:
         # Create a pool of N worker processes
@@ -210,7 +211,8 @@ def filter_one_file(o):
     evt_file = o["file"]
     fileobj = None
     if o["s3"]:
-        fileobj = aws.download_s3_file_memory(evt_file, o["s3_bucket"])
+        cloud = clouds.AWS(o["cloud_config_items"])
+        fileobj = cloud.download_file_memory(evt_file)
 
     try:
         evt_ = evt.EVT(path=evt_file, fileobj=fileobj)

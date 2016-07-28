@@ -446,7 +446,9 @@ class TestMultiFileFilter:
     @s3
     def test_multi_file_filter_S3(self, tmpout):
         """Test S3 multi-file filtering and ensure output can be read back OK"""
-        files = sfp.aws.get_s3_files("testcruise_evt", "armbrustlab.seaflow")
+        config = sfp.conf.get_aws_config()
+        cloud = sfp.clouds.AWS(config.items("aws"))
+        files = cloud.get_files("testcruise_evt")
         files = sfp.evt.parse_file_list(files)
         filt_opts = {
             "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
@@ -458,7 +460,7 @@ class TestMultiFileFilter:
         sfp.filterevt.filter_evt_files(
             files=files, process_count=1, cruise="testcruise",
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, s3=True, s3_bucket="armbrustlab.seaflow")
+            filter_options=filt_opts, s3=True)
 
         evts = [
             sfp.EVT(os.path.join("tests", files[0])),

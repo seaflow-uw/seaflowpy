@@ -26,6 +26,7 @@ setup(name='seaflowpy',
     entry_points={
         'console_scripts': [
             'seaflowpy_filter=seaflowpy.filterevt_cli:main',
+            'seaflowpy_filter_remote=seaflowpy.filterevt_remote_cli:main',
             'seaflowpy_classify=seaflowpy.classifyopp_cli:main',
             'seaflowpy_importsfl=seaflowpy.importsfl_cli:main',
             'seaflowpy_exportsflstat=seaflowpy.exportsflstat_cli:main',
