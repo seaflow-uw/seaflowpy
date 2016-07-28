@@ -16,6 +16,7 @@ python setup.py install
 This installs the `seaflowpy` Python package as well as the following command-line scripts:
 
 * `seaflowpy_filter` - filter EVT data
+* `seaflowpy_filter_remote` - filter EVT data on remote servers
 * `seaflowpy_classify` - classify OPP data
 * `seaflowpy_importsfl` - import SFL files to a SQLite3 database
 * `seaflowpy_exportsflstat` - export SFL and population tables from a SQLite3 database
@@ -48,6 +49,10 @@ Filter a directory of EVT files using 2 cores, show progress every 20%.
 ```
 $ seaflowpy_filter -p 2 -r 20 -c SCOPE_1 -e ./SCOPE_1 -d ./SCOPE_1.db -o ./SCOPE_1_opp
 ```
+
+## Filtering with seaflowpy_filter\_remote
+`seaflowpy_filter_remote` will filter a list of cruises on automatically provisioned Amazon EC2 cloud instances. Once the analysis is complete, results are transfer back to the local computer
+and EC2 instances are brought down. Analysis is limited to two pass filtering with automatically determined filter parameters.
 
 ## Population classifcation with seaflowpy_classify
 `seaflowpy_classify` will classify OPP (focused) particles by population. Aggregate population statistics are saved to the `vct` table of a SQLite3 database file. Population annotation files (VCT) are saved to an output directory that mirrors the input OPP file directory.
