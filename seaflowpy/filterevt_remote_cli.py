@@ -119,6 +119,10 @@ def main(cli_args=None):
         with hide("output"):
             execute(rsync_put, "~/.aws/", ".aws")
 
+        print "Transfer seaflowpy configuration"
+        with hide("output"):
+            execute(rsync_put, "~/.seaflowpy/", ".seaflowpy")
+
         print "Install seaflowpy"
         execute(pull_seaflowpy)
 
