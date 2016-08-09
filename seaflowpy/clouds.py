@@ -122,11 +122,6 @@ create_raid
         ids = self._get_instance_ids(self._get_instances(resp))
         self.state["InstanceIds"] = ids
 
-        client.create_tags(
-            Resources=ids,
-            Tags=[{"Key": "name", "Value": "seaflowpy"}]
-        )
-
         waiter = client.get_waiter("instance_running")
         waiter.wait(InstanceIds=ids)
         resp = client.describe_instances(InstanceIds=ids)
