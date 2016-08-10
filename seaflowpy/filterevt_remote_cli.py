@@ -41,6 +41,8 @@ def parse_args(args):
                    2 instance store devices. (optional)""")
     p.add_argument("-n", "--nocleanup", help="Don't cleanup resources",
                    action="store_true", default=False)
+    p.add_argument("-d", "--dryrun", action="store_true", default=False,
+                   help="""Assign cruises to hosts but don't start instances.""")
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
@@ -85,6 +87,7 @@ def main(cli_args=None):
             for c in args.cruises:
                 cruise_files[c] = cloud.get_files(c)
                 print "{:<20} {}".format(c, len(cruise_files[c]))
+            print ""
         except botocore.exceptions.NoCredentialsError as e:
             print "Please configure aws first:"
             print "  $ conda install aws"
@@ -94,14 +97,20 @@ def main(cli_args=None):
             print "  $ aws configure"
             sys.exit(1)
 
-        print "Starting {} instances".format(args.instance_count)
-        result = cloud.start(
-            count=args.instance_count,
-            instance_type=args.instance_type
-        )
-        for iid, iip in zip(result["InstanceIds"], result["publicips"]):
-            print "  InstanceId = {}, IP = {}".format(iid, iip)
-        env.hosts.extend(result["publicips"])
+        if args.dryrun:
+            # Create dummy host list
+            print "Creating {} dummy hosts".format(args.instance_count)
+            env.hosts = ["dummy{}".format(i) for i in range(args.instance_count)]
+        else:
+            print "Starting {} instances".format(args.instance_count)
+            result = cloud.start(
+                count=args.instance_count,
+                instance_type=args.instance_type
+            )
+            for iid, iip in zip(result["InstanceIds"], result["publicips"]):
+                print "  InstanceId = {}, IP = {}".format(iid, iip)
+            env.hosts.extend(result["publicips"])
+        print ""
 
         # Fairly divide cruises into hosts based on number of files
         print "Assigning cruises to {} hosts".format(len(env.hosts))
@@ -111,6 +120,13 @@ def main(cli_args=None):
             print "{:<20} {}".format(h, htotal)
             for c in host_assignments[h]:
                 print "  {:<18} {}".format(c[0], c[1])
+        print ""
+
+        if args.dryrun:
+            print "Dry run complete"
+            print ""
+            return
+
 
         print "Waiting for hosts to come up with SSH"
         execute(wait_for_up)
