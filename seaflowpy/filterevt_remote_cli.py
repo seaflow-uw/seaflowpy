@@ -278,7 +278,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 # on local
                 puts(rsyncout[env.host_string])
             else:
-                warn("Filtering failed for cruise {}".format(c))
+                sys.stderr.write("Filtering failed for cruise {}\n".format(c))
 
             # Always write log output
             util.mkdir_p(cruise_output_dir)
