@@ -70,8 +70,9 @@ def main(cli_args=None):
     print json.dumps(v, indent=2)
     print ""
 
-    # Make sure configuration for s3 is ready to go
-    config = conf.get_aws_config(s3_only=True)
+    # Make sure configuration for aws and ssh is ready to go
+    config = conf.get_aws_config()
+    conf.get_ssh_config(config)
     cloud = clouds.AWS(config.items("aws"))
 
     # Configure fabric
