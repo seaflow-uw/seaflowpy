@@ -22,7 +22,10 @@ def parse_args(args):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     p.add_argument("-c", "--cruises", nargs="+", required=True, metavar="NAME",
-                   help="Cruise names (required)")
+                   help="""Cruise names. More than can be provided as a
+                   space-separated list. A single argument form can be used to
+                   specify a file of whitespace separated cruise names.
+                   (required)""")
 
     p.add_argument("-o", "--output_dir", metavar="DIR", required=True,
                    help="""Directory in which to save SQLite3 database and
@@ -84,6 +87,11 @@ def main(cli_args=None):
     try:
         print "Getting lists of files for each cruise"
         cruise_files = {}
+
+        # Handle case where cruises are listed in a file
+        if len(args.cruises) == 1 and os.path.isfile(args.cruises[0]):
+            with open(args.cruises[0]) as fh:
+                args.cruises = fh.read().split()
         try:
             for c in args.cruises:
                 cruise_files[c] = cloud.get_files(c)
