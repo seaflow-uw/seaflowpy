@@ -3,8 +3,6 @@
 Convert old Seaflow SDS file format to SFL, with STREAM PRESSURE converted
 to FLOW RATE with user supplied ratio.
 """
-
-import db
 import pkg_resources
 import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -16,6 +14,78 @@ SERIALS = {
     "751": 0.143,
     "989": 0.149
 }
+
+FILE_COLUMNS = [
+    'FILE', 'DATE', 'FILE DURATION', 'LAT', 'LON', 'CONDUCTIVITY',
+    'SALINITY', 'OCEAN TEMP', 'PAR', 'BULK RED', 'STREAM PRESSURE',
+    'FLOW RATE', 'EVENT RATE'
+]
+
+
+def parse_header(line):
+    """Create a dict of column indexes by field name"""
+    fields = line.rstrip().split("\t")
+    fields = [f.replace(".", " ") for f in fields]
+    d = dict([(x, i) for i, x in enumerate(fields)])
+    return d
+
+def create_file_field(line, header):
+    """Create SeaFlow file name form this line"""
+    file_field = None
+    fields = line.rstrip().split("\t")
+    if ("file" in header) and ("day" in header):
+        filei = header["file"]
+        dayi = header["day"]
+        file_field = fields[dayi] + "/" + fields[filei] + ".evt"
+    elif "FILE" in header:
+        filei = header["FILE"]
+        if fields[filei].startswith("sds_"):
+            parts = fields[filei].split("_")
+            file_field = parts[1] + "_" + parts[2] + "/" + parts[3] + ".evt"
+    if not file_field:
+        sys.stderr.write("Error: could not create file name from this line:\n")
+        sys.stderr.write(line)
+        sys.exit(1)
+    return file_field
+
+def create_date_field(line, header):
+    """Create ISO8601 date value from this line"""
+    date_field = None
+    fields = line.rstrip().split("\t")
+    if "time" in header:
+        timei = header["time"]
+        date_field = fields[timei].replace(" ", "T") + "+00:00"  # assume UTC
+    elif ("DMY" in header) and ("HMS" in header):
+        dmy = fields[header["DMY"]]
+        hms = fields[header["HMS"]]
+        year = "20" + dmy[4:]
+        month = dmy[2:4]
+        day = dmy[:2]
+        hour = hms[:2]
+        minute = hms[2:4]
+        second = hms[4:]
+        date_field = "%s-%s-%sT%s:%s:%s+00:00" % (year, month, day, hour, minute, second)
+    if not date_field:
+        sys.stderr.write("Error: could not create date from this line:\n")
+        sys.stderr.write(line)
+        sys.exit(1)
+    return date_field
+
+def create_flow_rate_field(line, header, ratio_evt_stream):
+    flow_rate_field = None
+    fields = line.rstrip().split("\t")
+    if "STREAM PRESSURE" in header:
+        # Create a new FLOW RATE element from STREAM PRESSURE and ratio_evt_stream
+        try:
+            sp = float(fields[header["STREAM PRESSURE"]])
+            flow_rate_field = str(1000 * (-9*10**-5 * sp**4 + 0.0066 * sp**3 - 0.173 * sp**2 + 2.5013 * sp + 2.1059) * ratio_evt_stream)
+        except ValueError:
+            flow_rate_field = "NA"
+    if not flow_rate_field:
+        sys.stderr.write("Error: could not create flow rate from this line:\n")
+        sys.stderr.write(line)
+        sys.exit(1)
+    return flow_rate_field
 
 def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
@@ -37,65 +107,46 @@ def main(cli_args=None):
 
     args = parse_args(cli_args)
 
-    db.ensure_tables(args.db)
-    db.ensure_indexes(args.db)
-
-
     try:
         ratio_evt_stream = SERIALS[args.serial]
-    except KeyError as e:
+    except KeyError:
         sys.stderr.write("Instrument serial number %s not recognized\n" % args.serial)
         sys.exit(1)
 
-    sds_file = args.sds
-    f = open(sds_file)
+    f = open(args.sds)
     f2 = open(args.sfl, 'w')
 
-    header = f.readline()
-    elements = header.split('\t')
-    elements[-2] = 'FILE'           # replace 'day' column with 'FILE'
-    elements[-1] = 'FILE DURATION'  # replace 'file' column
-    elements[-3] = 'DATE'           # replace 'time' column
+    header = parse_header(f.readline())
 
-    # Older SDS files had periods between words of a single header column
-    # e.g. STREAM.PRESSURE
-    # To make these column headers compatible with new SFL file processing
-    # these periods should be converted to a single space
-    elements = [x.replace('.', ' ') for x in elements]
+    f2.write("\t".join(FILE_COLUMNS) + "\n")
 
-    # Find STREAM PRESSURE column index
-    stream_index = None
-    for i, name in enumerate(elements):
-        if name == 'STREAM PRESSURE':
-            stream_index = i
-    if stream_index is None:
-        sys.stderr.write('STREAM PRESSURE not found in SDS file\n')
-        sys.exit(1)
+    file_duration_field = "180"
+    for line in f:
+        file_field = create_file_field(line, header)
+        date_field = create_date_field(line, header)
+        flow_rate_field = create_flow_rate_field(line, header, ratio_evt_stream)
 
-    elements.append('FLOW RATE')
+        # Capture original fields
+        fields = line.rstrip().split("\t")
+        # Add new or modified fields
+        fields.append(file_duration_field)
+        fields.append(file_field)
+        fields.append(date_field)
+        fields.append(flow_rate_field)
 
-    f2.write('\t'.join(elements))
-    f2.write('\n')
+        # Make a copy of header index lookup
+        d = dict(header)
+        # Add indices for appended new or modified fields
+        d["FILE DURATION"] = len(fields) - 4
+        d["FILE"] = len(fields) - 3
+        d["DATE"] = len(fields) - 2
+        d["FLOW RATE"] = len(fields) - 1
 
-    files_seen = set()
-    for line in f :
-        elements = line.split('\t')
-        # Build 'FILE' value from 'file' and 'day'
-        elements[-2] = elements[-2] + '/' + elements[-1].strip() + '.evt'
-        # FILE DURATION values fixed at 180 seconds
-        elements[-1] = '180'
-        # Construct a ISO 8601 date string from 'time' field of SDS file and
-        # replace 'time' field with this string
-        elements[-3] = elements[-3].replace(' ', 'T') + '+00:00'
-        # Create a new FLOW RATE element from STREAM PRESSURE and ratio_evt_stream
-        try:
-            stream_pressure = float(elements[stream_index])
-            flow_rate = str(1000 * (-9*10**-5 * stream_pressure**4 + 0.0066 * stream_pressure**3 - 0.173 * stream_pressure**2 + 2.5013 * stream_pressure + 2.1059) * ratio_evt_stream)
-        except ValueError as e:
-            flow_rate = 'NA'
+        # Write SFL subset of fields in correct order
+        outfields = []
+        for col in FILE_COLUMNS:
+            outfields.append(fields[d[col]])
+        f2.write("\t".join(outfields) + "\n")
 
-        if not (elements[-2] in files_seen):
-            files_seen.add(elements[-2])
-            elements.append(flow_rate)
-            f2.write('\t'.join(elements))
-            f2.write('\n')
+    f.close()
+    f2.close()
