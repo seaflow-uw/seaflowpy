@@ -179,11 +179,11 @@ class TestFilter:
     def test_filter_default(self, evt):
         opp = evt.filter()
         assert opp.parent.event_count == 40000
-        assert opp.parent.particle_count == 6141
-        assert opp.particle_count == 386
+        assert opp.parent.particle_count == 39928
+        assert opp.particle_count == 396
         assert opp.width == 1.0
         assert opp.offset == 0.0
-        assert opp.origin == -752.0
+        assert opp.origin == -1808.0
         npt.assert_almost_equal(opp.notch1, 0.885080147965475, decimal=15)
         npt.assert_almost_equal(opp.notch2, 0.876434676434676, decimal=15)
         assert opp.parent == evt
@@ -191,8 +191,8 @@ class TestFilter:
     def test_filter_with_set_params(self, evt):
         opp = evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
         assert opp.parent.event_count == 40000
-        assert opp.parent.particle_count == 6141
-        assert opp.particle_count == 2803
+        assert opp.parent.particle_count == 39928
+        assert opp.particle_count == 25982
         assert opp.width == 0.75
         assert opp.offset == 100
         assert opp.origin == -1000
@@ -201,23 +201,23 @@ class TestFilter:
         assert opp.parent == evt
 
     def test_noise_filter(self, evt):
-        assert np.all(evt.df["D1"] > 1) == False
-        assert np.all(evt.df["D2"] > 1) == False
-        assert np.all(evt.df["fsc_small"] > 1) == False
-        assert np.any(evt.df["D1"] > 1) == True
-        assert np.any(evt.df["D2"] > 1) == True
-        assert np.any(evt.df["fsc_small"] > 1) == True
+        """Events with zeroes in all of D1, D2, and fsc_small are noise"""
+        # There do exists events which could be considered noise (no signal in
+        # any of D1, D2, or fsc_small
+        assert np.any((evt.df["D1"] == 0) & (evt.df["D2"] == 0) & (evt.df["fsc_small"] == 0)) == True
 
         signal = evt.filter_noise()
 
+        # We made a new dataframe
         assert signal is not evt.df
+        # Things actually got removed
         assert len(signal.index) < len(evt.df.index)
-        assert len(signal.index) == 6141
+        # Correct event count
+        assert len(signal.index) == 39928
         assert evt.particle_count == len(signal.index)
-        assert np.all(signal["D1"] > 1) == True
-        assert np.all(signal["D2"] > 1) == True
-        assert np.all(signal["fsc_small"] > 1) == True
 
+        # No events are all zeroes D1, D2, and fsc_small
+        assert np.any((signal["D1"] == 0) & (signal["D2"] == 0) & (signal["fsc_small"] == 0)) == False
 
 class TestParticleStats:
     def test_stats(self, evt):
@@ -537,8 +537,8 @@ class TestMultiFileFilter:
         pass1 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid1), con)
         pass2 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid2), con)
 
-        npt.assert_array_equal(pass1["opp_count"], [386, 416])
-        npt.assert_array_equal(pass2["opp_count"], [350, 461])
+        npt.assert_array_equal(pass1["opp_count"], [396, 418])
+        npt.assert_array_equal(pass2["opp_count"], [361, 464])
         # Are the pass2 values actually the median of pass 1?
         assert pass1["notch1"].median() == pass2["notch1"].values[0]
         assert pass1["notch1"].median() == pass2["notch1"].values[1]

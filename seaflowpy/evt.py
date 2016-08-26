@@ -83,7 +83,7 @@ class EVT(seaflowfile.SeaflowFile):
     def __str__(self):
         keys = [
             "path", "file_id", "header_count", "event_count", "particle_count",
-            "columns"
+            "columns", "transformed"
         ]
         tostringdict = OrderedDict([(k, getattr(self, k)) for k in keys])
         tostringdict["filter_options"] = {
@@ -155,7 +155,7 @@ class EVT(seaflowfile.SeaflowFile):
         Filter data below noise threshold.
 
         This function does not modify the actual particle DataFrame. Only
-        particles with D1, D2, and fsc_small values > 1 will be kept. Sets
+        particles with D1, D2, or fsc_small values > 1 will be kept. Sets
         self.particle_count.
 
         Returns:
@@ -164,7 +164,7 @@ class EVT(seaflowfile.SeaflowFile):
         if len(set(self.columns).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
             raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
         # Only keep particles detected by fsc_small, D1, D2
-        keep = (self.df["fsc_small"] > 1) & (self.df["D1"] > 1) & (self.df["D2"] > 1)
+        keep = (self.df["fsc_small"] > 1) | (self.df["D1"] > 1) | (self.df["D2"] > 1)
         self.particle_count = len(self.df[keep].index)
         return self.df[keep]
 
