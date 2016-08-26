@@ -3,6 +3,7 @@
 Convert old Seaflow SDS file format to SFL, with STREAM PRESSURE converted
 to FLOW RATE with user supplied ratio.
 """
+import datetime
 import pkg_resources
 import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -55,16 +56,29 @@ def create_date_field(line, header):
     if "time" in header:
         timei = header["time"]
         date_field = fields[timei].replace(" ", "T") + "+00:00"  # assume UTC
-    elif ("DMY" in header) and ("HMS" in header):
-        dmy = fields[header["DMY"]]
-        hms = fields[header["HMS"]]
-        year = "20" + dmy[4:]
-        month = dmy[2:4]
-        day = dmy[:2]
-        hour = hms[:2]
-        minute = hms[2:4]
-        second = hms[4:]
-        date_field = "%s-%s-%sT%s:%s:%s+00:00" % (year, month, day, hour, minute, second)
+    elif "computerUTC" in header:
+        # Given the following definitions:
+        # y = year
+        # j = julian day
+        # h = hour
+        # m = minute
+        # s = second
+        #
+        # Then computerUTC is formatted as yyjjjhhmmss
+        cutc = fields[header["computerUTC"]]
+        assert len(cutc) == len("yyjjjhhmmss")
+        year = int("20" + cutc[:2])
+        julian = int(cutc[2:5])
+        hours = int(cutc[5:7])
+        minutes = int(cutc[7:9])
+        seconds = int(cutc[9:11])
+
+        # julian to month/day
+        delta = datetime.timedelta(days=julian-1, hours=hours, minutes=minutes,
+                                   seconds=seconds)
+        tmpd = datetime.datetime(year, 1, 1) + delta
+        # Final UTC ISO8601 SeaFlow compatible timestamp string
+        date_field = tmpd.isoformat()  + "+00:00"
     if not date_field:
         sys.stderr.write("Error: could not create date from this line:\n")
         sys.stderr.write(line)
