@@ -30,19 +30,17 @@ def parse_args(args):
     p.add_argument("-o", "--output_dir", metavar="DIR", required=True,
                    help="""Directory in which to save SQLite3 database and
                    OPP binary files for each cruise. Will be created if does
-                   not exist.""")
+                   not exist. (required)""")
 
-    p.add_argument("-p", "--process_count", required=False, type=int, default=16,
-                   metavar="N", help="""Number of processes to use in filtering
-                   (optional)""")
-    p.add_argument("-i", "--instance_count", required=False, type=int, default=1,
-                   metavar="N", help="""Number of cloud instances to use
-                   (optional)""")
-    p.add_argument("-t", "--instance_type", required=False, default="c3.8xlarge",
+    p.add_argument("-p", "--process_count", type=int, default=16, metavar="N",
+                   help="""Number of processes to use in filtering.""")
+    p.add_argument("-i", "--instance_count", type=int, default=1, metavar="N",
+                   help="""Number of cloud instances to use.""")
+    p.add_argument("-t", "--instance_type", default="c3.8xlarge",
                    metavar="EC2_TYPE", help="""EC2 instance type to use. Change
                    with caution. The instance type must have be able to attach
-                   2 instance store devices. (optional)""")
-    p.add_argument("-n", "--nocleanup", help="Don't cleanup resources",
+                   2 instance store devices.""")
+    p.add_argument("-n", "--nocleanup", help="Don't cleanup resources.",
                    action="store_true", default=False)
     p.add_argument("-d", "--dryrun", action="store_true", default=False,
                    help="""Assign cruises to hosts but don't start instances.""")
