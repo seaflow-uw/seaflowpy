@@ -15,7 +15,6 @@ def ensure_tables(dbpath):
     file TEXT NOT NULL,
     pop TEXT NOT NULL,
     count INTEGER NOT NULL,
-    method TEXT NOT NULL,
     fsc_small REAL NOT NULL,
     fsc_perp REAL NOT NULL,
     pe REAL NOT NULL,
@@ -92,8 +91,18 @@ def ensure_tables(dbpath):
     cur.execute("""CREATE TABLE IF NOT EXISTS gating (
     id TEXT NOT NULL,
     date TEXT NOT NULL,
-    pop_order TEXT NOT NULL,
-    PRIMARY KEY (id)
+    pop_order INTEGER NOT NULL,
+    pop TEXT NOT NULL,
+    method TEXT NOT NULL,
+    channel1 TEXT,
+    channel2 TEXT,
+    gate1 REAL,
+    gate2 REAL,
+    position1 INTEGER,
+    position2 INTEGER,
+    scale REAL,
+    minpe REAL,
+    PRIMARY KEY (id, pop)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS poly (
@@ -136,6 +145,8 @@ def ensure_tables(dbpath):
         opp.cruise == sfl.cruise
         AND
         opp.file == sfl.file
+        AND
+        vct.gating_id == (select id FROM gating ORDER BY date DESC limit 1)
     ORDER BY
         cruise, time, pop ASC
 """)
@@ -222,33 +233,6 @@ def save_opp_stats(dbpath, vals):
     execute(dbpath, sql_insert, vals)
 
 
-def save_vct_stats(dbpath, vals):
-    # NOTE: values inserted must be in the same order as fields in opp
-    # table. Defining that order in a list here makes it easier to verify
-    # that the right order is used.
-    field_order = [
-        "cruise",
-        "file",
-        "pop",
-        "count",
-        "method",
-        "fsc_small",
-        "fsc_perp",
-        "pe",
-        "chl_small",
-        "gating_id"
-    ]
-
-    # Erase existing entry first
-    sql_delete = "DELETE FROM vct WHERE cruise = ? AND file == ?"
-    execute(dbpath, sql_delete, [vals[0]["cruise"], vals[0]["file"]])
-
-    # Construct values string with named placeholders
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT INTO vct VALUES (%s)" % values_str
-    executemany(dbpath, sql_insert, vals)
-
-
 def save_sfl(dbpath, vals):
     # NOTE: values inserted must be in the same order as fields in sfl
     # table. Defining that order in a list here makes it easier to verify
@@ -277,17 +261,12 @@ def save_sfl(dbpath, vals):
     executemany(dbpath, sql_insert, vals)
 
 
-def get_gating_table(dbpath):
-    sql = "SELECT * FROM gating ORDER BY date ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        gatingdf = pd.read_sql(sql, dbcon)
-    return gatingdf
-
 def get_filter_table(dbpath):
     sql = "SELECT * FROM filter ORDER BY date ASC"
     with sqlite3.connect(dbpath) as dbcon:
         filterdf = pd.read_sql(sql, dbcon)
     return filterdf
+
 
 def get_latest_filter(dbpath):
     sql = "SELECT * FROM filter ORDER BY date DESC"
@@ -295,33 +274,12 @@ def get_latest_filter(dbpath):
         filterdf = pd.read_sql(sql, dbcon)
     return filterdf.tail(1)
 
+
 def get_opp(dbpath, filter_id):
     sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file".format(filter_id)
     with sqlite3.connect(dbpath) as dbcon:
         oppdf = pd.read_sql(sql, dbcon)
     return oppdf
-
-
-def get_poly(dbpath, gating_id):
-    sql = "SELECT * FROM gating WHERE id = '{}'".format(gating_id)
-    with sqlite3.connect(dbpath) as dbcon:
-        gatingdf = pd.read_sql(sql, dbcon)
-    if len(gatingdf) == 0:
-        raise ValueError("gating_id {} not found in database".format(gating_id))
-    pop_order = gatingdf.loc[0, "pop_order"].split(",")
-
-    poly = OrderedDict()
-
-    sql = "SElECT * FROM poly WHERE gating_id ='{}' ORDER BY point_order".format(gating_id)
-    with sqlite3.connect(dbpath) as dbcon:
-        polydf = pd.read_sql(sql, dbcon)
-        polydf = polydf.drop(["point_order", "gating_id"], axis=1)
-    for pop in pop_order:
-        popdf = polydf[polydf["pop"] == pop]  # get DataFrame for just this pop
-        not_null_cols = popdf.notnull().all()  # find columns with values
-        poly[pop] = popdf.loc[:, not_null_cols].drop("pop", axis=1) # only keep data columns with values
-
-    return poly
 
 
 def execute(dbpath, sql, values=None, timeout=120):
