@@ -1,5 +1,4 @@
 import clouds
-import classifyopp
 import conf
 import db
 import errors
