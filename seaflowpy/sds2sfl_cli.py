@@ -4,6 +4,7 @@ Convert old Seaflow SDS file format to SFL, with STREAM PRESSURE converted
 to FLOW RATE with user supplied ratio.
 """
 import datetime
+import geo
 import pkg_resources
 import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -101,6 +102,14 @@ def create_flow_rate_field(line, header, ratio_evt_stream):
         sys.exit(1)
     return flow_rate_field
 
+def fix_coord(coord, gga=False, west=False):
+    if coord:
+        if gga:
+            coord = geo.gga2dd(coord)
+        if west:
+            coord = geo.westify_dd_lon(coord)
+    return coord
+
 def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
 
@@ -110,6 +119,14 @@ def parse_args(args):
     parser.add_argument('--sds', required=True, help='Input SDS file')
     parser.add_argument('--sfl', required=True, help='Output SFL file.')
     parser.add_argument('--serial', required=True, help='Seaflow instrument serial number')
+    parser.add_argument(
+        '-g', "--gga", action='store_true',
+        help='lat/lon input is in GGA format. Convert to decimal degree.')
+    parser.add_argument(
+        '-w', '--west', action='store_true',
+        help="""Some ships don't provide E/W designations for longitude. Use
+        this flag if this is the case and all longitudes should be West
+        (negative).""")
     parser.add_argument("--version", action="version", version="%(prog)s " + version)
 
     return parser.parse_args()
@@ -155,6 +172,10 @@ def main(cli_args=None):
         d["FILE"] = len(fields) - 3
         d["DATE"] = len(fields) - 2
         d["FLOW RATE"] = len(fields) - 1
+
+        # Fix coordinates
+        fields[d["LAT"]] = fix_coord(fields[d["LAT"]], gga=args.gga)
+        fields[d["LON"]] = fix_coord(fields[d["LON"]], gga=args.gga, west=args.west)
 
         # Write SFL subset of fields in correct order
         outfields = []
