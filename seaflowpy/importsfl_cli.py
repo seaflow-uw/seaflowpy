@@ -208,7 +208,7 @@ def julian_from_file_name(file_name):
     dt = dateutil.parser.parse(iso8601)
     dt_jan1 = datetime.date(dt.year, 1, 1)
     day = dt.toordinal() - dt_jan1.toordinal() + 1
-    return "%i_%i" % (dt.year, day)
+    return "%i_%s" % (dt.year, str(day).zfill(3))
 
 
 def main(cli_args=None):
