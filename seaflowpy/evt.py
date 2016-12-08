@@ -219,11 +219,6 @@ class EVT(seaflowfile.SeaflowFile):
             if origin is None:
                 origin = (df["D2"] - df["D1"]).median()
 
-            # Old method
-            #if origin is None:
-            #    origin = (self.df["D2"] - self.df["D1"]).median()
-            #df = self.filter_noise_old()
-
             # Filter aligned particles (D1 = D2), with correction for D1 D2
             # sensitivity difference
             alignedD1 = (df["D1"] + origin) < (df["D2"] + (width * 10**4))

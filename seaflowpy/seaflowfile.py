@@ -97,7 +97,7 @@ def sorted_files(files):
     for f in files:
         s = SeaflowFile(f)
         parts = parse_path(s.file_id)
-        if "julian" in parts:
+        if parts["julian"] is not None:
             year, day = [int(x) for x in parts["julian"].split("_")]
         else:
             year, day = 0, 0
