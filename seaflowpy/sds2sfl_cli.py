@@ -151,6 +151,8 @@ def main(cli_args=None):
 
     f2.write("\t".join(FILE_COLUMNS) + "\n")
 
+    missing_fields = dict();
+
     file_duration_field = "180"
     for line in f:
         file_field = create_file_field(line, header)
@@ -180,8 +182,17 @@ def main(cli_args=None):
         # Write SFL subset of fields in correct order
         outfields = []
         for col in FILE_COLUMNS:
-            outfields.append(fields[d[col]])
+            try:
+                outfields.append(fields[d[col]])
+            except KeyError as e:
+                # If column is missing, just output NA and note for later
+                outfields.append("NA")
+                missing_fields[str(e)] = True
+
         f2.write("\t".join(outfields) + "\n")
 
     f.close()
     f2.close()
+
+    if missing_fields:
+        print "Some fields were missing from input file: %s" % " ".join(missing_fields.keys())
