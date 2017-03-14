@@ -11,7 +11,14 @@ def ddm2dd(ddm):
         A decimal degree string with precision to 4 decimal places
         e.g. "21.2782". This has resolution down to 11.132 m.
     """
-    dd = int(ddm[0]) + (float(ddm[1]) / 60)
+    degrees = int(ddm[0])
+    minutes = float(ddm[1]) / 60
+    if minutes > 1.0:
+        raise ValueError('minutes > 60')
+    if degrees > 0:
+        dd = degrees + minutes
+    else:
+        dd = degrees - minutes
     return "%.04f" % dd
 
 
@@ -43,8 +50,13 @@ def gga2dd(gga):
     Precision to 4 decimal places (11.132 m)
     e.g. "2116.6922" -> "21.2782"
     """
-    return ddm2dd(gga2ddm(gga))
-
+    try:
+        decimaldegrees = ddm2dd(gga2ddm(gga))
+    except ValueError as e:
+        if str(e) == "minutes > 60":
+            raise ValueError("invalid gga %s. Minutes > 60" % gga)
+        raise
+    return decimaldegrees
 
 def westify_dd_lon(lon):
     """Make longitude string negative.
