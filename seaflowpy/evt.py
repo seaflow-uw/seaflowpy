@@ -12,7 +12,6 @@ import sys
 import util
 import vct
 from collections import OrderedDict
-from matplotlib.path import Path
 
 
 class EVT(seaflowfile.SeaflowFile):
@@ -346,26 +345,6 @@ class EVT(seaflowfile.SeaflowFile):
 
         vctobj = vct.VCT(vct_file)
         self.df["pop"] = vctobj.vct["pop"]
-
-    def classify(self, pop_polys):
-        if not self.transformed:
-            df = self.transform(inplace=False)
-        else:
-            df = self.df
-        df["pop"] = "unknown"
-        for pop, verts in pop_polys.iteritems():
-            # Convert polygon vertices for this pop into a matplotlib.Path
-            path = vertstopath(verts)
-
-            # Only test unknown particles
-            todo = df["pop"] == "unknown"
-            # Test still unknown particles
-            pop_bool = path.contains_points(df.loc[todo, verts.columns])
-            pop_idx = df.loc[todo, :].loc[pop_bool, :].index
-            # Record population
-            df.loc[pop_idx, "pop"] = pop
-        if not self.transformed:
-            self.df["pop"] = df["pop"]
 
     def save_opp_to_db(self, cruise_name, filter_id, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
