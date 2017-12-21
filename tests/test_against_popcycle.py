@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import range
 import numpy.testing as npt
 import os
 import pandas as pd
@@ -22,7 +24,7 @@ def test_against_popcycle(tmpdir):
     # Generate seaflowpy results
     dbfile = str(tmpdir.join("testcruise.db"))
     shutil.copyfile("tests/testcruise_paramsonly.db", dbfile)
-    os.chmod(dbfile, 0664)  # make the db writeable
+    os.chmod(dbfile, 0o664)  # make the db writeable
     evt_files = sfp.evt.find_evt_files("tests/testcruise_evt")
     filt_opts = {
         "notch1": None, "notch2": None, "offset": 0.0, "origin": None,

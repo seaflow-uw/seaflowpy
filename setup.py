@@ -20,7 +20,8 @@ setup(name='seaflowpy',
         'boto3',
         'numpy',
         'pandas',
-        'fabric'
+        'fabric',
+        'future'
     ],
     setup_requires=['pytest-runner', 'setuptools_scm'],
     tests_require=['pytest'],
@@ -34,5 +35,6 @@ setup(name='seaflowpy',
             'seaflowpy_sds2sfl=seaflowpy.sds2sfl_cli:main'
         ]
     },
-    zip_safe=False
+    zip_safe=False,
+    include_package_data=True
 )

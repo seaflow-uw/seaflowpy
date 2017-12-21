@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import object
 import gzip
 import numpy as np
 import numpy.testing as npt
@@ -43,7 +45,7 @@ def tmpout_single(tmpout, evt):
     return tmpout
 
 
-class TestOpen:
+class TestOpen(object):
     def test_read_valid_evt(self):
         evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert evt.header_count == 40000
@@ -114,7 +116,7 @@ class TestOpen:
             evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
 
-class TestPathFilenameParsing:
+class TestPathFilenameParsing(object):
     def test_is_evt(self):
         files = [
             # Valid names
@@ -167,7 +169,7 @@ class TestPathFilenameParsing:
         assert files == answer
 
 
-class TestFilter:
+class TestFilter(object):
     def test_filter_bad_width(self, evt):
         with pytest.raises(ValueError):
             evt.filter(width=None)
@@ -219,7 +221,7 @@ class TestFilter:
         # No events are all zeroes D1, D2, and fsc_small
         assert np.any((signal["D1"] == 0) & (signal["D2"] == 0) & (signal["fsc_small"] == 0)) == False
 
-class TestParticleStats:
+class TestParticleStats(object):
     def test_stats(self, evt):
         # Create made up evt and opp data for stats calculations
         evt = sfp.EVT("fake/path", read_data=False)
@@ -255,7 +257,7 @@ class TestParticleStats:
         npt.assert_allclose(answer2array(stats), answer2array(answer))
 
 
-class TestTransform:
+class TestTransform(object):
     def test_transform_one_value(self):
         npt.assert_almost_equal(sfp.EVT.transform(56173.714285714275),
             1000.0, decimal=10)
@@ -281,7 +283,7 @@ class TestTransform:
             npt.assert_array_equal(orig_df, t_df)
 
 
-class TestOPPVCT:
+class TestOPPVCT(object):
     def test_add_vct(self):
         opps = [sfp.EVT(f) for f in sfp.find_evt_files("tests/testcruise_opp")]
         vcts = [sfp.vct.VCT(f) for f in sfp.vct.find_vct_files("tests/testcruise_vct")]
@@ -300,7 +302,7 @@ class TestOPPVCT:
         assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].df["pop"].values)
 
 
-class TestOutput:
+class TestOutput(object):
     def test_sqlite3_filter_params(self, tmpout):
         opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
                 "width": 0.5}
@@ -386,7 +388,7 @@ class TestOutput:
         assert input_opp == new_opp
 
 
-class TestMultiFileFilter:
+class TestMultiFileFilter(object):
     def test_multi_file_filter_local(self, tmpout):
         """Test multi-file filtering and ensure output can be read back OK"""
         files = [

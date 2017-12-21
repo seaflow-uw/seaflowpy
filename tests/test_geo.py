@@ -1,3 +1,4 @@
+from builtins import object
 import numpy.testing as npt
 import os
 import py.path
@@ -5,7 +6,7 @@ import pytest
 from .context import seaflowpy as sfp
 
 
-class TestGGA2DecimalDegrees:
+class TestGGA2DecimalDegrees(object):
     def test_gga2dd(self):
         # GGA inputs
         ggas = [

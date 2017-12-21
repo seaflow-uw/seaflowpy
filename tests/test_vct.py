@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import object
 import numpy.testing as npt
 import os
 import pandas as pd
@@ -6,7 +8,7 @@ import pytest
 from .context import seaflowpy as sfp
 
 
-class TestOpen:
+class TestOpen(object):
     def test_read_VCT(self):
         vct = sfp.vct.VCT("tests/testcruise_vct/2014_185/2014-07-04T00-03-02+00-00.vct")
         assert vct.vct_count == 416
@@ -22,7 +24,7 @@ class TestOpen:
         assert vct.vct.columns == ["pop"]
 
 
-class TestOutput:
+class TestOutput(object):
     def test_write_vct(self, tmpdir):
         vcts = [sfp.vct.VCT(f) for f in sfp.vct.find_vct_files("tests/testcruise_vct")]
         vcts[0].write_vct(str(tmpdir))
@@ -31,7 +33,7 @@ class TestOutput:
         assert "\n".join(vcts[0].vct) == "\n".join(reread_vct.vct)
 
 
-class TestPathFilenamParsing:
+class TestPathFilenamParsing(object):
     def test_is_vct(self):
         files = [
             # Valid names
