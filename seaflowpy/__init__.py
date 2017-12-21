@@ -1,11 +1,12 @@
-import clouds
-import conf
-import db
-import errors
-import evt
-import filterevt
-import geo
-import util
-import vct
-from evt import EVT
-from evt import find_evt_files
+from __future__ import absolute_import
+from . import clouds
+from . import conf
+from . import db
+from . import errors
+from . import evt
+from . import filterevt
+from . import geo
+from . import util
+from . import vct
+from .evt import EVT
+from .evt import find_evt_files

@@ -3,8 +3,11 @@
 Convert old Seaflow SDS file format to SFL, with STREAM PRESSURE converted
 to FLOW RATE with user supplied ratio.
 """
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import str
 import datetime
-import geo
+from . import geo
 import pkg_resources
 import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -195,4 +198,4 @@ def main(cli_args=None):
     f2.close()
 
     if missing_fields:
-        print "Some fields were missing from input file: %s" % " ".join(missing_fields.keys())
+        print("Some fields were missing from input file: %s" % " ".join(list(missing_fields.keys())))

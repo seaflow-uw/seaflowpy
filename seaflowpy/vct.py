@@ -1,11 +1,12 @@
+from __future__ import absolute_import
 import gzip
 import json
 import os
 import pandas as pd
 import pprint
 import re
-import seaflowfile
-import util
+from . import seaflowfile
+from . import util
 from collections import OrderedDict
 
 
@@ -43,7 +44,8 @@ class VCT(seaflowfile.SeaflowFile):
         if os.path.exists(outfile + ".gz"):
             os.remove(outfile + ".gz")
         with gzip.open(outfile + ".gz", "wb") as f:
-            f.write("\n".join(self.vct) + "\n")
+            string_ = "\n".join(self.vct["pop"].tolist()) + "\n"
+            f.write(string_.encode())
 
 
 def is_vct(file_path):

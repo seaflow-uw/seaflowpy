@@ -1,16 +1,20 @@
-import db
-import errors
+from __future__ import division
+from __future__ import absolute_import
+from builtins import range
+from . import db
+from . import errors
 import gzip
+import io
 import json
 import numpy as np
 import os
 import pandas as pd
 import pprint
 import re
-import seaflowfile
+from . import seaflowfile
 import sys
-import util
-import vct
+from . import util
+from . import vct
 from collections import OrderedDict
 
 
@@ -381,10 +385,10 @@ class EVT(seaflowfile.SeaflowFile):
         }
 
         stats = self.calc_pop_stats()
-        for item in stats.values():
+        for item in list(stats.values()):
             item.update(common_vals)
 
-        db.save_vct_stats(dbpath, stats.values())
+        db.save_vct_stats(dbpath, list(stats.values()))
 
     def write_binary(self, outdir, opp=True):
         """Write particle to LabView binary file in outdir
@@ -403,7 +407,7 @@ class EVT(seaflowfile.SeaflowFile):
         if os.path.exists(outfile + ".gz"):
             os.remove(outfile + ".gz")
 
-        with open(outfile, "wb") as fh:
+        with io.open(outfile, "wb") as fh:
             # Write 32-bit uint particle count header
             header = np.array([self.particle_count], np.uint32)
             header.tofile(fh)

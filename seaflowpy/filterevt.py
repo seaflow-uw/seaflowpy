@@ -1,15 +1,19 @@
-import clouds
-import conf
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import map
+from . import clouds
+from . import conf
 import copy
-import db
-import evt
-import errors
+from . import db
+from . import evt
+from . import errors
 import json
 import os
 import sys
 import time
-import util
-from itertools import imap
+from . import util
+
 from multiprocessing import Pool
 
 def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
@@ -34,10 +38,10 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         process_count - number of worker processes to use
         every - Percent progress output resolution
     """
-    print "Beginning two-pass filter process"
-    print "*********************************"
-    print "PASS 1"
-    print "*********************************"
+    print("Beginning two-pass filter process")
+    print("*********************************")
+    print("PASS 1")
+    print("*********************************")
     filter_evt_files(files, cruise, filter_options, dbpath, None, s3=s3,
                      process_count=process_count, every=every)
 
@@ -55,12 +59,12 @@ def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     filter_options["offset"] = avg["offset"]
     filter_options["width"] = avg["width"]
 
-    print ""
-    print "*********************************"
-    print "PASS 2"
-    print "*********************************"
-    print "Average filter parameters:"
-    print json.dumps(filter_options, indent=2)
+    print("")
+    print("*********************************")
+    print("PASS 2")
+    print("*********************************")
+    print("Average filter parameters:")
+    print(json.dumps(filter_options, indent=2))
     filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=s3,
                      process_count=process_count, every=every)
 
@@ -113,7 +117,7 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
             return pool.imap_unordered(worker, task_list)
     else:
         def mapper(worker, task_list):
-            return imap(worker, task_list)
+            return map(worker, task_list)
 
     evt_count = 0
     evt_signal_count = 0
@@ -126,9 +130,9 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         inputs.append(copy.copy(o))
         inputs[-1]["file"] = f
 
-    print ""
-    print "Filtering %i EVT files. Progress every %i%% (approximately)" % \
-        (len(files), every)
+    print("")
+    print("Filtering %i EVT files. Progress every %i%% (approximately)" % \
+        (len(files), every))
 
     t0 = time.time()
 
@@ -159,7 +163,7 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
             msg += " Particles this block: %i / %i (%i) %.04f (%.04f) elapsed: %.2fs" % \
                 (opp_count_block, evt_signal_count_block, evt_count_block,
                 ratio_signal_block, ratio_block, now - t0)
-            print msg
+            print(msg)
             sys.stdout.flush()
             last = milestone
             evt_count_block = 0
@@ -180,14 +184,14 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
     evtsignalrate = zerodiv(evt_signal_count, delta)
     opprate = zerodiv(opp_count, delta)
 
-    print ""
-    print "Input EVT files = %i" % len(files)
-    print "Parsed EVT files = %i" % files_ok
-    print "EVT particles = %s (%.2f p/s)" % (evt_count, evtrate)
-    print "EVT noise filtered particles = %s (%.2f p/s)" % (evt_signal_count, evtsignalrate)
-    print "OPP particles = %s (%.2f p/s)" % (opp_count, opprate)
-    print "OPP/EVT ratio = %.04f (%.04f)" % (opp_evt_signal_ratio, opp_evt_ratio)
-    print "Filtering completed in %.2f seconds" % (delta,)
+    print("")
+    print("Input EVT files = %i" % len(files))
+    print("Parsed EVT files = %i" % files_ok)
+    print("EVT particles = %s (%.2f p/s)" % (evt_count, evtrate))
+    print("EVT noise filtered particles = %s (%.2f p/s)" % (evt_signal_count, evtsignalrate))
+    print("OPP particles = %s (%.2f p/s)" % (opp_count, opprate))
+    print("OPP/EVT ratio = %.04f (%.04f)" % (opp_evt_signal_ratio, opp_evt_ratio))
+    print("Filtering completed in %.2f seconds" % (delta,))
 
 
 def do_work(options):
@@ -217,14 +221,14 @@ def filter_one_file(o):
     try:
         evt_ = evt.EVT(path=evt_file, fileobj=fileobj)
     except errors.EVTFileError as e:
-        print "Could not parse file %s: %s" % (evt_file, repr(e))
+        print("Could not parse file %s: %s" % (evt_file, repr(e)))
     except Exception as e:
-        print "Unexpected error for file %s: %s" % (evt_file, repr(e))
+        print("Unexpected error for file %s: %s" % (evt_file, repr(e)))
 
     else:
         opp = evt_.filter(**o["filter_options"])
         if opp is None:
-            print "All particles in file %s were noise filtered" % (evt_file)
+            print("All particles in file %s were noise filtered" % (evt_file))
         else:
             if o["dbpath"]:
                 opp.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])

@@ -1,11 +1,13 @@
 #!/usr/bin/env python
+from __future__ import print_function
+from __future__ import absolute_import
 import argparse
 import botocore
-import clouds
-import conf
-import db
-import evt
-import filterevt
+from . import clouds
+from . import conf
+from . import db
+from . import evt
+from . import filterevt
 import json
 import pkg_resources
 import sys
@@ -83,9 +85,9 @@ def main(cli_args=None):
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
     v["version"] = pkg_resources.get_distribution("seaflowpy").version
-    print "Defined parameters:"
-    print json.dumps(v, indent=2)
-    print ""
+    print("Defined parameters:")
+    print(json.dumps(v, indent=2))
+    print("")
 
     # Find EVT files
     if args.evt_dir:
@@ -100,12 +102,12 @@ def main(cli_args=None):
             files = cloud.get_files(args.cruise)
             files = evt.parse_file_list(files)  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
-            print "Please configure aws first:"
-            print "  $ conda install aws"
-            print "  or"
-            print "  $ pip install aws"
-            print "  then"
-            print "  $ aws configure"
+            print("Please configure aws first:")
+            print("  $ conda install aws")
+            print("  or")
+            print("  $ pip install aws")
+            print("  then")
+            print("  $ aws configure")
             sys.exit(1)
 
     # Restrict length of file list with --limit

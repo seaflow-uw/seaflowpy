@@ -20,7 +20,7 @@ setup(name='seaflowpy',
         'boto3',
         'numpy',
         'pandas',
-        'fabric',
+        'fabric3',
         'future'
     ],
     setup_requires=['pytest-runner', 'setuptools_scm'],

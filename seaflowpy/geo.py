@@ -1,5 +1,6 @@
 """Geo operations"""
-
+from __future__ import division
+from builtins import str
 
 def ddm2dd(ddm):
     """Convert degrees decimal minutes coordinate to decimal degrees.

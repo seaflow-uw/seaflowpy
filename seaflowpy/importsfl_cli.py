@@ -1,9 +1,12 @@
 """Import SFl file into sqlite3 database."""
+from __future__ import absolute_import
+from builtins import zip
+from builtins import str
 import argparse
 import datetime
 import dateutil.parser
-import db
-import geo
+from . import db
+from . import geo
 import glob
 import os
 import pkg_resources

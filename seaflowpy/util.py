@@ -1,6 +1,8 @@
+from __future__ import print_function
+from __future__ import absolute_import
 import datetime
 import errno
-import errors
+from . import errors
 import os
 import subprocess
 import time
@@ -22,8 +24,8 @@ def gzip_file(path, print_timing=False):
 
     if print_timing:
         t0 = time.time()
-        print ""
-        print "Compressing %s" % path
+        print("")
+        print("Compressing %s" % path)
 
     try:
         output = subprocess.check_output([gzipbin, "-f", path],
@@ -33,7 +35,7 @@ def gzip_file(path, print_timing=False):
 
     if print_timing:
         t1 = time.time()
-        print "Compression completed in %.2f seconds" % (t1 - t0)
+        print("Compression completed in %.2f seconds" % (t1 - t0))
 
 
 def mkdir_p(path):

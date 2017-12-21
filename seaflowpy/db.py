@@ -1,7 +1,9 @@
+from __future__ import absolute_import
+from builtins import str
 import pandas as pd
 import sqlite3
 import uuid
-import util
+from . import util
 from collections import OrderedDict
 
 

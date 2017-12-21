@@ -1,14 +1,18 @@
-import ConfigParser
+from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import input
+import configparser
 import errno
 import os
-import util
+from . import util
 
 
 CONFIG_FILE = os.path.expanduser("~/.seaflowpy/config")
 
 
 def get_config(config_path=CONFIG_FILE):
-    config = ConfigParser.SafeConfigParser()
+    config = configparser.SafeConfigParser()
     config.read(config_path)
     return config
 
@@ -25,11 +29,11 @@ def get_ssh_config(config=None, config_path=CONFIG_FILE):
         config.add_section(section)
         dirty = True
     if not config.has_option(section, "ssh-key-file"):
-        response = raw_input("SSH private key location: ")
+        response = input("SSH private key location: ")
         config.set(section, "ssh-key-file", response)
         dirty = True
     if not config.has_option(section, "user"):
-        response = raw_input("Remote Linux user: ")
+        response = input("Remote Linux user: ")
         config.set(section, "user", response)
         dirty = True
 
@@ -55,7 +59,7 @@ def get_aws_config(config=None, config_path=CONFIG_FILE, s3_only=False):
 
     for o in options:
         if not config.has_option(section, o):
-            response = raw_input("{}: ".format(o))
+            response = input("{}: ".format(o))
             config.set(section, o, response)
             dirty = True
 

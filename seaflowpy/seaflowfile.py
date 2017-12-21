@@ -1,9 +1,12 @@
+from __future__ import absolute_import
+from builtins import object
 import gzip
+import io
 import json
 import os
 import pprint
 import re
-import util
+from . import util
 from collections import OrderedDict
 from operator import itemgetter
 
@@ -39,7 +42,7 @@ class SeaflowFile(object):
             if self._isgz():
                 handle = gzip.GzipFile(self.path)
             else:
-                handle = open(self.path)
+                handle = io.open(self.path, 'rb')
         return handle
 
     def _get_julian_path(self, remove_ext=True):

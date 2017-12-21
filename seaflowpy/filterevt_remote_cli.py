@@ -1,14 +1,18 @@
 #!/usr/bin/env python
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import zip
+from builtins import range
 import argparse
 import botocore
-import clouds
-import conf
+from . import clouds
+from . import conf
 import datetime
 import json
 import os
 import pkg_resources
 import sys
-import util
+from . import util
 from fabric.api import (cd, env, execute, get, hide, local, parallel, puts,
     quiet, run, settings, show, task)
 from fabric.network import disconnect_all
@@ -59,7 +63,7 @@ def main(cli_args=None):
 
     args = parse_args(cli_args)
 
-    print "Started at {}".format(datetime.datetime.utcnow().isoformat())
+    print("Started at {}".format(datetime.datetime.utcnow().isoformat()))
 
     # Print defined parameters
     v = dict(vars(args))
@@ -67,9 +71,9 @@ def main(cli_args=None):
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
     v["version"] = pkg_resources.get_distribution("seaflowpy").version
-    print "Defined parameters:"
-    print json.dumps(v, indent=2)
-    print ""
+    print("Defined parameters:")
+    print(json.dumps(v, indent=2))
+    print("")
 
     # Make sure configuration for aws and ssh is ready to go
     config = conf.get_aws_config()
@@ -83,7 +87,7 @@ def main(cli_args=None):
     env.key_filename = os.path.expanduser(config.get("ssh", "ssh-key-file"))
 
     try:
-        print "Getting lists of files for each cruise"
+        print("Getting lists of files for each cruise")
         cruise_files = {}
 
         # Handle case where cruises are listed in a file
@@ -93,74 +97,74 @@ def main(cli_args=None):
         try:
             for c in args.cruises:
                 cruise_files[c] = cloud.get_files(c)
-                print "{:<20} {}".format(c, len(cruise_files[c]))
-            print ""
+                print("{:<20} {}".format(c, len(cruise_files[c])))
+            print("")
         except botocore.exceptions.NoCredentialsError as e:
-            print "Please configure aws first:"
-            print "  $ conda install aws"
-            print "  or"
-            print "  $ pip install aws"
-            print "  then"
-            print "  $ aws configure"
+            print("Please configure aws first:")
+            print("  $ conda install aws")
+            print("  or")
+            print("  $ pip install aws")
+            print("  then")
+            print("  $ aws configure")
             sys.exit(1)
 
         if args.dryrun:
             # Create dummy host list
-            print "Creating {} dummy hosts".format(args.instance_count)
+            print("Creating {} dummy hosts".format(args.instance_count))
             env.hosts = ["dummy{}".format(i) for i in range(args.instance_count)]
         else:
-            print "Starting {} instances".format(args.instance_count)
+            print("Starting {} instances".format(args.instance_count))
             result = cloud.start(
                 count=args.instance_count,
                 instance_type=args.instance_type
             )
             for iid, iip in zip(result["InstanceIds"], result["publicips"]):
-                print "  InstanceId = {}, IP = {}".format(iid, iip)
+                print("  InstanceId = {}, IP = {}".format(iid, iip))
             env.hosts.extend(result["publicips"])
-        print ""
+        print("")
 
         # Fairly divide cruises into hosts based on number of files
-        print "Assigning cruises to {} hosts".format(len(env.hosts))
+        print("Assigning cruises to {} hosts".format(len(env.hosts)))
         host_assignments = assign_keys_to_hosts(env.hosts, cruise_files)
         for h in host_assignments:
             htotal = sum([c[1] for c in host_assignments[h]])
-            print "{:<20} {}".format(h, htotal)
+            print("{:<20} {}".format(h, htotal))
             for c in host_assignments[h]:
-                print "  {:<18} {}".format(c[0], c[1])
-        print ""
+                print("  {:<18} {}".format(c[0], c[1]))
+        print("")
 
         if args.dryrun:
-            print "Dry run complete"
-            print ""
+            print("Dry run complete")
+            print("")
             return
 
 
-        print "Waiting for hosts to come up with SSH"
+        print("Waiting for hosts to come up with SSH")
         execute(wait_for_up)
 
-        print "Transfer AWS credentials"
+        print("Transfer AWS credentials")
         with hide("output"):
             execute(rsync_put, "~/.aws/", ".aws")
 
-        print "Transfer seaflowpy configuration"
+        print("Transfer seaflowpy configuration")
         with hide("output"):
             execute(rsync_put, "~/.seaflowpy/", ".seaflowpy")
 
-        print "Install seaflowpy"
+        print("Install seaflowpy")
         execute(pull_seaflowpy)
 
         # Host list in env.hosts should be populated now and all machines up
-        print "Filter data"
+        print("Filter data")
         execute(filter_cruise, host_assignments, args.output_dir, args.process_count)
     finally:
         disconnect_all()  # always disconnect SSH connections
         if not args.nocleanup:
             cloud.cleanup()  # clean up in case of any unhandled exceptions
-        print "Finished at {}".format(datetime.datetime.utcnow().isoformat())
+        print("Finished at {}".format(datetime.datetime.utcnow().isoformat()))
 
 
 def count_things(data):
-    counts = [(k, len(v)) for k, v in data.items()]
+    counts = [(k, len(v)) for k, v in list(data.items())]
     counts.sort(key=lambda x: x[1], reverse=True)
     return counts
 
