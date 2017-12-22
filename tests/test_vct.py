@@ -30,7 +30,9 @@ class TestOutput(object):
         vcts[0].write_vct(str(tmpdir))
         # Now read back new VCT and make sure it matches original
         reread_vct = sfp.vct.VCT(str(tmpdir.join(vcts[0].file_id)) + ".vct.gz")
-        assert "\n".join(vcts[0].vct) == "\n".join(reread_vct.vct)
+        assert "\n".join(vcts[0].vct["pop"].tolist()) == "\n".join(reread_vct.vct["pop"].tolist())
+        print("\n".join(vcts[0].vct["pop"].tolist()))
+        npt.assert_array_equal(vcts[0].vct, reread_vct.vct)
 
 
 class TestPathFilenamParsing(object):

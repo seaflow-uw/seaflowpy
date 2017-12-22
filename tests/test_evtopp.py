@@ -1,6 +1,7 @@
 from builtins import str
 from builtins import object
 import gzip
+import io
 import numpy as np
 import numpy.testing as npt
 import os
@@ -367,7 +368,7 @@ class TestOutput(object):
         npt.assert_array_equal(evt.df, reread_evt.df)
 
         # Check that output evt binary file matches input file
-        input_evt = open(evt_file).read()
+        input_evt = io.open(evt_file, "rb").read()
         new_evt = gzip.open(str(evtdir.join("2014_185/2014-07-04T00-00-02+00-00.gz"))).read()
         assert input_evt == new_evt
 
