@@ -114,7 +114,11 @@ class EVT(seaflowfile.SeaflowFile):
             # Read the rest of the data. Each particle has 12 unsigned
             # 16-bit ints in a row.
             expected_bytes = rowcnt * 12 * 2  # rowcnt * 12 columns * 2 bytes
-            buff = fh.read(expected_bytes)
+            # must cast to int here because while BufferedIOReader objects
+            # returned from io.open(path, "rb") will accept a numpy.int64 type,
+            # io.BytesIO objects will not accept this type and will only accept
+            # vanilla int types. This is true for Python 3, not for Python 2.
+            buff = fh.read(int(expected_bytes))
             if len(buff) != expected_bytes:
                 raise errors.EVTFileError(
                     "File has incorrect number of data bytes. Expected %i, saw %i" %
