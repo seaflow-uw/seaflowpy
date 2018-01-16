@@ -7,6 +7,7 @@ import argparse
 import botocore
 from . import clouds
 from . import conf
+from . import db
 import datetime
 import json
 import os
@@ -25,11 +26,10 @@ def parse_args(args):
         description="A program to filter EVT data on remote servers (version %s)" % version,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    p.add_argument("-c", "--cruises", nargs="+", required=True, metavar="NAME",
-                   help="""Cruise names. More than can be provided as a
-                   space-separated list. A single argument form can be used to
-                   specify a file of whitespace separated cruise names.
-                   (required)""")
+    p.add_argument("-d", "--dbs", nargs="+", required=True, metavar="FILE",
+                   help="""Popcycle sqlite3 databases with filter parameters.
+                   Database filenames should match cruise names in S3. e.g.
+                   SCOPE_1.db matches cruise 'SCOPE_1'. (required)""")
 
     p.add_argument("-o", "--output_dir", metavar="DIR", required=True,
                    help="""Directory in which to save SQLite3 database and
@@ -46,7 +46,7 @@ def parse_args(args):
                    2 instance store devices.""")
     p.add_argument("-n", "--nocleanup", help="Don't cleanup resources.",
                    action="store_true", default=False)
-    p.add_argument("-d", "--dryrun", action="store_true", default=False,
+    p.add_argument("-D", "--dryrun", action="store_true", default=False,
                    help="""Assign cruises to hosts but don't start instances.""")
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
@@ -89,13 +89,14 @@ def main(cli_args=None):
     try:
         print("Getting lists of files for each cruise")
         cruise_files = {}
-
-        # Handle case where cruises are listed in a file
-        if len(args.cruises) == 1 and os.path.isfile(args.cruises[0]):
-            with open(args.cruises[0]) as fh:
-                args.cruises = fh.read().split()
         try:
-            for c in args.cruises:
+            for dbfile in args.dbs:
+                # Make sure db has filter parameters filled in
+                if not check_db_filter_params(dbfile):
+                    print("No filter parameters found in database file {}".format(dbfile))
+                    sys.exit(1)
+                # Get cruise name from file name
+                c = os.path.splitext(os.path.basename(dbfile))[0]
                 cruise_files[c] = cloud.get_files(c)
                 print("{:<20} {}".format(c, len(cruise_files[c])))
             print("")
@@ -138,7 +139,6 @@ def main(cli_args=None):
             print("")
             return
 
-
         print("Waiting for hosts to come up with SSH")
         execute(wait_for_up)
 
@@ -161,6 +161,11 @@ def main(cli_args=None):
         if not args.nocleanup:
             cloud.cleanup()  # clean up in case of any unhandled exceptions
         print("Finished at {}".format(datetime.datetime.utcnow().isoformat()))
+
+
+def check_db_filter_params(dbfile):
+    filter_table = db.get_latest_filter(dbfile)
+    return len(filter_table) == 3
 
 
 def count_things(data):
@@ -259,6 +264,9 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
             puts("Filtering cruise {}".format(c))
             with hide("commands"):
                 run("mkdir {}".format(c))
+            with hide("commands"):
+                # Not great hardcoding of expected cruise file location here
+                run("cp /home/ubuntu/{}.db {}".format(c, c))
             with cd(c):
                 text = {"cruise": c, "process_count": process_count}
                 with settings(warn_only=True), hide("output"):

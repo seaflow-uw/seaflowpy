@@ -6,5 +6,7 @@
 .Rhistory
 build
 /.eggs
-/tests/SCOPE_1
-/tests/test_filter_SCOPE_1.R
+/.coverage
+/htmlcov
+.Dockerfile
+.dockerignore

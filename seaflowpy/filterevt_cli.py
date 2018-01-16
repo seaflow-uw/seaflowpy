@@ -39,19 +39,6 @@ def parse_args(args):
 
     p.add_argument("-c", "--cruise", required=True, metavar="NAME",
                    help="Cruise name (required)")
-    p.add_argument("--notch1", type=float, metavar="N",
-                   help="Notch 1 (optional)")
-    p.add_argument("--notch2", type=float, metavar="N",
-                   help="Notch 2 (optional)")
-    p.add_argument("--width", type=float, default=1.0, metavar="N",
-                   help="Width (optional)")
-    p.add_argument("--origin", type=float, metavar="N",
-                   help="Origin (optional)")
-    p.add_argument("--offset", type=float, default=0.0, metavar="N",
-                   help="Offset (optional)")
-    p.add_argument("-t", "--twopass", default=False, action="store_true",
-                   help="""Perform two-pass filter process to autocalculate
-                   parameters.""")
 
     p.add_argument("-p", "--process_count", required=False, type=int, default=1,
                    metavar="N", help="""Number of processes to use in filtering
@@ -114,17 +101,10 @@ def main(cli_args=None):
     if (not args.limit is None) and (args.limit > 0):
         files = files[:args.limit]
 
-    filter_keys = ["notch1", "notch2", "width", "offset", "origin"]
-    filter_options = dict((k, getattr(args, k)) for k in filter_keys)
-
     # Filter
-    if args.twopass:
-        filterer = filterevt.two_pass_filter
-    else:
-        filterer = filterevt.filter_evt_files
-    filterer(files, args.cruise, filter_options, args.db,
-             args.opp_dir, s3=args.s3, process_count=args.process_count,
-             every=args.resolution)
+    filterevt.filter_evt_files(files, args.cruise, args.db, args.opp_dir,
+                               s3=args.s3, process_count=args.process_count,
+                               every=args.resolution)
 
     # Index
     if args.db:

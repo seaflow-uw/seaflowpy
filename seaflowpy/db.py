@@ -17,12 +17,28 @@ def ensure_tables(dbpath):
     file TEXT NOT NULL,
     pop TEXT NOT NULL,
     count INTEGER NOT NULL,
-    fsc_small REAL NOT NULL,
-    fsc_perp REAL NOT NULL,
-    pe REAL NOT NULL,
-    chl_small REAL NOT NULL,
+    D1_mean REAL NOT NULL,
+    D1_min REAL NOT NULL,
+    D1_max REAL NOT NULL,
+    D2_mean REAL NOT NULL,
+    D2_min REAL NOT NULL,
+    D2_max REAL NOT NULL,
+    fsc_small_mean REAL NOT NULL,
+    fsc_small_min REAL NOT NULL,
+    fsc_small_max REAL NOT NULL,
+    chl_small_mean REAL NOT NULL,
+    chl_small_min REAL NOT NULL,
+    chl_small_max REAL NOT NULL,
+    pe_mean REAL NOT NULL,
+    pe_min REAL NOT NULL,
+    pe_max REAL NOT NULL,
+    fsc_perp_mean REAL NOT NULL,
+    fsc_perp_min REAL NOT NULL,
+    fsc_perp_max REAL NOT NULL,
     gating_id TEXT NOT NULL,
-    PRIMARY KEY (cruise, file, pop, gating_id)
+    filter_id TEXT NOT NULL,
+    quantile REAL NOT NULL,
+    PRIMARY KEY (cruise, file, pop, quantile)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS opp (
@@ -32,31 +48,9 @@ def ensure_tables(dbpath):
     opp_count INTEGER NOT NULL,
     evt_count INTEGER NOT NULL,
     opp_evt_ratio REAL NOT NULL,
-    notch1 REAL NOT NULL,
-    notch2 REAL NOT NULL,
-    offset REAL NOT NULL,
-    origin REAL NOT NULL,
-    width REAL NOT NULL,
-    fsc_small_min REAL NOT NULL,
-    fsc_small_max REAL NOT NULL,
-    fsc_small_mean REAL NOT NULL,
-    fsc_perp_min REAL NOT NULL,
-    fsc_perp_max REAL NOT NULL,
-    fsc_perp_mean REAL NOT NULL,
-    fsc_big_min REAL NOT NULL,
-    fsc_big_max REAL NOT NULL,
-    fsc_big_mean REAL NOT NULL,
-    pe_min REAL NOT NULL,
-    pe_max REAL NOT NULL,
-    pe_mean REAL NOT NULL,
-    chl_small_min REAL NOT NULL,
-    chl_small_max REAL NOT NULL,
-    chl_small_mean REAL NOT NULL,
-    chl_big_min REAL NOT NULL,
-    chl_big_max REAL NOT NULL,
-    chl_big_mean REAL NOT NULL,
     filter_id TEXT NOT NULL,
-    PRIMARY KEY (cruise, file, filter_id)
+    quantile REAL NOT NULL,
+    PRIMARY KEY (cruise, file, filter_id, quantile)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
@@ -81,12 +75,21 @@ def ensure_tables(dbpath):
     cur.execute("""CREATE TABLE IF NOT EXISTS filter (
     id TEXT NOT NULL,
     date TEXT NOT NULL,
-    notch1 REAL,
-    notch2 REAL,
-    offset REAL NOT NULL,
-    origin REAL,
+    quantile REAL NOT NULL,
+    serial TEXT NOT NULL,
+    beads_fsc_small REAL NOT NULL,
+    beads_D1 REAL NOT NULL,
+    beads_D2 REAL NOT NULL,
     width REAL NOT NULL,
-    PRIMARY KEY (id)
+    notch_small_D1 REAL NOT NULL,
+    notch_small_D2 REAL NOT NULL,
+    notch_large_D1 REAL NOT NULL,
+    notch_large_D2 REAL NOT NULL,
+    offset_small_D1 REAL NOT NULL,
+    offset_small_D2 REAL NOT NULL,
+    offset_large_D1 REAL NOT NULL,
+    offset_large_D2 REAL NOT NULL,
+    PRIMARY KEY (id, quantile)
 )""")
 
 
@@ -117,6 +120,13 @@ def ensure_tables(dbpath):
     chl_big REAL,
     point_order INTEGER NOT NULL,
     gating_id TEXT NOT NULL
+)""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS outlier (
+    cruise TEXT NOT NULL,
+    file TEXT NOT NULL,
+    flag INTEGER,
+    PRIMARY KEY (cruise, file)
 )""")
 
     cur.execute("""CREATE VIEW IF NOT EXISTS stat AS
@@ -162,33 +172,13 @@ def ensure_indexes(dbpath):
     index_cmds = [
         "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
         "CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file)",
-        "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)"
+        "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)",
+        "CREATE INDEX IF NOT EXISTS outlierFileIndex ON outlier (file)"
     ]
     for cmd in index_cmds:
         cur.execute(cmd)
     con.commit()
     con.close()
-
-
-def save_filter_params(dbpath, filter_options):
-    """Save filtering parameters
-
-    Arguments:
-        dbpath - SQLite3 database file path
-        filter_options - Dictionary of filter params
-            (notch1, notch2, width, offset, origin)
-
-    Returns:
-        UUID primary key for this entry in filter table
-    """
-    values = dict(filter_options)  # Make a copy to preserve original
-    values["date"] = util.iso8601_now()  # Datestamp for right now
-    values["id"] = str(uuid.uuid4())
-
-    values_str = "(:id, :date, :notch1, :notch2, :offset, :origin, :width)"
-    sql = "INSERT INTO filter VALUES %s" % values_str
-    execute(dbpath, sql, values)
-    return values["id"]
 
 
 def save_opp_stats(dbpath, vals):
@@ -202,34 +192,12 @@ def save_opp_stats(dbpath, vals):
         "opp_count",
         "evt_count",
         "opp_evt_ratio",
-        "notch1",
-        "notch2",
-        "offset",
-        "origin",
-        "width",
-        "fsc_small_min",
-        "fsc_small_max",
-        "fsc_small_mean",
-        "fsc_perp_min",
-        "fsc_perp_max",
-        "fsc_perp_mean",
-        "fsc_big_min",
-        "fsc_big_max",
-        "fsc_big_mean",
-        "pe_min",
-        "pe_max",
-        "pe_mean",
-        "chl_small_min",
-        "chl_small_max",
-        "chl_small_mean",
-        "chl_big_min",
-        "chl_big_max",
-        "chl_big_mean",
         "filter_id",
+        "quantile"
     ]
     # Construct values string with named placeholders
     values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT INTO opp VALUES (%s)" % values_str
+    sql_insert = "INSERT INTO opp VALUES ({})".format(values_str)
     execute(dbpath, sql_insert, vals)
 
 
@@ -262,21 +230,21 @@ def save_sfl(dbpath, vals):
 
 
 def get_filter_table(dbpath):
-    sql = "SELECT * FROM filter ORDER BY date ASC"
+    sql = "SELECT * FROM filter ORDER BY date ASC, quantile ASC"
     with sqlite3.connect(dbpath) as dbcon:
         filterdf = pd.read_sql(sql, dbcon)
     return filterdf
 
 
 def get_latest_filter(dbpath):
-    sql = "SELECT * FROM filter ORDER BY date DESC"
     with sqlite3.connect(dbpath) as dbcon:
-        filterdf = pd.read_sql(sql, dbcon)
-    return filterdf.tail(1)
+        filterdf = pd.read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
+        _id = filterdf.iloc[0]["id"]
+    return filterdf[filterdf["id"] == _id]
 
 
 def get_opp(dbpath, filter_id):
-    sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file".format(filter_id)
+    sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
     with sqlite3.connect(dbpath) as dbcon:
         oppdf = pd.read_sql(sql, dbcon)
     return oppdf
@@ -290,6 +258,7 @@ def execute(dbpath, sql, values=None, timeout=120):
         con.execute(sql)
     con.commit()
     con.close()
+
 
 def executemany(dbpath, sql, values=None, timeout=120):
     con = sqlite3.connect(dbpath, timeout=timeout)

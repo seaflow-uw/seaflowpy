@@ -1,6 +1,7 @@
 from builtins import str
 from builtins import object
 import gzip
+import hashlib
 import io
 import numpy as np
 import numpy.testing as npt
@@ -10,8 +11,15 @@ import py.path
 import pytest
 import shutil
 import sqlite3
+import subprocess
 from .context import seaflowpy as sfp
 from subprocess import check_output
+
+
+popcycle = pytest.mark.skipif(
+    not pytest.config.getoption("--popcycle"),
+    reason="need --popcycle option to run"
+)
 
 
 s3 = pytest.mark.skipif(
@@ -26,24 +34,38 @@ def evt():
 
 
 @pytest.fixture()
-def tmpout(tmpdir):
-    """Setup to test complete filter workflow"""
-    db = str(tmpdir.join("test.db"))
-    sfp.db.ensure_tables(db)
+def params():
+    # Params created with popcycle function
+    # create.filter.params(740, 33759, 19543, 19440)
+    # taking the 50.0 quantile values.
     return {
-        "db": db,
-        "oppdir": tmpdir.join("oppdir"),
-        "tmpdir": tmpdir
+        "width": 2500,
+        "notch_small_D1": 0.656,
+        "notch_small_D2": 0.683,
+        "notch_large_D1": 1.635,
+        "notch_large_D2": 1.632,
+        "offset_small_D1": 0,
+        "offset_small_D2": 0,
+        "offset_large_D1": -33050,
+        "offset_large_D2": -32038
     }
 
 
 @pytest.fixture()
-def tmpout_single(tmpout, evt):
-    """Setup to test a single EVT to OPP workflow"""
+def tmpout(tmpdir, evt):
+    """Setup to test complete filter workflow"""
+    # Copy db with filtering params
+    db = str(tmpdir.join("testcruise.db"))
+    shutil.copyfile("tests/testcruise_paramsonly.db", db)
+    os.chmod(db, 0o664)  # make the db writeable
     evt_path = py.path.local(evt.path)
-    tmpout["evt"] = evt
-    tmpout["opp_path"] = tmpout["tmpdir"].join(str(evt_path.basename) + ".opp.gz")
-    return tmpout
+    return {
+        "db": db,
+        "oppdir": tmpdir.join("oppdir"),
+        "opp_path": tmpdir.join(str(evt_path.basename) + ".opp.gz"),
+        "tmpdir": tmpdir,
+        "evt": evt
+    }
 
 
 class TestOpen(object):
@@ -171,42 +193,26 @@ class TestPathFilenameParsing(object):
 
 
 class TestFilter(object):
-    def test_filter_bad_width(self, evt):
+    def test_filter_no_params(self, evt):
         with pytest.raises(ValueError):
-            evt.filter(width=None)
+            evt.filter(None)
 
-    def test_filter_bad_offset(self, evt):
+    def test_filter_empty_params(self, evt):
         with pytest.raises(ValueError):
-            evt.filter(offset=None)
+            evt.filter({})
 
-    def test_filter_default(self, evt):
-        opp = evt.filter()
+    def test_filter_with_set_params(self, evt, params):
+        opp = evt.filter(params)
         assert opp.parent.event_count == 40000
         assert opp.parent.particle_count == 39928
-        assert opp.particle_count == 396
-        assert opp.width == 1.0
-        assert opp.offset == 0.0
-        assert opp.origin == -1808.0
-        npt.assert_almost_equal(opp.notch1, 0.885080147965475, decimal=15)
-        npt.assert_almost_equal(opp.notch2, 0.876434676434676, decimal=15)
-        assert opp.parent == evt
-
-    def test_filter_with_set_params(self, evt):
-        opp = evt.filter(offset=100.0, width=0.75, notch1=1.5, notch2=1.1, origin=-1000)
-        assert opp.parent.event_count == 40000
-        assert opp.parent.particle_count == 39928
-        assert opp.particle_count == 25982
-        assert opp.width == 0.75
-        assert opp.offset == 100
-        assert opp.origin == -1000
-        npt.assert_allclose(opp.notch1, 1.5)
-        npt.assert_allclose(opp.notch2, 1.1)
+        assert opp.particle_count == 107
+        assert opp.filter_params == params
         assert opp.parent == evt
 
     def test_noise_filter(self, evt):
         """Events with zeroes in all of D1, D2, and fsc_small are noise"""
-        # There do exists events which could be considered noise (no signal in
-        # any of D1, D2, or fsc_small
+        # There are events which could be considered noise (no signal in any of
+        # D1, D2, or fsc_small
         assert np.any((evt.df["D1"] == 0) & (evt.df["D2"] == 0) & (evt.df["fsc_small"] == 0)) == True
 
         signal = evt.filter_noise()
@@ -221,41 +227,6 @@ class TestFilter(object):
 
         # No events are all zeroes D1, D2, and fsc_small
         assert np.any((signal["D1"] == 0) & (signal["D2"] == 0) & (signal["fsc_small"] == 0)) == False
-
-class TestParticleStats(object):
-    def test_stats(self, evt):
-        # Create made up evt and opp data for stats calculations
-        evt = sfp.EVT("fake/path", read_data=False)
-        evt.df = pd.DataFrame()
-        # Make sure evt isn't transformed during stat calculations
-        evt.transformed = True
-        i = 0
-        for c in evt.columns:
-            evt.df[c] = np.arange(i*100, i*100+10)
-            i += 1
-        evt.particle_count = 10
-        stats = evt.calc_particle_stats()
-        answer = {
-            'D1': {'max': 209.0, 'mean': 204.5, 'min': 200.0},
-            'D2': {'max': 309.0, 'mean': 304.5, 'min': 300.0},
-            'fsc_small': {'max': 409.0, 'mean': 404.5, 'min': 400.0},
-            'fsc_perp': {'max': 509.0, 'mean': 504.5, 'min': 500.0},
-            'fsc_big': {'max': 609.0, 'mean': 604.5, 'min': 600.0},
-            'pe': {'max': 709.0, 'mean': 704.5, 'min': 700.0},
-            'chl_small': {'max': 809.0, 'mean': 804.5, 'min': 800.0},
-            'chl_big': {'max': 909.0, 'mean': 904.5, 'min': 900.0}
-        }
-
-        # Results can differ in least significant digits depending on how numpy
-        # is installed and used (e.g. if you use the Intel Math Library), so
-        # convert to an array and compare with set precision.
-        def answer2array(answer):
-            array = []
-            for k in sorted(answer):  # D1, D2, chl_big, etc ...
-                array.append([answer[k]["max"], answer[k]["mean"], answer[k]["min"]])
-            return array
-
-        npt.assert_allclose(answer2array(stats), answer2array(answer))
 
 
 class TestTransform(object):
@@ -304,57 +275,25 @@ class TestOPPVCT(object):
 
 
 class TestOutput(object):
-    def test_sqlite3_filter_params(self, tmpout):
-        opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-                "width": 0.5}
-        filter_id = sfp.db.save_filter_params(tmpout["db"], opts)
-        con = sqlite3.connect(tmpout["db"])
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-        cur.execute("SELECT * FROM filter")
-        row = dict(cur.fetchone())
-        del row["date"]  # Don't test date
-        opts["id"] = filter_id
-        assert opts == row
-
-    def test_sqlite3_opp_counts_and_params(self, tmpout_single):
-        tmpout = tmpout_single
-        opts = {"notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-                "width": 0.5}
-        opp = tmpout["evt"].filter(**opts)
-        opp.save_opp_to_db("testcruise", "UUID", tmpout["db"])
+    def test_sqlite3_opp_counts_and_params(self, tmpout, params):
+        opp = tmpout["evt"].filter(params)
+        opp.save_opp_to_db("testcruise", "UUID", 50.0, tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
-        assert "testcruise" == sqlitedf.cruise[0]
-        assert opp.file_id == sqlitedf.file[0]
-        assert "UUID" == sqlitedf.filter_id[0]
+        assert "testcruise" == sqlitedf["cruise"][0]
+        assert opp.file_id == sqlitedf["file"][0]
+        assert "UUID" == sqlitedf["filter_id"][0]
+        assert 50.0 == sqlitedf["quantile"][0]
         npt.assert_array_equal(
             [
                 opp.particle_count, opp.parent.particle_count,
-                opp.parent.event_count, opp.opp_evt_ratio,
-                opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
+                opp.parent.event_count, opp.opp_evt_ratio
             ],
             sqlitedf[[
-                "opp_count", "evt_count", "all_count", "opp_evt_ratio",
-                "notch1", "notch2", "offset", "origin", "width"
+                "opp_count", "evt_count", "all_count", "opp_evt_ratio"
             ]].as_matrix()[0]
         )
-
-    def test_sqlite3_opp_stats(self, tmpout_single):
-        tmpout = tmpout_single
-        opp = tmpout["evt"].filter(offset=0.0, width=0.5)
-        stats = opp.calc_particle_stats()
-        opp.save_opp_to_db("testcruise", "UUID", tmpout["db"])
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-        row = sqlitedf.iloc[0]
-        for channel in stats:
-            if channel == "D1" or channel == "D2":
-                continue
-            for stat in ["min", "max", "mean"]:
-                k = channel + "_" + stat
-                assert stats[channel][stat] == row[k]
 
     def test_binary_evt_output(self, tmpdir):
         evtdir = tmpdir.join("evtdir")
@@ -399,52 +338,15 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
         ]
-        filt_opts = {
-            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 1.0
-        }
 
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
             files=files, process_count=1, cruise="testcruise",
-            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts)
+            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
+        )
 
-        evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
-        opps = []
-        for evt in evts:
-            opps.append(evt.filter())
-            opps[-1].stats = opps[-1].calc_particle_stats()
-
-        outfiles = [
-            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
-            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
-        ]
-
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp ORDER BY file", con)
-
-        for i in [0, 1]:
-            evt = evts[i]
-            opp = opps[i]
-            row = sqlitedf.iloc[i]
-            for channel in opp.stats:
-                if channel in ["D1", "D2"]:
-                    continue
-                for stat in ["min", "max", "mean"]:
-                    k = channel + "_" + stat
-                    assert opp.stats[channel][stat] == row[k]
-            npt.assert_array_equal(
-                [
-                    opp.particle_count, opp.parent.particle_count,
-                    opp.parent.event_count, opp.opp_evt_ratio,
-                    opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
-                ],
-                row[["opp_count", "evt_count", "all_count", "opp_evt_ratio",
-                    "notch1", "notch2", "offset", "origin", "width"]]
-            )
-            npt.assert_array_equal(opps[i].df, outfiles[i].df)
+        multi_file_asserts(tmpout)
 
     @s3
     def test_multi_file_filter_S3(self, tmpout):
@@ -453,60 +355,24 @@ class TestMultiFileFilter(object):
         cloud = sfp.clouds.AWS(config.items("aws"))
         files = cloud.get_files("testcruise_evt")
         files = sfp.evt.parse_file_list(files)
-        filt_opts = {
-            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 1.0
-        }
 
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
             files=files, process_count=1, cruise="testcruise",
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts, s3=True)
+            s3=True)
 
-        evts = [
-            sfp.EVT(os.path.join("tests", files[0])),
-            sfp.EVT(os.path.join("tests", files[1]))
-        ]
-        opps = []
-        for evt in evts:
-            opps.append(evt.filter())
-            opps[-1].stats = opps[-1].calc_particle_stats()
+        multi_file_asserts(tmpout)
 
-        outfiles = [
-            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
-            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
-        ]
+    @popcycle
+    def test_against_popcycle(self, tmpout):
+        # Generate popcycle results
+        popcycledir = tmpout["tmpdir"].join("popcycle")
+        popcycle_cmd = "Rscript tests/generate_popcycle_results.R tests {}".format(str(popcycledir))
+        subprocess.check_call(popcycle_cmd.split())
 
-        con = sqlite3.connect(tmpout["db"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp ORDER BY file", con)
-
-        for i in [0, 1]:
-            evt = evts[i]
-            opp = opps[i]
-            row = sqlitedf.iloc[i]
-            for channel in opp.stats:
-                if channel in ["D1", "D2"]:
-                    continue
-                for stat in ["min", "max", "mean"]:
-                    k = channel + "_" + stat
-                    assert opp.stats[channel][stat] == row[k]
-            npt.assert_array_equal(
-                [
-                    opp.particle_count, opp.parent.particle_count,
-                    opp.parent.event_count, opp.opp_evt_ratio,
-                    opp.notch1, opp.notch2, opp.offset, opp.origin, opp.width
-                ],
-                row[[
-                    "opp_count", "evt_count", "all_count", "opp_evt_ratio",
-                    "notch1", "notch2", "offset", "origin", "width"
-                ]].as_matrix()
-            )
-            npt.assert_array_equal(opps[i].df, outfiles[i].df)
-
-    def test_2pass_filter(self, tmpout):
-        """Test 2 pass filtering"""
+        # Generate seaflowpy results
         files = [
             "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
@@ -514,41 +380,64 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
         ]
-        filt_opts = {
-            "notch1": None, "notch2": None, "offset": 0.0, "origin": None,
-            "width": 1.0
-        }
-
-        # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we use one core here
-        sfp.filterevt.two_pass_filter(
+        sfp.filterevt.filter_evt_files(
             files=files, process_count=1, cruise="testcruise",
-            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            filter_options=filt_opts)
+            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
+        )
+        opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))
 
-        evts = [sfp.EVT(files[0]), sfp.EVT(files[1])]
+        # Compare opp table output
+        with sqlite3.connect(tmpout["db"]) as con_py:
+            opp_py = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_py)
+        with sqlite3.connect(str(popcycledir.join("testcruise.db"))) as con_R:
+            opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_R)
 
-        outfiles = [
-            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))),
-            sfp.EVT(str(tmpout["oppdir"].join("2014_185/2014-07-04T00-03-02+00-00.opp.gz")))
-        ]
+        columns = ["opp_count", "evt_count", "opp_evt_ratio", "quantile"]
+        npt.assert_allclose(opp_py[columns], opp_R[columns])
+        assert "\n".join(opp_py["file"].values) == "\n".join(opp_R["file"].values)
 
-        con = sqlite3.connect(tmpout["db"])
-        filterdf = pd.read_sql_query("SELECT id FROM filter ORDER BY date ASC", con)
-        filterid1 = filterdf["id"].values[0]
-        filterid2 = filterdf["id"].values[1]
-        pass1 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid1), con)
-        pass2 = pd.read_sql_query('SELECT * FROM opp WHERE filter_id = "{}" ORDER BY file'.format(filterid2), con)
+        # Compare OPP file output
+        opps_py = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(tmpout["oppdir"]))]
+        opps_R = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(popcycledir.join("opp")))]
+        assert len(opps_py) == len(opps_R)
+        assert len(opps_py) > 0
+        assert len(opps_R) > 0
+        for i in range(len(opps_py)):
+            npt.assert_array_equal(opps_py[i].df, opps_R[i].df)
 
-        npt.assert_array_equal(pass1["opp_count"], [396, 418])
-        npt.assert_array_equal(pass2["opp_count"], [361, 464])
-        # Are the pass2 values actually the median of pass 1?
-        assert pass1["notch1"].median() == pass2["notch1"].values[0]
-        assert pass1["notch1"].median() == pass2["notch1"].values[1]
-        assert pass1["notch2"].median() == pass2["notch2"].values[0]
-        assert pass1["notch2"].median() == pass2["notch2"].values[1]
-        assert pass1["origin"].median() == pass2["origin"].values[0]
-        assert pass1["origin"].median() == pass2["origin"].values[1]
+def multi_file_asserts(tmpout):
+    # Check MD5 checksums of uncompressed OPP files
+    hashes = {
+        "2.5/2014_185/2014-07-04T00-00-02+00-00.opp.gz": "91e6df7f7754ece7e41095e0f6a1e6fd",
+        "2.5/2014_185/2014-07-04T00-03-02+00-00.opp.gz": "99f051960d20663fcf51764f45a729b5",
+        "50/2014_185/2014-07-04T00-00-02+00-00.opp.gz": "2cc3137a2baca6fb5bc2f6fd878cb154",
+        "50/2014_185/2014-07-04T00-03-02+00-00.opp.gz": "efd5c066b3bac65f6f135f021d95a755",
+        "97.5/2014_185/2014-07-04T00-00-02+00-00.opp.gz": "2ad5d4850adf6f8641f966684d3f3dee",
+        "97.5/2014_185/2014-07-04T00-03-02+00-00.opp.gz": "268b447bd9e0b91411d0b8c68c7813b4"
+    }
+    for q in ["2.5", "50", "97.5"]:
+        for f in ["2014_185/2014-07-04T00-00-02+00-00.opp.gz", "2014_185/2014-07-04T00-03-02+00-00.opp.gz"]:
+            f_path = str(tmpout["oppdir"].join("{}/{}".format(q, f)))
+            f_md5 = hashlib.md5(gzip.open(f_path).read()).hexdigest()
+            assert f_md5 == hashes["{}/{}".format(q, f)]
 
-        # Do the OPP output files represent pass2?
-        npt.assert_array_equal(pass2["opp_count"], [outfiles[0].particle_count, outfiles[1].particle_count])
+    # Check numbers stored in opp table are correct
+    filter_params = sfp.db.get_latest_filter(tmpout["db"])
+    filter_id = filter_params.iloc[0]["id"]
+    opp_table = sfp.db.get_opp(tmpout["db"], filter_id)
+    npt.assert_array_equal(
+        opp_table["all_count"],
+        pd.Series([40000, 40000, 40000, 40000, 40000, 40000], name="all_count")
+    )
+    npt.assert_array_equal(
+        opp_table["evt_count"],
+        pd.Series([39928, 39928, 39928, 39925, 39925, 39925], name="evt_count")
+    )
+    npt.assert_array_equal(
+        opp_table["opp_count"],
+        pd.Series([423, 107, 86, 492, 182, 147], name="opp_count")
+    )
+    npt.assert_array_equal(
+        opp_table["opp_evt_ratio"],
+        opp_table["opp_count"] / opp_table["evt_count"]
+    )

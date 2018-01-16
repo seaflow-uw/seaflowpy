@@ -16,68 +16,14 @@ from . import util
 
 from multiprocessing import Pool
 
-def two_pass_filter(files, cruise, filter_options, dbpath, opp_dir, s3=False,
-                    process_count=1, every=10.0):
-    """
-    Filter a list of EVT files in two passes.
 
-    The first pass uses reasonable default or autocalculated filter parameters.
-    The second pass uses the average filter parameter values obtained from the
-    first pass.
-
-    Arguments arguments:
-        files - paths to EVT files to filter
-        cruise - cruise name
-        filter_options - Dictionary of filter params
-            (notch1, notch2, width, offset, origin)
-        dbpath = SQLite3 db path
-        opp_dir = Directory for output binary OPP files
-
-    Keyword arguments:
-        s3 - Get EVT data from S3
-        process_count - number of worker processes to use
-        every - Percent progress output resolution
-    """
-    print("Beginning two-pass filter process")
-    print("*********************************")
-    print("PASS 1")
-    print("*********************************")
-    filter_evt_files(files, cruise, filter_options, dbpath, None, s3=s3,
-                     process_count=process_count, every=every)
-
-    # Get filter parameters here
-    # 1) get latest filter parameters
-    # 2) get opp associated with this filter id
-    # 3) calculate average values
-    # 4) update filter_options object
-    filter_latest = db.get_latest_filter(dbpath)
-    opps = db.get_opp(dbpath, filter_latest["id"].values[0])
-    avg = opps.median()
-    filter_options["notch1"] = avg["notch1"]
-    filter_options["notch2"] = avg["notch2"]
-    filter_options["origin"] = avg["origin"]
-    filter_options["offset"] = avg["offset"]
-    filter_options["width"] = avg["width"]
-
-    print("")
-    print("*********************************")
-    print("PASS 2")
-    print("*********************************")
-    print("Average filter parameters:")
-    print(json.dumps(filter_options, indent=2))
-    filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=s3,
-                     process_count=process_count, every=every)
-
-
-def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
-                     process_count=1, every=10.0):
+def filter_evt_files(files, cruise, dbpath, opp_dir, s3=False, process_count=1,
+                     every=10.0):
     """Filter a list of EVT files.
 
-    Arguments arguments:
+    Positional arguments:
         files - paths to EVT files to filter
         cruise - cruise name
-        filter_options - Dictionary of filter params
-            (notch1, notch2, width, offset, origin)
         dbpath = SQLite3 db path
         opp_dir = Directory for output binary OPP files
 
@@ -90,21 +36,23 @@ def filter_evt_files(files, cruise, filter_options, dbpath, opp_dir, s3=False,
         "file": None,  # fill in later
         "cruise": cruise,
         "process_count": process_count,
-        "filter_options": filter_options,
         "every": every,
         "s3": s3,
         "cloud_config_items": None,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
-        "filter_id": None  # fill in later
+        "filter_params": None  # fill in later from db
     }
 
-    if dbpath:
-        dbdir = os.path.dirname(dbpath)
-        if dbdir and not os.path.isdir(dbdir):
-            util.mkdir_p(dbdir)
-        db.ensure_tables(dbpath)
-        o["filter_id"] = db.save_filter_params(dbpath, filter_options)
+    if not dbpath:
+        raise ValueError("Must provide db path to filter_evt_files()")
+
+    filter_df = db.get_latest_filter(dbpath)
+    # Turn pandas dataframe into dictionary keyed by quantile for convenience
+    o["filter_params"] = {}
+    for q in [2.5, 50, 97.5]:
+        o["filter_params"][q] = dict(filter_df[filter_df["quantile"] == q].iloc[0])
+    o["filter_id"] = o["filter_params"][2.5]["id"]
 
     if s3:
         config = conf.get_aws_config(s3_only=True)
@@ -224,22 +172,25 @@ def filter_one_file(o):
         print("Could not parse file %s: %s" % (evt_file, repr(e)))
     except Exception as e:
         print("Unexpected error for file %s: %s" % (evt_file, repr(e)))
-
     else:
-        opp = evt_.filter(**o["filter_options"])
-        if opp is None:
-            print("All particles in file %s were noise filtered" % (evt_file))
-        else:
-            if o["dbpath"]:
-                opp.save_opp_to_db(o["cruise"], o["filter_id"], o["dbpath"])
+        for q in [2.5, 50, 97.5]:
+            opp = evt_.filter(o["filter_params"][q])
+            if opp is None:
+                print("All particles in file %s were noise filtered" % (evt_file))
+                break
+            else:
+                if o["dbpath"]:
+                    opp.save_opp_to_db(o["cruise"], o["filter_id"], q, o["dbpath"])
 
-            if o["opp_dir"]:
-                opp.write_binary(o["opp_dir"], opp=True)
+                if o["opp_dir"]:
+                    opp.write_binary(o["opp_dir"], opp=True, quantile=q)
 
-            result["ok"] = True
-            result["evt_count"] = opp.parent.event_count
-            result["evt_signal_count"] = opp.parent.particle_count
-            result["opp_count"] = opp.particle_count
+                if q == 50:
+                    # Only report 50 quantile data
+                    result["ok"] = True
+                    result["evt_count"] = opp.parent.event_count
+                    result["evt_signal_count"] = opp.parent.particle_count
+                    result["opp_count"] = opp.particle_count
 
     return result
 
