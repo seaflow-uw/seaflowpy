@@ -9,6 +9,7 @@ import json
 import numpy as np
 import os
 import pandas as pd
+import platform
 import pprint
 import re
 from . import seaflowfile
@@ -335,13 +336,25 @@ class EVT(seaflowfile.SeaflowFile):
         if os.path.exists(outfile + ".gz"):
             os.remove(outfile + ".gz")
 
-        with io.open(outfile, "wb") as fh:
-            # Write 32-bit uint particle count header
-            header = np.array([self.particle_count], np.uint32)
-            header.tofile(fh)
+        # Python 2 io.open() and numpy array.tofile() don't play nice together.
+        # If using Python 2 use builtin open() instead of io.open.
+        fh = None
+        if platform.python_version_tuple()[0] == "2":
+            fh = open(outfile, "wb")
+        else:
+            fh = io.open(outfile, "wb")
 
+        # Create 32-bit uint particle count header
+        header = np.array([self.particle_count], np.uint32)
+        try:
+            # Write 32-bit uint particle count header
+            header.tofile(fh)
             # Write particle data
             self._create_particle_matrix().tofile(fh)
+        finally:
+            # Always close filehandle if it was opened
+            if fh is not None:
+                fh.close()
 
         util.gzip_file(outfile)
 
