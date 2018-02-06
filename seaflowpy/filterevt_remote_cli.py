@@ -19,6 +19,10 @@ from fabric.api import (cd, env, execute, get, hide, local, parallel, puts,
 from fabric.network import disconnect_all
 
 
+REMOTE_WORK_DIR = "/mnt/raid"
+REMOTE_DB_DIR = "{}/dbs".format(REMOTE_WORK_DIR)
+
+
 def parse_args(args):
     version = pkg_resources.get_distribution("seaflowpy").version
 
@@ -144,11 +148,16 @@ def main(cli_args=None):
 
         print("Transfer AWS credentials")
         with hide("output"):
-            execute(rsync_put, "~/.aws/", ".aws")
+            execute(rsync_put, ["~/.aws/"], ".aws")
 
         print("Transfer seaflowpy configuration")
         with hide("output"):
-            execute(rsync_put, "~/.seaflowpy/", ".seaflowpy")
+            execute(rsync_put, ["~/.seaflowpy/"], ".seaflowpy")
+
+        print("Transfer initial databases")
+        execute(mkdir, REMOTE_DB_DIR)  # create db dir on each host
+        with hide("output"):
+            execute(rsync_put, args.dbs, REMOTE_DB_DIR)
 
         print("Install seaflowpy")
         execute(pull_seaflowpy)
@@ -205,16 +214,14 @@ def wait_for_up():
 
 @task
 @parallel
-def rsync_put(localpath, remotepath):
-    rsynccmd = ["rsync", "-au", "--stats", "--delete"]  # delete to remote
-    remotepath = "{}@{}:{}".format(env.user, env.host_string, remotepath)
-    rsynccmd.extend(
-        [
-            "-e",
-            "'ssh -i {} -o StrictHostKeyChecking=no'".format(env.key_filename),
-            localpath, remotepath
-        ]
-    )
+def rsync_put(localpaths, remotepath):
+    # Delete to remote
+    rsynccmd = [
+        "rsync", "-au", "--stats", "--delete", "-e",
+        "'ssh -i {} -o StrictHostKeyChecking=no'".format(env.key_filename)
+    ]
+    rsynccmd.extend(localpaths)
+    rsynccmd.append("{}@{}:{}".format(env.user, env.host_string, remotepath))
     result = local(" ".join(rsynccmd), capture=True)
     return result
 
@@ -222,18 +229,22 @@ def rsync_put(localpath, remotepath):
 @task
 @parallel
 def rsync_get(remotepath, localpath):
-    rsynccmd = ["rsync", "-au", "--stats"]  # no delete to local
-    remotepath = "{}@{}:{}".format(env.user, env.host_string, remotepath)
-    rsynccmd.extend(
-        [
-            "-e",
-            "'ssh -i {} -o StrictHostKeyChecking=no'".format(env.key_filename),
-            remotepath, localpath
-        ]
-    )
+    # no delete to local
+    rsynccmd = [
+        "rsync", "-au", "--stats", "-e",
+        "'ssh -i {} -o StrictHostKeyChecking=no'".format(env.key_filename),
+        "{}@{}:{}".format(env.user, env.host_string, remotepath),
+        localpath
+    ]
     result = local(" ".join(rsynccmd), capture=True)
     return result
 
+@task
+@parallel
+def mkdir(d):
+    with quiet():
+        if run("test -d {}".format(d)).failed:
+            run("mkdir {}".format(d))
 
 @task
 @parallel
@@ -248,7 +259,7 @@ def pull_seaflowpy():
                 run("git clone https://github.com/armbrustlab/seaflowpy {}".format(repodir))
     with cd(repodir), hide("stdout"):
         run("git pull")
-        run("python setup.py install")
+        run("python setup.py install --user")
         run("python setup.py test")
         with show("stdout"):
             run("seaflowpy_filter --version")
@@ -258,21 +269,20 @@ def pull_seaflowpy():
 def filter_cruise(host_assignments, output_dir, process_count=16):
     cruises = [x[0] for x in host_assignments[env.host_string]]
     cruise_results = {}
-    workdir = "/mnt/raid"
-    with cd(workdir):
+    with cd(REMOTE_WORK_DIR):
         for c in cruises:
             puts("Filtering cruise {}".format(c))
             with hide("commands"):
                 run("mkdir {}".format(c))
-            with hide("commands"):
-                # Not great hardcoding of expected cruise file location here
-                run("cp /home/ubuntu/{}.db {}".format(c, c))
             with cd(c):
-                text = {"cruise": c, "process_count": process_count}
+                text = {
+                    "cruise": c,
+                    "process_count": process_count,
+                    "db_dir": REMOTE_DB_DIR
+                }
                 with settings(warn_only=True), hide("output"):
-                    #result = run("seaflowpy_filter --s3 -c {cruise} -d {cruise}.db -l 10 -p 2 -o {cruise}_opp".format(**text))
                     result = run(
-                        "seaflowpy_filter --s3 -c {cruise} -d {cruise}.db -t -p {process_count} -o {cruise}_opp".format(**text),
+                        "seaflowpy_filter --s3 -c {cruise} -d {db_dir}/{cruise}.db -p {process_count} -o {cruise}_opp".format(**text),
                         timeout=10800
                     )
                     cruise_results[c] = result
@@ -288,7 +298,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 rsyncout = execute(
                     # rsync files in cruise results dir to local cruise dir
                     rsync_get,
-                    os.path.join(workdir, c) + "/",
+                    os.path.join(REMOTE_WORK_DIR, c) + "/",
                     cruise_output_dir,
                     hosts=[env.host_string]
                 )
