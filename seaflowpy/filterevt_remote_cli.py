@@ -260,7 +260,8 @@ def pull_seaflowpy():
     with cd(repodir), hide("stdout"):
         run("git pull")
         run("python setup.py install --user")
-        run("python setup.py test")
+        #run("python setup.py test")
+        run("py.test")
         with show("stdout"):
             run("seaflowpy_filter --version")
 
