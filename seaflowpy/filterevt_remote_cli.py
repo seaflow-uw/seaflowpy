@@ -275,15 +275,16 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
             puts("Filtering cruise {}".format(c))
             with hide("commands"):
                 run("mkdir {}".format(c))
+            with hide("commands"):
+                run("cp {}/{}.db {}".format(REMOTE_DB_DIR, c, c))
             with cd(c):
                 text = {
                     "cruise": c,
-                    "process_count": process_count,
-                    "db_dir": REMOTE_DB_DIR
+                    "process_count": process_count
                 }
                 with settings(warn_only=True), hide("output"):
                     result = run(
-                        "seaflowpy_filter --s3 -c {cruise} -d {db_dir}/{cruise}.db -p {process_count} -o {cruise}_opp".format(**text),
+                        "seaflowpy_filter --s3 -c {cruise} -d {cruise}.db -p {process_count} -o {cruise}_opp".format(**text),
                         timeout=10800
                     )
                     cruise_results[c] = result
