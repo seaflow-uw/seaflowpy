@@ -303,7 +303,8 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                     hosts=[env.host_string]
                 )
                 # Print rsync output on source host, even though this is run
-                # on local
+                # on local, just to make it clear in logs which host is being
+                # transferred from
                 puts(rsyncout[env.host_string])
             else:
                 sys.stderr.write("Filtering failed for cruise {}\n".format(c))
