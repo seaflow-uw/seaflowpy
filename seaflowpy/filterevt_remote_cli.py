@@ -19,7 +19,7 @@ from fabric.api import (cd, env, execute, get, hide, local, parallel, puts,
 from fabric.network import disconnect_all
 
 
-REMOTE_WORK_DIR = "/mnt/raid"
+REMOTE_WORK_DIR = "/mnt/ramdisk"
 REMOTE_DB_DIR = "{}/dbs".format(REMOTE_WORK_DIR)
 
 
@@ -44,10 +44,13 @@ def parse_args(args):
                    help="""Number of processes to use in filtering.""")
     p.add_argument("-i", "--instance_count", type=int, default=1, metavar="N",
                    help="""Number of cloud instances to use.""")
-    p.add_argument("-t", "--instance_type", default="c3.8xlarge",
+    p.add_argument("-t", "--instance_type", default="c5.9xlarge",
                    metavar="EC2_TYPE", help="""EC2 instance type to use. Change
                    with caution. The instance type must have be able to attach
                    2 instance store devices.""")
+    p.add_argument("-r", "--ramdisk_size", default="60", type=int,
+                   metavar="GiB", help="""Size of ramdisk in GiB, limited by istance
+                   RAM""")
     p.add_argument("-n", "--nocleanup", help="Don't cleanup resources.",
                    action="store_true", default=False)
     p.add_argument("-D", "--dryrun", action="store_true", default=False,
@@ -146,6 +149,10 @@ def main(cli_args=None):
         print("Waiting for hosts to come up with SSH")
         execute(wait_for_up)
 
+        print("Creating initial ramdisk")
+        with hide("output"):
+            execute(create_ramdisk, args.ramdisk_size)
+
         print("Transfer AWS credentials")
         with hide("output"):
             execute(rsync_put, ["~/.aws/"], ".aws")
@@ -209,7 +216,18 @@ def assign_keys_to_hosts(hosts, data):
 def wait_for_up():
     # Try to run hostname to establish host is up and SSH is running
     with hide("everything"):
-        run("hostname", timeout=600)  # don't wait longer than 10 minutes
+        # don't wait longer than 10 minutes
+        run("hostname", timeout=600)
+
+
+@task
+@parallel
+def create_ramdisk(gigabytes):
+    # Make ramdisk at REMOTE_WORK_DIR
+    with hide("everything"):
+        # don't wait longer than 10 minutes
+        run("sudo mkdir -p {}".format(REMOTE_WORK_DIR), timeout=600)
+        run("sudo mount -t tmpfs -o size={}G tmpfs {}".format(gigabytes, REMOTE_WORK_DIR), timeout=600)
 
 
 @task
