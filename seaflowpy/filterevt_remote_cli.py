@@ -98,6 +98,10 @@ def main(cli_args=None):
         cruise_files = {}
         try:
             for dbfile in args.dbs:
+                # Make sure file exists
+                if not os.path.exists(dbfile):
+                    print("DB file {} does not exist".format(dbfile))
+                    sys.exit(1)
                 # Make sure db has filter parameters filled in
                 if not check_db_filter_params(dbfile):
                     print("No filter parameters found in database file {}".format(dbfile))
