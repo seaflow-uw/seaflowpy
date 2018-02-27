@@ -40,10 +40,14 @@ def parse_args(args):
                    OPP binary files for each cruise. Will be created if does
                    not exist. (required)""")
 
-    p.add_argument("-p", "--process_count", type=int, default=16, metavar="N",
-                   help="""Number of processes to use in filtering.""")
+    p.add_argument("-D", "--dryrun", action="store_true", default=False,
+                   help="""Assign cruises to hosts but don't start instances.""")
     p.add_argument("-i", "--instance_count", type=int, default=1, metavar="N",
                    help="""Number of cloud instances to use.""")
+    p.add_argument("-p", "--process_count", type=int, default=16, metavar="N",
+                   help="""Number of processes to use in filtering.""")
+    p.add_argument("-n", "--nocleanup", help="Don't cleanup resources.",
+                   action="store_true", default=False)
     p.add_argument("-t", "--instance_type", default="c5.9xlarge",
                    metavar="EC2_TYPE", help="""EC2 instance type to use. Change
                    with caution. The instance type must have be able to attach
@@ -51,10 +55,9 @@ def parse_args(args):
     p.add_argument("-r", "--ramdisk_size", default="60", type=int,
                    metavar="GiB", help="""Size of ramdisk in GiB, limited by istance
                    RAM""")
-    p.add_argument("-n", "--nocleanup", help="Don't cleanup resources.",
-                   action="store_true", default=False)
-    p.add_argument("-D", "--dryrun", action="store_true", default=False,
-                   help="""Assign cruises to hosts but don't start instances.""")
+    p.add_argument("-z", "--zip", help="""Create uncompressed zip archive
+                   before returning results""",  action="store_true",
+                   default=False)
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
@@ -175,7 +178,8 @@ def main(cli_args=None):
 
         # Host list in env.hosts should be populated now and all machines up
         print("Filter data")
-        execute(filter_cruise, host_assignments, args.output_dir, args.process_count)
+        execute(filter_cruise, host_assignments, args.output_dir,
+                args.process_count, args.zip)
     finally:
         disconnect_all()  # always disconnect SSH connections
         if not args.nocleanup:
@@ -289,7 +293,7 @@ def pull_seaflowpy():
 
 @task
 @parallel
-def filter_cruise(host_assignments, output_dir, process_count=16):
+def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False):
     cruises = [x[0] for x in host_assignments[env.host_string]]
     cruise_results = {}
     with cd(REMOTE_WORK_DIR):
@@ -313,16 +317,27 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
 
             puts(result)
 
-            cruise_output_dir = os.path.join(output_dir, c)
-
             if result.succeeded:
                 puts("Filtering successfully completed for cruise {}".format(c))
+                if zip_flag:
+                    puts("Zipping cruise {} results into single file archive.".format(c))
+                    with settings(warn_only=True), hide("output"):
+                        # Dont' compress, assuming all OPP data is already
+                        # gzipped. This zip file is just a more conveniently
+                        # indexed and cross-platform tar archive.
+                        result = run("zip -r -0 -q {}.zip {}".format(c, c), timeout=10800)
                 puts("Returning results for cruise {}".format(c))
+                cruise_output_dir = os.path.join(output_dir, c)
                 util.mkdir_p(cruise_output_dir)
+                if zip_flag:
+                    src = os.path.join(REMOTE_WORK_DIR, "{}.zip".format(c))
+                else:
+                    src = os.path.join(REMOTE_WORK_DIR, c) + "/"
+
                 rsyncout = execute(
                     # rsync files in cruise results dir to local cruise dir
                     rsync_get,
-                    os.path.join(REMOTE_WORK_DIR, c) + "/",
+                    src,
                     cruise_output_dir,
                     hosts=[env.host_string]
                 )
