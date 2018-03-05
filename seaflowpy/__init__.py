@@ -6,6 +6,7 @@ from . import errors
 from . import evt
 from . import filterevt
 from . import geo
+from . import sfl
 from . import util
 from . import vct
 from .evt import EVT

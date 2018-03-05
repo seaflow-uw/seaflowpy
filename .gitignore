@@ -10,3 +10,4 @@ build
 /htmlcov
 .Dockerfile
 .dockerignore
+.pytest_cache

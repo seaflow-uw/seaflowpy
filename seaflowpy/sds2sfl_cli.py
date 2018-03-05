@@ -5,9 +5,11 @@ to FLOW RATE with user supplied ratio.
 """
 from __future__ import print_function
 from __future__ import absolute_import
+from __future__ import unicode_literals
 from builtins import str
-import datetime
+from io import open
 from . import geo
+import datetime
 import pkg_resources
 import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -147,8 +149,8 @@ def main(cli_args=None):
         sys.stderr.write("Instrument serial number %s not recognized\n" % args.serial)
         sys.exit(1)
 
-    f = open(args.sds)
-    f2 = open(args.sfl, 'w')
+    f = open(args.sds, encoding='utf-8')
+    f2 = open(args.sfl, 'w', encoding='utf-8')
 
     header = parse_header(f.readline())
 

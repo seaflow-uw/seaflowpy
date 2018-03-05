@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from builtins import object
+import arrow
 import gzip
 import io
 import json
@@ -11,7 +12,14 @@ from collections import OrderedDict
 from operator import itemgetter
 
 
-class SeaflowFile(object):
+julian_re = r'^\d{1,4}_\d{1,3}$'
+new_path_re = r'^\d{1,4}_\d{1,3}/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}$'
+new_file_re = r'^(?P<date>\d{4}-\d{2}-\d{2})T(?P<hours>\d{2})-(?P<minutes>\d{2})-(?P<seconds>\d{2})(?P<tzhours>[+-]\d{2})-(?P<tzminutes>\d{2})$'
+old_path_re = r'^\d{1,4}_\d{1,3}/\d+\.evt$'
+old_file_re = r'^\d+\.evt$'
+
+
+class SeaFlowFile(object):
     """Base class for EVT/OPP/VCT file classes"""
 
     def __init__(self, path=None, fileobj=None):
@@ -19,132 +27,148 @@ class SeaflowFile(object):
         # to set the file name in the database and detect compression.
         self.path = path  # file path, local or in S3
         self.fileobj = fileobj  # data in file object
-        # Identifer to match across file types (EVT/OPP/VCT)
-        self.file_id = self._get_julian_path()
+
+        if self.path:
+            parts = parse_path(self.path)
+            self.filename = parts["file"]
+            self.filename_noext = remove_ext(parts["file"])
+
+            self.date = date_from_filename(self.filename_noext)
+            if not self.is_old_style and not self.date:
+                raise ValueError("Error parsing date from file {}".format(self.path))
+
+            # YYYY_juliandayofyear directory found in file path and parsed
+            # from file datestmap
+            self.path_julian = parts["julian"]
+            self.julian = create_julian_directory(self.date)
+
+            # Identifer to match across file types (EVT/OPP/VCT)
+            # Should be something like 2014_142/42.evt for old files. Note always
+            # .evt even for opp and vct. No .gz.
+            # Should be something like 2014_342/2014-12-08T22-53-34+00-00 for new
+            # files. Note no extension including .gz.
+            # The julian day directory will be based on parsed datestamp in
+            # filename when possible, not the given path. The file ID based on
+            # the given path is stored in path_file_id.
+            if self.is_old_style:
+                # path_file_id and file_id are always the same for old-style
+                # filenames since we can't parse dates to calculate a julian
+                # directory
+                if self.path_julian:
+                    self.file_id = "{}/{}".format(self.path_julian, self.filename_noext)
+                else:
+                    self.file_id = self.filename_noext
+                self.path_file_id = self.file_id
+            else:
+                self.file_id = "{}/{}".format(self.julian, self.filename_noext)
+                if self.path_julian:
+                    self.path_file_id = "{}/{}".format(self.path_julian, self.filename_noext)
+                else:
+                    self.path_file_id = self.filename_noext
+
 
     def __str__(self):
         keys = ["path", "file_id"]
-        return json.dumps(OrderedDict([(k, getattr(self, k)) for k in keys]), indent=2)
+        return "SeaFlowFile: {}, {}".format(self.file_id, self.path)
 
-    def _isgz(self):
+    @property
+    def isgz(self):
         """Is file gzipped?"""
-        return self.path and self.path.endswith(".gz")
+        return self.path and self.filename.endswith(".gz")
+
+    @property
+    def is_old_style(self):
+        """Is this old style file? e.g. 2014_185/1.evt."""
+        return bool(re.match(old_file_re, self.filename_noext))
 
     def open(self):
         """Return a file-like object for reading."""
         handle = None
         if self.fileobj:
-            if self._isgz():
+            if self.isgz:
                 handle = gzip.GzipFile(fileobj=self.fileobj)
             else:
                 handle = self.fileobj
         else:
-            if self._isgz():
+            if self.isgz:
                 handle = gzip.GzipFile(self.path)
             else:
                 handle = io.open(self.path, 'rb')
         return handle
 
-    def _get_julian_path(self, remove_ext=True):
-        """Get the file path with julian directory.
+    @property
+    def rfc3339(self):
+        """Return RFC 3339 YYYY-MM-DDThh:mm:ss[+-]hh:mm parsed from filename"""
+        if self.date:
+            return arrow.Arrow.fromdatetime(self.date).format("YYYY-MM-DDTHH:mm:ssZZ")
 
-        If there is no julian directory in path, just return file name. If
-        remove_ext is True, remove parts of file name that would not be included
-        in the original EVT file name, including ".gz".
-        """
-        parts = parse_path(self.path)
-
-        if remove_ext:
-            file_parts = parts["file"].split(".")
-            parts["file"] = file_parts[0]
-            if len(file_parts) > 1:
-                if file_parts[1] == "evt":
-                    parts["file"] += ".evt"
-
-        jpath = parts["file"]
-        if parts["julian"]:
-            jpath = os.path.join(parts["julian"], jpath)
-
-        return jpath
-
-    def is_old_style(self):
-        """Is this old style file? e.g. 2014_185/1.evt."""
-        parts = parse_path(self.file_id)
-        old_re = re.compile(r'^\d+\.evt$')
-        if old_re.match(parts["file"]):
-            return True
+    @property
+    def sort_key(self):
+        # Julian from filename if possible first, then from path, then nothing
+        if self.julian:
+            year, day = [int(x) for x in self.julian.split("_")]
+        elif self.path_julian:
+            year, day = [int(x) for x in self.path_julian.split("_")]
         else:
-            return False
+            year, day = 0, 0
+        if self.is_old_style:
+            # Number part of basename, necessary because number isn't
+            # zero-filled
+            file_key = int(self.filename_noext.split(".")[0])
+        else:
+            file_key = self.filename_noext
+        return (year, day, file_key)
+
+
+
+def create_julian_directory(dt):
+    """Create SeaFlow julian dated directory from a datetime object"""
+    if dt:
+        return "{}_{}".format(dt.year, dt.strftime('%j'))
+
+
+def date_from_filename(filename):
+    """Return a datetime object based on new-style SeaFlow filename.
+
+    Parts of the filename after the datestamp will be ignored.
+    """
+    date = None
+    filename_noext = remove_ext(os.path.basename(filename))
+    m = re.match(new_file_re, filename_noext)
+    if m:
+        # New style EVT filenames, e.g.
+        # - 2014-05-15T17-07-08+00-00
+        # - 2014-05-15T17-07-08-07-00
+        # Parse RFC 3339 date string with arrow, then get datetime
+        date  = arrow.get("{}T{}:{}:{}{}{}".format(*m.groups())).datetime
+    return date
 
 
 def parse_path(file_path):
     """Return a dict with entries for 'julian' dir and 'file' name"""
-    julian_re = re.compile(r'^20\d{2}_\d{1,3}$')
     d = { "julian": None, "file": None }
     parts = util.splitpath(file_path)
-    if len(parts) == 1:
-        d["file"] = parts[0]
-    elif len(parts) > 1:
-        d["file"] = parts[-1]
-        if julian_re.match(parts[-2]):
+    d["file"] = parts[-1]
+    if len(parts) > 1:
+        if re.match(julian_re, parts[-2]):
             d["julian"] = parts[-2]
     return d
+
+
+def remove_ext(filename):
+    """Remove extensions from filename except .evt in old files."""
+    file_parts = filename.split(".")
+    noext = file_parts[0]
+    if len(file_parts) > 1 and file_parts[1] == "evt" and re.match(r'^\d+$', file_parts[0]):
+        # For old-style evt filenames, e.g. 42.evt
+        noext += ".evt"
+    return noext
 
 
 def sorted_files(files):
     """Sort EVT/OPP/VCT file paths in chronological order.
 
-    Order is based on parsed julian day directory and file name.
+    Order is based on julian day directory parsed from path and then file name.
     """
-    data = []
-    for f in files:
-        s = SeaflowFile(f)
-        parts = parse_path(s.file_id)
-        if parts["julian"] is not None:
-            year, day = [int(x) for x in parts["julian"].split("_")]
-        else:
-            year, day = 0, 0
-        if s.is_old_style():
-            file_key = int(parts["file"].split(".")[0])  # number part of basename
-        else:
-            file_key = parts["file"]
-
-        data.append((year, day, file_key, f))
-
-    return [x[-1] for x in sorted(data)]
-
-
-def find_file_index(files, findme):
-    """Return the index of a file in a list of files, based on file_id.
-
-    Raise ValueError if not found, just like list.index.
-    """
-    if findme is None:
-        raise ValueError("file to find not specified")
-    # Convert to SeaflowFile objects to find by canonical file_id
-    files = [SeaflowFile(f) for f in files]
-    findme = SeaflowFile(findme)
-    for i, f in enumerate(files):
-        if f.file_id == findme.file_id:
-            return i
-    raise ValueError("%s not in list" % findme.path)
-
-
-def files_between(files, start_file, end_file):
-    """Return a sublist of files that contains files from start through end.
-
-    files will be traversed and returned in chronological order.
-    """
-    if files:
-        files = sorted_files(files)  # make sure sorted chronologically
-        try:
-            start_idx = find_file_index(files, start_file)
-        except ValueError:
-            start_idx = 0  # start at beginning
-        try:
-            end_idx = find_file_index(files, end_file) + 1
-        except ValueError:
-            end_idx = len(files)
-        if end_idx <= start_idx:
-            raise ValueError("end file must be later than start file")
-        return files[start_idx:end_idx]
+    sfiles = [SeaFlowFile(f) for f in files]
+    return [s.path for s in sorted(sfiles, key=lambda x: x.sort_key)]

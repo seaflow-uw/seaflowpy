@@ -19,7 +19,7 @@ from . import vct
 from collections import OrderedDict
 
 
-class EVT(seaflowfile.SeaflowFile):
+class EVT(seaflowfile.SeaFlowFile):
     """Class for EVT data operations"""
     # Data columns
     all_columns = [
@@ -43,7 +43,7 @@ class EVT(seaflowfile.SeaflowFile):
 
     def __init__(self, path=None, fileobj=None, read_data=True,
                  transform=False, columns=None):
-        seaflowfile.SeaflowFile.__init__(self, path, fileobj)
+        seaflowfile.SeaFlowFile.__init__(self, path, fileobj)
         # First 4 byte uint in binary file reporting number of events
         self.header_count = 0
         # Number of events recorded in EVT file

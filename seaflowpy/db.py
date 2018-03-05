@@ -181,6 +181,12 @@ def ensure_indexes(dbpath):
     con.close()
 
 
+def create_db(dbpath):
+    """Create or complete database"""
+    ensure_tables(dbpath)
+    ensure_indexes(dbpath)
+
+
 def save_opp_stats(dbpath, vals):
     # NOTE: values inserted must be in the same order as fields in opp
     # table. Defining that order in a list here makes it easier to verify

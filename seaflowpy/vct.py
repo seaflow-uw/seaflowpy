@@ -10,11 +10,11 @@ from . import util
 from collections import OrderedDict
 
 
-class VCT(seaflowfile.SeaflowFile):
+class VCT(seaflowfile.SeaFlowFile):
     """Class for VCT per-particle population annotations"""
 
     def __init__(self, path=None, fileobj=None, read_data=True, vct=None):
-        seaflowfile.SeaflowFile.__init__(self, path, fileobj)
+        seaflowfile.SeaFlowFile.__init__(self, path, fileobj)
         # DataFrame with list of population labels in "pop" column
         if vct is None:
             self.vct = []
