@@ -17,12 +17,11 @@ setup(name='seaflowpy',
     license='GPL3',
     packages=['seaflowpy'],
     install_requires=[
-        'arrow',
-        'boto3',
-        'numpy',
-        'pandas',
-        'fabric3',
-        'future'
+        'arrow ==0.12.1',
+        'boto3 ==1.6.0',
+        'pandas ==0.22.0',
+        'fabric3 ==1.13.1'
+        'future ==0.16.0'
     ],
     setup_requires=['pytest-runner', 'setuptools_scm'],
     tests_require=['pytest'],
