@@ -17,14 +17,13 @@ setup(name='seaflowpy',
     license='GPL3',
     packages=['seaflowpy'],
     install_requires=[
-        'arrow ==0.12.1',
-        'boto3 ==1.6.0',
-        'pandas ==0.22.0',
-        'fabric3 ==1.13.1'
-        'future ==0.16.0'
+        'arrow',
+        'boto3',
+        'pandas',
+        'fabric3',
+        'future'
     ],
-    setup_requires=['pytest-runner', 'setuptools_scm'],
-    tests_require=['pytest'],
+    setup_requires=['setuptools_scm'],
     entry_points={
         'console_scripts': [
             'seaflowpy_evtpath2juliandir=seaflowpy.evtpath2juliandir_cli:main',
