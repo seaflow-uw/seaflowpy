@@ -51,7 +51,7 @@ def create_parser():
     return p
 
 
-def main(cli_args):
+def main(cli_args=None):
     """Main function to implement command-line interface"""
     parser = create_parser()
     args = parser.parse_args(cli_args)
