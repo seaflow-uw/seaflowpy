@@ -13,7 +13,7 @@ import pkg_resources
 import sys
 
 
-def parse_args(args):
+def create_parser():
     version = pkg_resources.get_distribution("seaflowpy").version
 
     p = argparse.ArgumentParser(
@@ -48,23 +48,19 @@ def parse_args(args):
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
-    args = p.parse_args(args)
+    return p
+
+
+def main(cli_args):
+    """Main function to implement command-line interface"""
+    parser = create_parser()
+    args = parser.parse_args(cli_args)
 
     # Validate args
     if not args.evt_dir and not args.s3:
         sys.stderr.write("Error: One of --evt_dir or --s3 must be provided\n\n")
-        p.print_help()
-        sys.exit(1)
-
-    return args
-
-
-def main(cli_args=None):
-    """Main function to implement command-line interface"""
-    if cli_args is None:
-        cli_args = sys.argv[1:]
-
-    args = parse_args(cli_args)
+        parser.print_help()
+        return 1
 
     # Print defined parameters
     v = dict(vars(args))
@@ -95,7 +91,7 @@ def main(cli_args=None):
             print("  $ pip install aws")
             print("  then")
             print("  $ aws configure")
-            sys.exit(1)
+            return 1
 
     # Restrict length of file list with --limit
     if (not args.limit is None) and (args.limit > 0):
@@ -112,4 +108,4 @@ def main(cli_args=None):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv[1:]))

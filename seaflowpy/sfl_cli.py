@@ -157,11 +157,8 @@ def create_parser():
     return parser
 
 
-def main(cli_args=None):
+def main(cli_args):
     """Main function to implement command-line interface"""
-    if cli_args is None:
-        cli_args = sys.argv[1:]
-
     parser = create_parser()
     args = parser.parse_args(cli_args)
 
@@ -181,7 +178,7 @@ def main(cli_args=None):
         # Call the subcommand function
         status = args.func(args)
 
-    return status if status else 0
+    return status
 
 
 def do_check(args):
@@ -259,4 +256,4 @@ def do_print(args):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

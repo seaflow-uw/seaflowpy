@@ -8,7 +8,7 @@ import os
 import pkg_resources
 import sys
 
-def parse_args(args):
+def create_parser():
     version = pkg_resources.get_distribution("seaflowpy").version
 
     parser = argparse.ArgumentParser(
@@ -27,15 +27,13 @@ def parse_args(args):
 
     parser.add_argument("--version", action="version", version="%(prog)s " + version)
 
-    return parser.parse_args(args)
+    return parser
 
 
-def main(cli_args=None):
+def main(cli_args):
     """Main function to implement command-line interface"""
-    if cli_args is None:
-        cli_args = sys.argv[1:]
-
-    args = parse_args(cli_args)
+    parser = create_parser()
+    args = parser.parse_args(cli_args)
 
     output = []
     for path in args.paths:
@@ -48,4 +46,4 @@ def main(cli_args=None):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv[1:]))

@@ -66,16 +66,6 @@ def splitpath(path):
     return parts[::-1]
 
 
-def iso8601_now():
-    """Create an ISO8601 date string for now.
-
-    Format will be YYYY-MM-DDTHH:MM:SS.SSSSSS+0000
-    """
-    now = datetime.datetime.utcnow()
-    iso = now.isoformat() + "+0000"
-    return iso
-
-
 def find_files(root_dir):
     """Return a list of all file paths below root_dir."""
     allfiles = []

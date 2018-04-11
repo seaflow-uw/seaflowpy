@@ -23,7 +23,7 @@ REMOTE_WORK_DIR = "/mnt/ramdisk"
 REMOTE_DB_DIR = "{}/dbs".format(REMOTE_WORK_DIR)
 
 
-def parse_args(args):
+def create_parser():
     version = pkg_resources.get_distribution("seaflowpy").version
 
     p = argparse.ArgumentParser(
@@ -61,16 +61,12 @@ def parse_args(args):
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
-    args = p.parse_args(args)
-
-    return args
+    return p
 
 
-def main(cli_args=None):
+def main(cli_args):
     """Main function to implement command-line interface"""
-    if cli_args is None:
-        cli_args = sys.argv[1:]
-
+    parser = create_parser()
     args = parse_args(cli_args)
 
     print("Started at {}".format(datetime.datetime.utcnow().isoformat()))
@@ -104,11 +100,11 @@ def main(cli_args=None):
                 # Make sure file exists
                 if not os.path.exists(dbfile):
                     print("DB file {} does not exist".format(dbfile))
-                    sys.exit(1)
+                    return 1
                 # Make sure db has filter parameters filled in
                 if not check_db_filter_params(dbfile):
                     print("No filter parameters found in database file {}".format(dbfile))
-                    sys.exit(1)
+                    return 1
                 # Get cruise name from file name
                 c = os.path.splitext(os.path.basename(dbfile))[0]
                 cruise_files[c] = cloud.get_files(c)
@@ -121,7 +117,7 @@ def main(cli_args=None):
             print("  $ pip install aws")
             print("  then")
             print("  $ aws configure")
-            sys.exit(1)
+            return 1
 
         if args.dryrun:
             # Create dummy host list
@@ -360,4 +356,4 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv[1:]))
