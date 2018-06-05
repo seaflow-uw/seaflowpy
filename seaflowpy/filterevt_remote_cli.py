@@ -315,7 +315,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
                 }
                 with settings(warn_only=True), hide("output"):
                     result = run(
-                        "seaflowpy_filter --s3 -c {cruise} -d {cruise}.db -p {process_count} -o {cruise}_opp".format(**text),
+                        "seaflowpy_filter --s3 -d {cruise}.db -p {process_count} -o {cruise}_opp".format(**text),
                         timeout=10800
                     )
                     cruise_results[c] = result
