@@ -12,18 +12,16 @@ import json
 import os
 import sys
 import time
-from . import util
 
 from multiprocessing import Pool
 
 
-def filter_evt_files(files, cruise, dbpath, opp_dir, s3=False, process_count=1,
+def filter_evt_files(files, dbpath, opp_dir, s3=False, process_count=1,
                      every=10.0):
     """Filter a list of EVT files.
 
     Positional arguments:
         files - paths to EVT files to filter
-        cruise - cruise name
         dbpath = SQLite3 db path
         opp_dir = Directory for output binary OPP files
 
@@ -34,7 +32,6 @@ def filter_evt_files(files, cruise, dbpath, opp_dir, s3=False, process_count=1,
     """
     o = {
         "file": None,  # fill in later
-        "cruise": cruise,
         "process_count": process_count,
         "every": every,
         "s3": s3,
@@ -48,6 +45,7 @@ def filter_evt_files(files, cruise, dbpath, opp_dir, s3=False, process_count=1,
         raise ValueError("Must provide db path to filter_evt_files()")
 
     filter_df = db.get_latest_filter(dbpath)
+
     # Turn pandas dataframe into dictionary keyed by quantile for convenience
     o["filter_params"] = {}
     for q in [2.5, 50, 97.5]:
@@ -180,7 +178,7 @@ def filter_one_file(o):
                 break
             else:
                 if o["dbpath"]:
-                    opp.save_opp_to_db(o["cruise"], o["filter_id"], q, o["dbpath"])
+                    opp.save_opp_to_db(o["filter_id"], q, o["dbpath"])
 
                 if o["opp_dir"]:
                     opp.write_binary(o["opp_dir"], opp=True, quantile=q)

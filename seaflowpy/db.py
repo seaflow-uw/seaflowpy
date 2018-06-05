@@ -1,9 +1,11 @@
 from __future__ import absolute_import
 from builtins import str
+from . import sfl
+from . import errors
 import pandas as pd
 import sqlite3
 import uuid
-from . import util
+
 from collections import OrderedDict
 
 
@@ -12,8 +14,13 @@ def ensure_tables(dbpath):
     con = sqlite3.connect(dbpath)
     cur = con.cursor()
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS vct (
+    cur.execute("""CREATE TABLE IF NOT EXISTS metadata (
     cruise TEXT NOT NULL,
+    inst TEXT NOT NULL,
+    PRIMARY KEY (cruise, inst)
+)""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS vct (
     file TEXT NOT NULL,
     pop TEXT NOT NULL,
     count INTEGER NOT NULL,
@@ -38,11 +45,10 @@ def ensure_tables(dbpath):
     gating_id TEXT NOT NULL,
     filter_id TEXT NOT NULL,
     quantile REAL NOT NULL,
-    PRIMARY KEY (cruise, file, pop, quantile)
+    PRIMARY KEY (file, pop, quantile)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS opp (
-    cruise TEXT NOT NULL,
     file TEXT NOT NULL,
     all_count INTEGER NOT NULL,
     opp_count INTEGER NOT NULL,
@@ -50,12 +56,10 @@ def ensure_tables(dbpath):
     opp_evt_ratio REAL NOT NULL,
     filter_id TEXT NOT NULL,
     quantile REAL NOT NULL,
-    PRIMARY KEY (cruise, file, filter_id, quantile)
+    PRIMARY KEY (file, filter_id, quantile)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
-    --First two columns are the SFL composite key
-    cruise TEXT NOT NULL,
     file TEXT NOT NULL,
     date TEXT,
     file_duration REAL,
@@ -67,16 +71,14 @@ def ensure_tables(dbpath):
     par REAL,
     bulk_red REAL,
     stream_pressure REAL,
-    flow_rate REAL,
     event_rate REAL,
-    PRIMARY KEY (cruise, file)
+    PRIMARY KEY (file)
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS filter (
     id TEXT NOT NULL,
     date TEXT NOT NULL,
     quantile REAL NOT NULL,
-    serial TEXT NOT NULL,
     beads_fsc_small REAL NOT NULL,
     beads_D1 REAL NOT NULL,
     beads_D2 REAL NOT NULL,
@@ -123,21 +125,18 @@ def ensure_tables(dbpath):
 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS outlier (
-    cruise TEXT NOT NULL,
     file TEXT NOT NULL,
     flag INTEGER,
-    PRIMARY KEY (cruise, file)
+    PRIMARY KEY (file)
 )""")
 
     cur.execute("""CREATE VIEW IF NOT EXISTS stat AS
     SELECT
-        opp.cruise as cruise,
         opp.file as file,
         sfl.date as time,
         sfl.lat as lat,
         sfl.lon as lon,
         opp.opp_evt_ratio as opp_evt_ratio,
-        sfl.flow_rate as flow_rate,
         sfl.file_duration as file_duration,
         vct.pop as pop,
         vct.count as n_count,
@@ -150,15 +149,11 @@ def ensure_tables(dbpath):
     WHERE
         opp.filter_id == (select id FROM filter ORDER BY date DESC limit 1)
         AND
-        opp.cruise == vct.cruise
-        AND
         opp.file == vct.file
-        AND
-        opp.cruise == sfl.cruise
         AND
         opp.file == sfl.file
     ORDER BY
-        cruise, time, pop ASC
+        time, pop ASC
 """)
 
     con.commit()
@@ -187,12 +182,20 @@ def create_db(dbpath):
     ensure_indexes(dbpath)
 
 
+def save_metadata(dbpath, vals):
+    # Bit drastic but there should only be one entry in metadata at a time
+    sql_delete = "DELETE FROM metadata"
+    executemany(dbpath, sql_delete, vals)
+
+    sql_insert = "INSERT INTO metadata VALUES (:cruise, :inst)"
+    executemany(dbpath, sql_insert, vals)
+
+
 def save_opp_stats(dbpath, vals):
     # NOTE: values inserted must be in the same order as fields in opp
     # table. Defining that order in a list here makes it easier to verify
     # that the right order is used.
     field_order = [
-        "cruise",
         "file",
         "all_count",
         "opp_count",
@@ -203,36 +206,26 @@ def save_opp_stats(dbpath, vals):
     ]
     # Construct values string with named placeholders
     values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT INTO opp VALUES ({})".format(values_str)
+    sql_insert = "INSERT OR REPLACE INTO opp VALUES ({})".format(values_str)
     execute(dbpath, sql_insert, vals)
 
 
 def save_sfl(dbpath, vals):
-    # NOTE: values inserted must be in the same order as fields in sfl
-    # table. Defining that order in a list here makes it easier to verify
-    # that the right order is used.
-    field_order = [
-        "cruise",
-        "file",
-        "date",
-        "file_duration",
-        "lat",
-        "lon",
-        "conductivity",
-        "salinity",
-        "ocean_tmp",
-        "par",
-        "bulk_red",
-        "stream_pressure",
-        "flow_rate",
-        "event_rate"
-    ]
-    sql_delete = "DELETE FROM sfl WHERE cruise == :cruise AND file == :file"
-    executemany(dbpath, sql_delete, vals)
-
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT INTO sfl VALUES (%s)" % values_str
+    values_str = ", ".join([":" + f for f in sfl.output_columns])
+    sql_insert = "INSERT OR REPLACE INTO sfl VALUES (%s)" % values_str
     executemany(dbpath, sql_insert, vals)
+
+
+def get_cruise(dbpath):
+    sql = "SELECT cruise FROM metadata"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = pd.read_sql(sql, dbcon)
+    if len(df.index) > 1:
+        cruises = ", ".join([str(c) for c in df.cruise.tolist()])
+        raise errors.SeaflowpyError("More than one cruise found in database {}: {}".format(dbpath, cruises))
+    if len(df.index) == 0:
+        raise errors.SeaflowpyError("No cruise name found in database {}\n".format(dbpath))
+    return df.cruise.tolist()[0]
 
 
 def get_filter_table(dbpath):
@@ -242,11 +235,25 @@ def get_filter_table(dbpath):
     return filterdf
 
 
+def get_serial(dbpath):
+    sql = "SELECT inst FROM metadata"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = pd.read_sql(sql, dbcon)
+    if len(df.index) > 1:
+        insts = ", ".join([str(c) for c in df.inst.tolist()])
+        raise errors.SeaflowpyError("More than one instrument serial found in database {}: {}".format(dbpath, insts))
+    if len(df.index) == 0:
+        raise errors.SeaflowpyError("No instrument serial found in database {}\n".format(dbpath))
+    return df.inst.tolist()[0]
+
+
 def get_latest_filter(dbpath):
     with sqlite3.connect(dbpath) as dbcon:
-        filterdf = pd.read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
-        _id = filterdf.iloc[0]["id"]
-    return filterdf[filterdf["id"] == _id]
+        df = pd.read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
+    if len(df.index) == 0:
+        raise errors.SeaflowpyError("No filter parameters found in database {}\n".format(dbpath))
+    _id = df.iloc[0]["id"]
+    return df[df["id"] == _id]
 
 
 def get_opp(dbpath, filter_id):

@@ -10,7 +10,7 @@ import csv
 import json
 import os
 import pandas as pd
-import pkg_resources
+import re
 import sys
 
 
@@ -19,7 +19,6 @@ sfl_delim = "\t"
 # Mappings between SFL file and SQL table column names
 colname_mapping = {
     "table_to_file": {
-        "cruise": "CRUISE",
         "file": "FILE",
         "date": "DATE",
         "file_duration": "FILE DURATION",
@@ -41,30 +40,22 @@ colname_mapping["file_to_table"] = dict([kv[::-1] for kv in colname_mapping["tab
 # Numeric columns using SQL table column names
 numeric_columns = [
     "file_duration", "lat", "lon", "conductivity", "salinity", "ocean_tmp", "par", "bulk_red",
-    "stream_pressure", "flow_rate", "event_rate"
+    "stream_pressure", "event_rate"
 ]
 
 output_columns = [
-    "cruise", "file", "date", "file_duration", "lat", "lon", "conductivity",
+    "file", "date", "file_duration", "lat", "lon", "conductivity",
     "salinity", "ocean_tmp", "par", "bulk_red", "stream_pressure",
-    "flow_rate", "event_rate"
+    "event_rate"
 ]
 
 
-def add_cruise(df, cruise):
-    """Return a copy of df with a cruise column added"""
-    newdf = df.copy(deep=True)
-    newdf["cruise"] = cruise
-    return newdf
-
-
 def check(df):
-    """Perform checks on SLF dataframe
+    """Perform checks on SFL dataframe
 
     Returns a list of errors.
     """
     errors = []
-    errors.extend(check_cruise(df))
     errors.extend(check_numerics(df))
     errors.extend(check_file(df))
     errors.extend(check_date(df))
@@ -90,19 +81,6 @@ def check_coords(df):
         bad_lons = notnas[~((lon_numbers <= 180) & (lon_numbers >= -180))]["lon"]
         for i, v in bad_lons.iteritems():
             errors.append(create_error(df, "lon", msg="Invalid longitude", row=i, val=v))
-    return errors
-
-
-def check_cruise(df):
-    errors = []
-    # Cruise column must be present
-    if "cruise" not in df.columns:
-        errors.append(create_error(df, "cruise", msg="cruise column is missing"))
-    else:
-        # Cruise values must not be empty
-        empty_cruises = df[df["cruise"].str.len() == 0]["cruise"]
-        for i, v in empty_cruises.iteritems():
-            errors.append(create_error(df, "cruise", msg="Empty cruise string", row=i, val=v))
     return errors
 
 
@@ -272,6 +250,13 @@ def make_json_serializable(v):
     return v
 
 
+def parse_sfl_filename(fn):
+    fn = os.path.basename(fn)
+    m = re.match(r"^(?P<cruise>.+)_(?P<inst>[^_]+).sfl$", fn)
+    if m:
+        return (m.group('cruise'), m.group('inst'))
+
+
 def print_json_errors(errors, fh, print_all=True):
     errors_output = []
     errors_seen = set()
@@ -343,17 +328,22 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
     return df
 
 
-def save_to_db(df, dbpath):
+def save_to_db(df, dbpath, cruise=None, serial=None):
     """Write SFL dataframe to a csv file.
 
     Arguments:
     df -- SFL DataFrame.
     dbpath -- Path to SQLite3 database file.
     """
-    if not os.path.exists(dbpath):
-        db.create_db(dbpath)  # create db if needed
+    db.create_db(dbpath)  # create or update db if needed
+    if cruise is None:
+        cruise = 'None'
+    if serial is None:
+        serial = 'None'
+    metadf = pd.DataFrame({'cruise': [cruise], 'inst': [serial]})
+    db.save_metadata(dbpath, metadf.to_dict('index').values())
     # This assumes there are column names which match SQL SFL table
-    db.save_sfl(dbpath, df.to_dict("index").values())
+    db.save_sfl(dbpath, df.to_dict('index').values())
 
 
 def save_to_file(df, outpath, convert_colnames=True, all_columns=False):
@@ -372,8 +362,6 @@ def save_to_file(df, outpath, convert_colnames=True, all_columns=False):
     if "input_file_path" in df.columns and "input_file_line_number" in df.columns:
         df = df.drop(["input_file_path", "input_file_line_number"], axis=1)
     if not all_columns:
-        if not "cruise" in df.columns:
-            df = add_cruise(df, None)
         df = df[output_columns]
     if convert_colnames:
         df = df.rename(columns=colname_mapping["table_to_file"])

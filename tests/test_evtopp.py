@@ -277,11 +277,10 @@ class TestOPPVCT(object):
 class TestOutput(object):
     def test_sqlite3_opp_counts_and_params(self, tmpout, params):
         opp = tmpout["evt"].filter(params)
-        opp.save_opp_to_db("testcruise", "UUID", 50.0, tmpout["db"])
+        opp.save_opp_to_db("UUID", 50.0, tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
-        assert "testcruise" == sqlitedf["cruise"][0]
         assert opp.file_id == sqlitedf["file"][0]
         assert "UUID" == sqlitedf["filter_id"][0]
         assert 50.0 == sqlitedf["quantile"][0]
@@ -292,7 +291,7 @@ class TestOutput(object):
             ],
             sqlitedf[[
                 "opp_count", "evt_count", "all_count", "opp_evt_ratio"
-            ]].as_matrix()[0]
+            ]].values[0]
         )
 
     def test_binary_evt_output(self, tmpdir):
@@ -342,7 +341,7 @@ class TestMultiFileFilter(object):
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1, cruise="testcruise",
+            files=files, process_count=1,
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
         )
 
@@ -359,7 +358,7 @@ class TestMultiFileFilter(object):
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1, cruise="testcruise",
+            files=files, process_count=1,
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             s3=True)
 
@@ -381,7 +380,7 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
         ]
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1, cruise="testcruise",
+            files=files, process_count=1,
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
         )
         opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))

@@ -296,13 +296,12 @@ class EVT(seaflowfile.SeaFlowFile):
         vctobj = vct.VCT(vct_file)
         self.df["pop"] = vctobj.vct["pop"]
 
-    def save_opp_to_db(self, cruise_name, filter_id, quantile, dbpath):
+    def save_opp_to_db(self, filter_id, quantile, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
         if not self.has_data():
             return
 
         vals = {
-            "cruise": cruise_name,
             "file": self.file_id,
             "all_count": self.parent.event_count,
             "opp_count": self.particle_count,
@@ -379,7 +378,7 @@ class EVT(seaflowfile.SeaFlowFile):
         df.insert(0, "tens", tens)
         df.insert(1, "zeros", zeros)
 
-        return df.as_matrix()
+        return df.values
 
 
 def is_evt(file_path):
@@ -421,7 +420,7 @@ def parse_file_list(files):
 
 def vertstopath(verts):
     """Convert polygon vertices as 2 column pandas DataFrame to a matplotlib.Path"""
-    verts_list = verts.as_matrix().tolist()
+    verts_list = verts.values.tolist()
     verts_list.append(verts_list[0])  # close the polygon
     codes = [Path.MOVETO]
     for i in range(len(verts_list)-2):

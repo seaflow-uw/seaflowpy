@@ -8,6 +8,7 @@ import botocore
 from . import clouds
 from . import conf
 from . import db
+from . import errors
 import datetime
 import json
 import os
@@ -67,7 +68,7 @@ def create_parser():
 def main(cli_args=None):
     """Main function to implement command-line interface"""
     parser = create_parser()
-    args = parse_args(cli_args)
+    args = parser.parse_args(cli_args)
 
     print("Started at {}".format(datetime.datetime.utcnow().isoformat()))
 
@@ -95,29 +96,38 @@ def main(cli_args=None):
     try:
         print("Getting lists of files for each cruise")
         cruise_files = {}
-        try:
-            for dbfile in args.dbs:
-                # Make sure file exists
-                if not os.path.exists(dbfile):
-                    print("DB file {} does not exist".format(dbfile))
-                    return 1
-                # Make sure db has filter parameters filled in
-                if not check_db_filter_params(dbfile):
-                    print("No filter parameters found in database file {}".format(dbfile))
-                    return 1
-                # Get cruise name from file name
-                c = os.path.splitext(os.path.basename(dbfile))[0]
+        for dbfile in args.dbs:
+            # Make sure file exists
+            if not os.path.exists(dbfile):
+                print("DB file {} does not exist".format(dbfile))
+                return 1
+            # Make sure db has filter parameters filled in
+            try:
+                filter_table = db.get_latest_filter(dbfile)
+            except errors.SeaflowpyError as e:
+                print("No filter parameters found in database file {}".format(dbfile))
+                return 1
+            if len(filter_table) != 3:
+                print("Unusual filter parameters found in database file {}".format(dbfile))
+                return 1
+            # Get cruise name DB
+            try:
+                c = db.get_cruise(dbfile)
+            except errors.SeaflowpyError as e:
+                print("Error retrieving cruise name from DB: {}".format(e))
+                return 1
+            try:
                 cruise_files[c] = cloud.get_files(c)
-                print("{:<20} {}".format(c, len(cruise_files[c])))
-            print("")
-        except botocore.exceptions.NoCredentialsError as e:
-            print("Please configure aws first:")
-            print("  $ conda install aws")
-            print("  or")
-            print("  $ pip install aws")
-            print("  then")
-            print("  $ aws configure")
-            return 1
+            except botocore.exceptions.NoCredentialsError as e:
+                print("Please configure aws first:")
+                print("  $ conda install aws")
+                print("  or")
+                print("  $ pip install aws")
+                print("  then")
+                print("  $ aws configure")
+                return 1
+            print("{:<20} {}".format(c, len(cruise_files[c])))
+        print("")
 
         if args.dryrun:
             # Create dummy host list
@@ -313,6 +323,8 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
 
             puts(result)
 
+            cruise_output_dir = os.path.join(output_dir, c)
+
             if result.succeeded:
                 puts("Filtering successfully completed for cruise {}".format(c))
                 if zip_flag:
@@ -323,7 +335,6 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
                         # indexed and cross-platform tar archive.
                         result = run("zip -r -0 -q {}.zip {}".format(c, c), timeout=10800)
                 puts("Returning results for cruise {}".format(c))
-                cruise_output_dir = os.path.join(output_dir, c)
                 util.mkdir_p(cruise_output_dir)
                 if zip_flag:
                     src = os.path.join(REMOTE_WORK_DIR, "{}.zip".format(c))

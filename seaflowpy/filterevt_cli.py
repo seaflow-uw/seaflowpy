@@ -6,6 +6,7 @@ import botocore
 from . import clouds
 from . import conf
 from . import db
+from . import errors
 from . import evt
 from . import filterevt
 import json
@@ -24,8 +25,8 @@ def create_parser():
                    help="EVT directory path (required unless --s3)")
     p.add_argument("-s", "--s3", default=False, action="store_true",
                    help="""Read EVT files from s3://S3_BUCKET/CRUISE where
-                   CRUISE is provided by --cruise (required unless
-                   --evt_dir)""")
+                   CRUISE is detected in the sqlite db metadata table
+                   (required unless --evt_dir)""")
     p.add_argument("-l", "--limit", type=int, default=None, metavar="N",
                    help="""Limit how many files to process. Useful for testing.
                    (optional)""")
@@ -36,9 +37,6 @@ def create_parser():
                    help="""Directory in which to save LabView binary formatted
                    files of focused particles (OPP). Will be created
                    if does not exist. (optional)""")
-
-    p.add_argument("-c", "--cruise", required=True, metavar="NAME",
-                   help="Cruise name (required)")
 
     p.add_argument("-p", "--process_count", required=False, type=int, default=1,
                    metavar="N", help="""Number of processes to use in filtering
@@ -58,16 +56,37 @@ def main(cli_args=None):
 
     # Validate args
     if not args.evt_dir and not args.s3:
-        sys.stderr.write("Error: One of --evt_dir or --s3 must be provided\n\n")
+        sys.stderr.write("Error: One of --evt_dir or --s3 must be provided\n")
         parser.print_help()
         return 1
 
-    # Print defined parameters
+    # TODO maybe import sfl here?
+
+    # Find cruise in db
+    try:
+        args.cruise = db.get_cruise(args.db)
+    except errors.SeaflowpyError as e:
+        sys.stderr.write("Error: {}\n".format(e))
+        return 1
+
+    # Find filter parameters in db. Won't use them yet but better to check
+    # upfront
+    try:
+        filter_params = db.get_latest_filter(args.db)
+    except errors.SeaflowpyError as e:
+        sys.stderr.write("Error: {}\n".format(e))
+        return 1
+
+    # Capture software version
+    args.version = pkg_resources.get_distribution("seaflowpy").version
+
+    # Convert parameters into dictionary
     v = dict(vars(args))
     to_delete = [k for k in v if v[k] is None]
     for k in to_delete:
         v.pop(k, None)  # Remove undefined parameters
-    v["version"] = pkg_resources.get_distribution("seaflowpy").version
+
+    # Print run parameters
     print("Defined parameters:")
     print(json.dumps(v, indent=2))
     print("")
@@ -98,9 +117,13 @@ def main(cli_args=None):
         files = files[:args.limit]
 
     # Filter
-    filterevt.filter_evt_files(files, args.cruise, args.db, args.opp_dir,
-                               s3=args.s3, process_count=args.process_count,
-                               every=args.resolution)
+    try:
+        filterevt.filter_evt_files(files, args.db, args.opp_dir, s3=args.s3,
+                                   process_count=args.process_count,
+                                   every=args.resolution)
+    except errors.SeaflowpyError as e:
+        sys.stderr.write("Error: {}\n".format(e))
+        return 1
 
     # Index
     if args.db:

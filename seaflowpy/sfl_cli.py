@@ -90,7 +90,8 @@ def create_parser():
     )
     parser_db.add_argument(
         "-c", "--cruise",
-        help="""Cruise name."""
+        help="""Supply a cruise name here to override any found in the
+        filename."""
     )
     parser_db.add_argument(
         "-d", "--db",
@@ -111,6 +112,11 @@ def create_parser():
         "-j", "--json_errors",
         action="store_true",
         help="""Print errors as JSON."""
+    )
+    parser_db.add_argument(
+        "--serial",
+        help="""Supply a instrument serial number here to override any
+        found in the filename."""
     )
     parser_db.set_defaults(func=do_db)
 
@@ -145,10 +151,6 @@ def create_parser():
         match columns selected for database import."""
     )
     parser_print.add_argument(
-        "-c", "--cruise",
-        help="""Cruise name."""
-    )
-    parser_print.add_argument(
         "-o", "--outfile",
         help="""Tab-delimited output file. "-" or unspecified for stdout."""
     )
@@ -171,6 +173,8 @@ def main(cli_args=None):
             args.sfl_files = sfl.find_sfl_files(args.sfl_dir)
 
         # Set default output file to stdout
+        # Some subcommands don't have an outfile argument so use getattr to
+        # avoid AttributeError
         outfile = getattr(args, "outfile", None)
         if outfile is None or outfile == "-":
             args.outfile = sys.stdout
@@ -186,8 +190,6 @@ def do_check(args):
 
     df = sfl.fix(df)
     errors = sfl.check(df)
-    # Remove cruise errors from here
-    errors = [e for e in errors if e["column"] != "cruise"]
 
     if len(errors) > 0:
         if args.json_errors:
@@ -206,10 +208,26 @@ def do_convert_gga(args):
 
 
 def do_db(args):
+    if len(args.sfl_files) != 1:
+        sys.stderr.write('db import can ony performed on one file at a time%s' % os.linesep)
+        return 1
+
+    results = sfl.parse_sfl_filename(args.sfl_files[0])
+    if results:
+        cruise, serial = results
+    else:
+        cruise, serial = None, None
+    if args.cruise is not None:
+        cruise  = args.cruise
+    if args.serial is not None:
+        serial = args.serial
+
+    if cruise is None or serial is None:
+        sys.stderr.write('instrument serial and cruise must both be specified either in filename as <cruise>_<instrument-serial>.sfl or as command-line options.%s' % os.linesep)
+        return 1
+
     df = sfl.read_files(args.sfl_files)
 
-    if args.cruise is not None:
-        df = sfl.add_cruise(df, args.cruise)
     df = sfl.fix(df)
     errors = sfl.check(df)
 
@@ -220,7 +238,7 @@ def do_db(args):
             sfl.print_tsv_errors(errors, sys.stdout, print_all=args.all_errors, header=args.error_header)
         if not args.force:
             return 1
-    sfl.save_to_db(df, args.db)
+    sfl.save_to_db(df, args.db, cruise, serial)
 
 
 def do_dedup(args):
@@ -248,8 +266,6 @@ def do_detect_gga(args):
 def do_print(args):
     df = sfl.read_files(args.sfl_files)
 
-    if args.cruise is not None:
-        df = sfl.add_cruise(df, args.cruise)
     df = sfl.fix(df)
 
     sfl.save_to_file(df, args.outfile, convert_colnames=True)
