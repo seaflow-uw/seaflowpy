@@ -1,6 +1,4 @@
-from __future__ import absolute_import
 from builtins import str
-from . import sfl
 from . import errors
 import pandas as pd
 import sqlite3
@@ -211,7 +209,24 @@ def save_opp_stats(dbpath, vals):
 
 
 def save_sfl(dbpath, vals):
-    values_str = ", ".join([":" + f for f in sfl.output_columns])
+    # NOTE: values inserted must be in the same order as fields in sfl
+    # table. Defining that order in a list here makes it easier to verify
+    # that the right order is used.
+    field_order = [
+        "file",
+        "date",
+        "file_duration",
+        "lat",
+        "lon",
+        "conductivity",
+        "salinity",
+        "ocean_tmp",
+        "par",
+        "bulk_red",
+        "stream_pressure",
+        "event_rate"
+    ]
+    values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT OR REPLACE INTO sfl VALUES (%s)" % values_str
     executemany(dbpath, sql_insert, vals)
 

@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import py.path
 import pytest
-from .context import seaflowpy as sfp
+import seaflowpy as sfp
 
 
 class TestOpen(object):

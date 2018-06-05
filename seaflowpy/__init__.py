@@ -1,4 +1,3 @@
-from __future__ import absolute_import
 from . import clouds
 from . import conf
 from . import db

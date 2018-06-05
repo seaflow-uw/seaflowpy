@@ -12,7 +12,7 @@ import pytest
 import shutil
 import sqlite3
 import subprocess
-from .context import seaflowpy as sfp
+import seaflowpy as sfp
 from subprocess import check_output
 
 

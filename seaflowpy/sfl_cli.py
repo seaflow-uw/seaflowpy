@@ -1,5 +1,4 @@
 """Modify, validate, and import SFl files"""
-from __future__ import absolute_import
 from __future__ import unicode_literals
 from . import sfl
 import argparse

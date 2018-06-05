@@ -4,7 +4,7 @@ import numpy.testing as npt
 import os
 import py.path
 import pytest
-from .context import seaflowpy as sfp
+import seaflowpy as sfp
 
 
 class TestGGA2DecimalDegrees(object):
