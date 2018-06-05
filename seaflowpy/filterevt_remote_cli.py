@@ -323,6 +323,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
             puts(result)
 
             cruise_output_dir = os.path.join(output_dir, c)
+            util.mkdir_p(cruise_output_dir)
 
             if result.succeeded:
                 puts("Filtering successfully completed for cruise {}".format(c))
@@ -334,7 +335,6 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
                         # indexed and cross-platform tar archive.
                         result = run("zip -r -0 -q {}.zip {}".format(c, c), timeout=10800)
                 puts("Returning results for cruise {}".format(c))
-                util.mkdir_p(cruise_output_dir)
                 if zip_flag:
                     src = os.path.join(REMOTE_WORK_DIR, "{}.zip".format(c))
                 else:
@@ -355,12 +355,11 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
                 sys.stderr.write("Filtering failed for cruise {}\n".format(c))
 
             # Always write log output
-            util.mkdir_p(cruise_output_dir)
             logpath = os.path.join(cruise_output_dir, "seaflowpy_filter.{}.log".format(c))
             with open(logpath, "w") as logfh:
-                logfh.write("command={}\n".format(result.command))
-                logfh.write("real_command={}\n".format(result.real_command))
-                logfh.write(result + "\n")
+                logfh.write("command={}\n".format(cruise_results[c].command))
+                logfh.write("real_command={}\n".format(cruise_results[c].real_command))
+                logfh.write(cruise_results[c] + "\n")
 
     return cruise_results
 
