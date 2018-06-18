@@ -19,6 +19,7 @@ setup(name='seaflowpy',
     install_requires=[
         'arrow',
         'boto3',
+        'numexpr',
         'pandas',
         'fabric3',
         'future'

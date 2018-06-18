@@ -55,9 +55,6 @@ def create_parser():
     p.add_argument("-r", "--ramdisk_size", default="60", type=int,
                    metavar="GiB", help="""Size of ramdisk in GiB, limited by istance
                    RAM""")
-    p.add_argument("-z", "--zip", help="""Create uncompressed zip archive
-                   before returning results""",  action="store_true",
-                   default=False)
 
     p.add_argument("--version", action="version", version="%(prog)s " + version)
 
@@ -184,7 +181,7 @@ def main(cli_args=None):
         # Host list in env.hosts should be populated now and all machines up
         print("Filter data")
         execute(filter_cruise, host_assignments, args.output_dir,
-                args.process_count, args.zip)
+                args.process_count)
     finally:
         disconnect_all()  # always disconnect SSH connections
         if not args.nocleanup:
@@ -290,7 +287,8 @@ def pull_seaflowpy():
                 run("git clone https://github.com/armbrustlab/seaflowpy {}".format(repodir))
     with cd(repodir), hide("stdout"):
         run("git pull")
-        run("python setup.py install --user")
+        run("pip3 install --user .")
+        run("pip3 install pytest")
         #run("python setup.py test")
         run("py.test")
         with show("stdout"):
@@ -298,7 +296,9 @@ def pull_seaflowpy():
 
 @task
 @parallel
-def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False):
+def filter_cruise(host_assignments, output_dir, process_count=16):
+    util.mkdir_p(output_dir)
+
     cruises = [x[0] for x in host_assignments[env.host_string]]
     cruise_results = {}
     with cd(REMOTE_WORK_DIR):
@@ -322,31 +322,24 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
 
             puts(result)
 
-            cruise_output_dir = os.path.join(output_dir, c)
-            util.mkdir_p(cruise_output_dir)
-
             if result.succeeded:
                 puts("Filtering successfully completed for cruise {}".format(c))
-                if zip_flag:
-                    puts("Zipping cruise {} results into single file archive.".format(c))
-                    with settings(warn_only=True), hide("output"):
-                        # Dont' compress, assuming all OPP data is already
-                        # gzipped. This zip file is just a more conveniently
-                        # indexed and cross-platform tar archive.
-                        result = run("zip -r -0 -q {}.zip {}".format(c, c), timeout=10800)
-                puts("Returning results for cruise {}".format(c))
-                if zip_flag:
-                    src = os.path.join(REMOTE_WORK_DIR, "{}.zip".format(c))
-                else:
-                    src = os.path.join(REMOTE_WORK_DIR, c) + "/"
+                puts("Zipping cruise {} results into single file archive.".format(c))
+                with settings(warn_only=True), hide("output"):
+                    # Dont' compress, assuming all OPP data is already
+                    # gzipped. This zip file is just a more conveniently
+                    # indexed and cross-platform tar archive.
+                    result = run("zip -r -0 -q {}.zip {}".format(c, c), timeout=10800)
 
+                puts("Returning results for cruise {}".format(c))
                 rsyncout = execute(
                     # rsync files in cruise results dir to local cruise dir
                     rsync_get,
-                    src,
-                    cruise_output_dir,
+                    os.path.join(REMOTE_WORK_DIR, "{}.zip".format(c)),
+                    output_dir + "/",
                     hosts=[env.host_string]
                 )
+
                 # Print rsync output on source host, even though this is run
                 # on local, just to make it clear in logs which host is being
                 # transferred from
@@ -355,7 +348,8 @@ def filter_cruise(host_assignments, output_dir, process_count=16, zip_flag=False
                 sys.stderr.write("Filtering failed for cruise {}\n".format(c))
 
             # Always write log output
-            logpath = os.path.join(cruise_output_dir, "seaflowpy_filter.{}.log".format(c))
+            logpath = os.path.join(output_dir, "{}.seaflowpy_filter.log".format(c))
+
             with open(logpath, "w") as logfh:
                 logfh.write("command={}\n".format(cruise_results[c].command))
                 logfh.write("real_command={}\n".format(cruise_results[c].real_command))
