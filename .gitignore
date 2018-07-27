@@ -1,6 +1,6 @@
 *.pyc
 /dist
-/*.egg-info
+*/*.egg-info
 /.cache
 /.ipynb_checkpoints
 .Rhistory
@@ -11,3 +11,4 @@ build
 .Dockerfile
 .dockerignore
 .pytest_cache
+/.tox
