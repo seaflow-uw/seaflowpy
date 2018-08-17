@@ -32,14 +32,18 @@ def main(cli_args=None):
     args = parser.parse_args(cli_args)
     ok, bad = 0, 0
     for evt_file in args.files:
-        try:
-            evt_ = evt.EVT(path=evt_file)
-        except errors.EVTFileError as e:
-            status = e
+        if not evt.is_evt(evt_file):
+            status = "Filename does not look like an EVT file"
             bad += 1
         else:
-            status = "OK"
-            ok += 1
+            try:
+                _ = evt.EVT(path=evt_file)
+            except errors.EVTFileError as e:
+                status = e
+                bad += 1
+            else:
+                status = "OK"
+                ok += 1
         if args.verbose or status != "OK":
             print("%s: %s" % (evt_file, status))
     print("%d/%d files passed validation" % (ok, bad + ok))

@@ -2,6 +2,14 @@ import pytest
 import seaflowpy as sfp
 
 
+def test_invalid_filename():
+    with pytest.raises(sfp.errors.EVTFileError):
+        f = sfp.seaflowfile.SeaFlowFile("foobar")
+
+def test_invalid_filename_date():
+    with pytest.raises(sfp.errors.EVTFileError):
+        f = sfp.seaflowfile.SeaFlowFile("2014-07-32T00-00-02+00-00")
+
 def test_new_style():
     f = sfp.seaflowfile.SeaFlowFile("2014-07-04T00-00-02+00-00")
     assert f.path == "2014-07-04T00-00-02+00-00"
@@ -12,6 +20,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian is None
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("2014_185/2014-07-04T00-00-02+00-00")
     assert f.path == "2014_185/2014-07-04T00-00-02+00-00"
@@ -22,6 +31,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian == "2014_185"
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014-07-04T00-00-02+00-00")
     assert f.path == "foo/2014-07-04T00-00-02+00-00"
@@ -32,6 +42,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian is None
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014_185/2014-07-04T00-00-02+00-00")
     assert f.path == "foo/2014_185/2014-07-04T00-00-02+00-00"
@@ -42,6 +53,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian == "2014_185"
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00"
@@ -52,6 +64,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian is None
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.gz")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00.gz"
@@ -62,6 +75,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian is None
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.vct.gz")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00.vct.gz"
@@ -72,6 +86,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian is None
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.opp.gz")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00.opp.gz"
@@ -82,6 +97,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian is None
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014_185/2014-07-04T00-00-02+00-00.opp.gz")
     assert f.path == "foo/bar/2014_185/2014-07-04T00-00-02+00-00.opp.gz"
@@ -92,6 +108,7 @@ def test_new_style():
     assert f.julian == "2014_185"
     assert f.path_julian == "2014_185"
     assert f.is_old_style == False
+    assert f.is_new_style == True
 
 
 def test_old_style():
@@ -104,6 +121,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian is None
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("2014_185/42.evt")
     assert f.path == "2014_185/42.evt"
@@ -114,6 +132,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian == "2014_185"
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/42.evt")
     assert f.path == "foo/42.evt"
@@ -124,6 +143,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian is None
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014_185/42.evt")
     assert f.path == "foo/2014_185/42.evt"
@@ -134,6 +154,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian == "2014_185"
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt")
     assert f.path == "foo/bar/42.evt"
@@ -144,6 +165,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian is None
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt.gz")
     assert f.path == "foo/bar/42.evt.gz"
@@ -154,6 +176,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian is None
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt.vct.gz")
     assert f.path == "foo/bar/42.evt.vct.gz"
@@ -164,6 +187,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian is None
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt.opp.gz")
     assert f.path == "foo/bar/42.evt.opp.gz"
@@ -174,6 +198,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian is None
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014_185/42.evt.opp.gz")
     assert f.path == "foo/2014_185/42.evt.opp.gz"
@@ -184,6 +209,7 @@ def test_old_style():
     assert f.julian is None
     assert f.path_julian == "2014_185"
     assert f.is_old_style == True
+    assert f.is_new_style == False
 
 
 def test_sort_new_chronologically():

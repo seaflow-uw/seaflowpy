@@ -47,17 +47,21 @@ def create_parser():
     parser_check.add_argument(
         "-a", "--all_errors",
         action="store_true",
-        help="""Print all errors."""
+        help="""Report all errors."""
     )
     parser_check.add_argument(
         "-H", "--error_header",
         action="store_true",
-        help="""Print header line for tsv error output."""
+        help="""Add header line for tsv error output."""
     )
     parser_check.add_argument(
         "-j", "--json_errors",
         action="store_true",
-        help="""Print errors as JSON."""
+        help="""Report errors as JSON."""
+    )
+    parser_check.add_argument(
+        "-o", "--outfile",
+        help="""Output file. "-" or unspecified for stdout."""
     )
     parser_check.set_defaults(func=do_check)
 
@@ -70,7 +74,7 @@ def create_parser():
     )
     parser_convert_gga.add_argument(
         "-o", "--outfile",
-        help="""Tab-delimited output file. "-" or unspecified for stdout."""
+        help="""Output file. "-" or unspecified for stdout."""
     )
     parser_convert_gga.set_defaults(func=do_convert_gga)
 
@@ -128,7 +132,7 @@ def create_parser():
     )
     parser_dedup.add_argument(
         "-o", "--outfile",
-        help="""Tab-delimited output file. "-" or unspecified for stdout."""
+        help="""Output file. "-" or unspecified for stdout."""
     )
     parser_dedup.set_defaults(func=do_dedup)
 
@@ -151,7 +155,7 @@ def create_parser():
     )
     parser_print.add_argument(
         "-o", "--outfile",
-        help="""Tab-delimited output file. "-" or unspecified for stdout."""
+        help="""Output file. "-" or unspecified for stdout."""
     )
     parser_print.set_defaults(func=do_print)
 
@@ -192,9 +196,9 @@ def do_check(args):
 
     if len(errors) > 0:
         if args.json_errors:
-            sfl.print_json_errors(errors, sys.stdout, print_all=args.all_errors)
+            sfl.print_json_errors(errors, args.outfile, print_all=args.all_errors)
         else:
-            sfl.print_tsv_errors(errors, sys.stdout, print_all=args.all_errors, header=args.error_header)
+            sfl.print_tsv_errors(errors, args.outfile, print_all=args.all_errors, header=args.error_header)
         return 1
 
 

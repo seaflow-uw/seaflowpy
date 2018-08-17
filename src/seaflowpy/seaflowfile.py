@@ -7,6 +7,7 @@ import json
 import os
 import pprint
 import re
+from . import errors
 from . import util
 from collections import OrderedDict
 from operator import itemgetter
@@ -33,9 +34,15 @@ class SeaFlowFile(object):
             self.filename = parts["file"]
             self.filename_noext = remove_ext(parts["file"])
 
-            self.date = date_from_filename(self.filename_noext)
+            if not (self.is_old_style or self.is_new_style):
+                raise errors.EVTFileError("Filename doesn't look like a SeaFlow file")
+
+            try:
+                self.date = date_from_filename(self.filename_noext)
+            except ValueError as e:
+                raise errors.EVTFileError("Error parsing date from filename: {}".format(e))
             if not self.is_old_style and not self.date:
-                raise ValueError("Error parsing date from file {}".format(self.path))
+                raise errors.EVTFileError("Error parsing date from filename")
 
             # YYYY_juliandayofyear directory found in file path and parsed
             # from file datestmap
@@ -80,6 +87,11 @@ class SeaFlowFile(object):
     def is_old_style(self):
         """Is this old style file? e.g. 2014_185/1.evt."""
         return bool(re.match(old_file_re, self.filename_noext))
+
+    @property
+    def is_new_style(self):
+        """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.evt.gz"""
+        return bool(re.match(new_file_re, self.filename_noext))
 
     def open(self):
         """Return a file-like object for reading."""

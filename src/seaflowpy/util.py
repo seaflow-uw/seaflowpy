@@ -1,11 +1,23 @@
 from __future__ import print_function
 from __future__ import absolute_import
+from . import errors
+from functools import wraps
+from operator import itemgetter
+from signal import getsignal, signal, SIGPIPE, SIG_DFL
 import datetime
 import errno
-from . import errors
 import os
 import subprocess
 import time
+
+
+def find_files(root_dir):
+    """Return a list of all file paths below root_dir."""
+    allfiles = []
+    for root, dirs, files in os.walk(root_dir):
+        for f in files:
+            allfiles.append(os.path.join(root, f))
+    return allfiles
 
 
 def gzip_file(path, print_timing=False):
@@ -66,10 +78,19 @@ def splitpath(path):
     return parts[::-1]
 
 
-def find_files(root_dir):
-    """Return a list of all file paths below root_dir."""
-    allfiles = []
-    for root, dirs, files in os.walk(root_dir):
-        for f in files:
-            allfiles.append(os.path.join(root, f))
-    return allfiles
+def suppress_sigpipe(f):
+    """Decorator to handle SIGPIPE cleanly.
+
+    Prevent Python from turning SIGPIPE into an exception and printing an
+    uncatchable error message. Note, if the wrapped function depends on the
+    default behavior of Python when handling SIGPIPE this decorator may have
+    unintended effects."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        orig_handler = getsignal(SIGPIPE)
+        signal(SIGPIPE, SIG_DFL)
+        try:
+            f(*args, **kwargs)
+        finally:
+            signal(SIGPIPE, orig_handler)  # restore original Python SIGPIPE handler
+    return wrapper

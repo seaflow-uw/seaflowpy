@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 from . import db
 from . import geo
+from . import util
 from . import seaflowfile
 from collections import OrderedDict
 import arrow
@@ -256,6 +257,7 @@ def parse_sfl_filename(fn):
         return (m.group('cruise'), m.group('inst'))
 
 
+@util.suppress_sigpipe
 def print_json_errors(errors, fh, print_all=True):
     errors_output = []
     errors_seen = set()
@@ -268,6 +270,7 @@ def print_json_errors(errors, fh, print_all=True):
     fh.write("\n")
 
 
+@util.suppress_sigpipe
 def print_tsv_errors(errors, fh, print_all=True, header=True):
     errors_output = []
     errors_seen = set()
@@ -345,6 +348,7 @@ def save_to_db(df, dbpath, cruise=None, serial=None):
     db.save_sfl(dbpath, df.to_dict('index').values())
 
 
+@util.suppress_sigpipe
 def save_to_file(df, outpath, convert_colnames=True, all_columns=False):
     """Write SFL dataframe to a csv file.
 
