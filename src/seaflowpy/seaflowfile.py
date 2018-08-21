@@ -37,12 +37,13 @@ class SeaFlowFile(object):
             if not (self.is_old_style or self.is_new_style):
                 raise errors.EVTFileError("Filename doesn't look like a SeaFlow file")
 
-            try:
-                self.date = date_from_filename(self.filename_noext)
-            except ValueError as e:
-                raise errors.EVTFileError("Error parsing date from filename: {}".format(e))
-            if not self.is_old_style and not self.date:
-                raise errors.EVTFileError("Error parsing date from filename")
+            if self.is_new_style:
+                try:
+                    self.date = date_from_filename(self.filename_noext)
+                except ValueError as e:
+                    raise errors.EVTFileError("Error parsing date from filename: {}".format(e))
+            else:
+                self.date = None
 
             # YYYY_juliandayofyear directory found in file path and parsed
             # from file datestmap
@@ -144,7 +145,6 @@ def date_from_filename(filename):
 
     Parts of the filename after the datestamp will be ignored.
     """
-    date = None
     filename_noext = remove_ext(os.path.basename(filename))
     m = re.match(new_file_re, filename_noext)
     if m:
@@ -153,7 +153,8 @@ def date_from_filename(filename):
         # - 2014-05-15T17-07-08-07-00
         # Parse RFC 3339 date string with arrow, then get datetime
         date  = arrow.get("{}T{}:{}:{}{}{}".format(*m.groups())).datetime
-    return date
+        return date
+    raise ValueError('filename does not look like a new-style SeaFlow file')
 
 
 def parse_path(file_path):
