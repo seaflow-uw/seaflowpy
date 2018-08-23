@@ -7,6 +7,6 @@ from . import filterevt
 from . import geo
 from . import sfl
 from . import util
-from . import vct
+from .cli import cli
 from .evt import EVT
 from .evt import find_evt_files

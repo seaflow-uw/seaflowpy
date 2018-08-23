@@ -237,9 +237,9 @@ def get_cruise(dbpath):
         df = pd.read_sql(sql, dbcon)
     if len(df.index) > 1:
         cruises = ", ".join([str(c) for c in df.cruise.tolist()])
-        raise errors.SeaflowpyError("More than one cruise found in database {}: {}".format(dbpath, cruises))
+        raise errors.SeaFlowpyError("More than one cruise found in database {}: {}".format(dbpath, cruises))
     if len(df.index) == 0:
-        raise errors.SeaflowpyError("No cruise name found in database {}\n".format(dbpath))
+        raise errors.SeaFlowpyError("No cruise name found in database {}\n".format(dbpath))
     return df.cruise.tolist()[0]
 
 
@@ -256,9 +256,9 @@ def get_serial(dbpath):
         df = pd.read_sql(sql, dbcon)
     if len(df.index) > 1:
         insts = ", ".join([str(c) for c in df.inst.tolist()])
-        raise errors.SeaflowpyError("More than one instrument serial found in database {}: {}".format(dbpath, insts))
+        raise errors.SeaFlowpyError("More than one instrument serial found in database {}: {}".format(dbpath, insts))
     if len(df.index) == 0:
-        raise errors.SeaflowpyError("No instrument serial found in database {}\n".format(dbpath))
+        raise errors.SeaFlowpyError("No instrument serial found in database {}\n".format(dbpath))
     return df.inst.tolist()[0]
 
 
@@ -266,7 +266,7 @@ def get_latest_filter(dbpath):
     with sqlite3.connect(dbpath) as dbcon:
         df = pd.read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
     if len(df.index) == 0:
-        raise errors.SeaflowpyError("No filter parameters found in database {}\n".format(dbpath))
+        raise errors.SeaFlowpyError("No filter parameters found in database {}\n".format(dbpath))
     _id = df.iloc[0]["id"]
     return df[df["id"] == _id]
 

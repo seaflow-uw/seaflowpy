@@ -165,7 +165,7 @@ def filter_one_file(o):
 
     try:
         evt_ = evt.EVT(path=evt_file, fileobj=fileobj)
-    except errors.EVTFileError as e:
+    except errors.FileError as e:
         print("Could not parse file %s: %s" % (evt_file, repr(e)))
     except Exception as e:
         print("Unexpected error for file %s: %s" % (evt_file, repr(e)))

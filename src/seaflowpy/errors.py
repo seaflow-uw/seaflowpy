@@ -1,9 +1,9 @@
-class SeaflowpyError(Exception):
+class SeaFlowpyError(Exception):
     """Base class for all seaflowpy exceptions"""
     pass
 
 
-class SimpleCalledProcessError(SeaflowpyError):
+class SimpleCalledProcessError(SeaFlowpyError):
     """Custom exception to replace subprocess.CalledProcessError
 
     subprocess.CalledProcessError does not handling pickling/unpickling through
@@ -12,6 +12,6 @@ class SimpleCalledProcessError(SeaflowpyError):
     pass
 
 
-class EVTFileError(SeaflowpyError):
-    """Custom exception class for EVT file format errors"""
+class FileError(SeaFlowpyError):
+    """Custom exception class for SeaFlow file format errors"""
     pass

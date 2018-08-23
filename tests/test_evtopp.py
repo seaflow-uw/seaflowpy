@@ -94,48 +94,16 @@ class TestOpen(object):
         assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
         assert evt.transformed == False
 
-    def test_read_valid_evt_subselect_columns(self):
-        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
-        evtanswer = evt.df.drop(
-            ["time", "pulse_width", "D1", "D2", "fsc_perp", "fsc_big", "chl_big"],
-            axis=1
-        )
-        evtsub = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-                         columns=["fsc_small", "chl_small", "pe"])
-        assert evtsub.columns == ["fsc_small", "pe", "chl_small"]
-        npt.assert_array_equal(
-            evtsub.df.columns,
-            ["fsc_small", "pe", "chl_small"]
-        )
-        npt.assert_array_equal(evtsub.df, evtanswer)
-
-    def test_read_valid_evt_subselect_columns_and_transform(self):
-        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-                      transform=True)
-        evtanswer = evt.df.drop(
-            ["time", "pulse_width", "D1", "D2", "fsc_perp", "fsc_big", "chl_big"],
-            axis=1
-        )
-        evtsub = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-                         columns=["fsc_small", "chl_small", "pe"],
-                         transform=True)
-        assert evtsub.columns == ["fsc_small", "pe", "chl_small"]
-        npt.assert_array_equal(
-            evtsub.df.columns,
-            ["fsc_small", "pe", "chl_small"]
-        )
-        npt.assert_array_equal(evtsub.df, evtanswer)
-
     def test_read_empty_evt(self):
-        with pytest.raises(sfp.errors.EVTFileError):
+        with pytest.raises(sfp.errors.FileError):
             evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_bad_header_count_evt(self):
-        with pytest.raises(sfp.errors.EVTFileError):
+        with pytest.raises(sfp.errors.FileError):
             evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_short_header_evt(self):
-        with pytest.raises(sfp.errors.EVTFileError):
+        with pytest.raises(sfp.errors.FileError):
             evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
 
@@ -253,25 +221,6 @@ class TestTransform(object):
         assert t_df is not evt.df
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
-
-
-class TestOPPVCT(object):
-    def test_add_vct(self):
-        opps = [sfp.EVT(f) for f in sfp.find_evt_files("tests/testcruise_opp")]
-        vcts = [sfp.vct.VCT(f) for f in sfp.vct.find_vct_files("tests/testcruise_vct")]
-
-        # By directory
-        opps[0].add_vct("tests/testcruise_vct")
-        opps[1].add_vct("tests/testcruise_vct")
-        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].df["pop"].values)
-        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].df["pop"].values)
-
-        # By file path
-        opps = [sfp.EVT(f) for f in sfp.find_evt_files("tests/testcruise_opp")]
-        opps[0].add_vct(os.path.join("tests/testcruise_vct", opps[0].file_id + ".vct.gz"))
-        opps[1].add_vct(os.path.join("tests/testcruise_vct", opps[1].file_id + ".vct"))
-        assert "\n".join(vcts[0].vct["pop"].values) == "\n".join(opps[0].df["pop"].values)
-        assert "\n".join(vcts[1].vct["pop"].values) == "\n".join(opps[1].df["pop"].values)
 
 
 class TestOutput(object):

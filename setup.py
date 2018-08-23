@@ -44,6 +44,7 @@ setup(
     install_requires=[
         'arrow',
         'boto3',
+        'click',
         'numexpr',
         'pandas',
         'fabric3',
@@ -53,13 +54,7 @@ setup(
     cmdclass = {'test': PyTest},
     entry_points={
         'console_scripts': [
-            'seaflowpy_evtpath2juliandir=seaflowpy.evtpath2juliandir_cli:main',
-            'seaflowpy_filter=seaflowpy.filterevt_cli:main',
-            'seaflowpy_filter_remote=seaflowpy.filterevt_remote_cli:main',
-            'seaflowpy_sds2sfl=seaflowpy.sds2sfl_cli:main',
-            'seaflowpy_sfl=seaflowpy.sfl_cli:main',
-            'seaflowpy_validate_evt=seaflowpy.validate_evt_cli:main',
-            'seaflowpy_validate_manifest=seaflowpy.validate_manifest_cli:main'
+            'seaflowpy=seaflowpy.cli.cli:cli'
         ]
     }
 )

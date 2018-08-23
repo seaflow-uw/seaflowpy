@@ -23,4 +23,5 @@ evt.dir <- file.path(testdir, "testcruise_evt")
 opp.dir <- file.path(wd, "opp")
 
 file.copy(paramsdb, db, copy.mode=F)
-filter.evt.files(db, cruise, evt.dir, get.evt.files(evt.dir), opp.dir)
+get.filter.params.latest(db)
+filter.evt.files(db, evt.dir, get.evt.files(evt.dir), opp.dir)

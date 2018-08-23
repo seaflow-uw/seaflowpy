@@ -35,13 +35,13 @@ class SeaFlowFile(object):
             self.filename_noext = remove_ext(parts["file"])
 
             if not (self.is_old_style or self.is_new_style):
-                raise errors.EVTFileError("Filename doesn't look like a SeaFlow file")
+                raise errors.FileError("Filename doesn't look like a SeaFlow file")
 
             if self.is_new_style:
                 try:
                     self.date = date_from_filename(self.filename_noext)
                 except ValueError as e:
-                    raise errors.EVTFileError("Error parsing date from filename: {}".format(e))
+                    raise errors.FileError("Error parsing date from filename: {}".format(e))
             else:
                 self.date = None
 

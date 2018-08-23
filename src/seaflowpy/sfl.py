@@ -1,10 +1,5 @@
 """Do things to SFL data DataFrames"""
 from __future__ import unicode_literals
-from . import db
-from . import geo
-from . import util
-from . import seaflowfile
-from collections import OrderedDict
 import arrow
 import csv
 import json
@@ -12,6 +7,12 @@ import os
 import pandas as pd
 import re
 import sys
+from . import db
+from . import geo
+from . import util
+from . import seaflowfile
+from collections import OrderedDict, Sequence
+from past.builtins import basestring
 
 
 sfl_delim = "\t"
@@ -271,7 +272,7 @@ def print_json_errors(errors, fh, print_all=True):
 
 
 @util.suppress_sigpipe
-def print_tsv_errors(errors, fh, print_all=True, header=True):
+def print_tsv_errors(errors, fh, print_all=True):
     errors_output = []
     errors_seen = set()
     for e in errors:
@@ -279,10 +280,8 @@ def print_tsv_errors(errors, fh, print_all=True, header=True):
             continue
         errors_seen.add(e["message"])
         errors_output.append(e)
-    writer = csv.DictWriter(fh, sorted(errors_output[0].keys()), delimiter="\t", lineterminator="\n")
-    if header:
-        fh.write("#")
-        writer.writeheader()
+    writer = csv.DictWriter(fh, sorted(errors_output[0].keys()), delimiter='\t', lineterminator=os.linesep)
+    writer.writeheader()
     for e in errors_output:
         writer.writerow(e)
 
@@ -291,7 +290,7 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
     """Parse SFL files into one DataFrame.
 
     Arguments:
-    files -- SFL file paths.
+    files -- SFL file paths or a single path.
 
     Keyword arguments:
     convert_numerics -- Cast numeric SQL columns as numbers (default True).
@@ -307,10 +306,15 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
     kwargs_defaults = dict(defaults, **kwargs)
 
     df = None
+    if not isinstance(files, Sequence):
+        files = [files]
     for f in files:
         partial_df = pd.read_csv(f, **kwargs_defaults)
         # Add column for input file path and file line numbers
-        partial_df["input_file_path"] = f
+        if isinstance(f, basestring):
+            partial_df["input_file_path"] = f
+        else:
+            partial_df["input_file_path"] = f.name
         # Start at 2 to account for zero-based counting and header
         partial_df["input_file_line_number"] = range(2, len(partial_df)+2)
         if df is None:

@@ -14,19 +14,18 @@ import re
 from . import seaflowfile
 import sys
 from . import util
-from . import vct
 from collections import OrderedDict
 
 
 class EVT(seaflowfile.SeaFlowFile):
     """Class for EVT data operations"""
     # Data columns
-    all_columns = [
+    columns = [
         "time", "pulse_width", "D1", "D2", "fsc_small", "fsc_perp", "fsc_big",
         "pe", "chl_small", "chl_big"
     ]
-    all_int_columns = all_columns[:2]
-    all_float_columns = all_columns[2:]
+    int_columns = columns[:2]
+    float_columns = columns[2:]
 
     @staticmethod
     def transform(vals):
@@ -57,18 +56,6 @@ class EVT(seaflowfile.SeaFlowFile):
         # If this is filtered data, a reference to unfiltered EVT parent object
         self.parent = None
 
-        # Columns to keep. None means keep all
-        if columns is None:
-            self.columns = self.all_columns
-        else:
-            # Keep in file order
-            # Only keep if name matches a real column
-            self.columns = [c for c in self.all_columns if c in columns]
-
-        # Update lists of integer and float columns
-        self.int_columns = [c for c in self.all_int_columns if c in self.columns]
-        self.float_columns = [c for c in self.all_float_columns if c in self.columns]
-
         # Set filter params to None
         # Will be set in opp objects during cloning
         self.filter_params = None
@@ -95,12 +82,12 @@ class EVT(seaflowfile.SeaFlowFile):
             # unsigned int
             buff = fh.read(4)
             if len(buff) == 0:
-                raise errors.EVTFileError("File is empty")
+                raise errors.FileError("File is empty")
             if len(buff) != 4:
-                raise errors.EVTFileError("File has invalid particle count header")
+                raise errors.FileError("File has invalid particle count header")
             rowcnt = np.fromstring(buff, dtype="uint32", count=1)[0]
             if rowcnt == 0:
-                raise errors.EVTFileError("File has no particle data")
+                raise errors.FileError("File has no particle data")
             # Read the rest of the data. Each particle has 12 unsigned
             # 16-bit ints in a row.
             expected_bytes = rowcnt * 12 * 2  # rowcnt * 12 columns * 2 bytes
@@ -110,7 +97,7 @@ class EVT(seaflowfile.SeaFlowFile):
             # vanilla int types. This is true for Python 3, not for Python 2.
             buff = fh.read(int(expected_bytes))
             if len(buff) != expected_bytes:
-                raise errors.EVTFileError(
+                raise errors.FileError(
                     "File has incorrect number of data bytes. Expected %i, saw %i" %
                     (expected_bytes, len(buff))
                 )
@@ -126,11 +113,7 @@ class EVT(seaflowfile.SeaFlowFile):
             # it's easier to treat them as leading ints on each line after the
             # header.
             self.df = pd.DataFrame(np.delete(events, [0, 1], 1),
-                                   columns=self.all_columns)
-            # Keep a subset of columns
-            if self.columns != self.all_columns:
-                todrop = [c for c in self.all_columns if c not in self.columns]
-                self.df = self.df.drop(todrop, axis=1)
+                                   columns=self.columns)
 
             # Convert to float64
             self.df = self.df.astype(np.float64)
@@ -257,44 +240,6 @@ class EVT(seaflowfile.SeaFlowFile):
             particles[self.float_columns] = self.transform(particles[self.float_columns])
         return particles
 
-    def calc_pop_stats(self):
-        stats = {}
-        if not self.transformed:
-            df = self.transform_particles(inplace=False)
-        else:
-            df = self.df
-        if "pop" in df.columns:
-            bypop = df.groupby("pop")
-            means = bypop.mean()
-            counts = bypop.size()
-            for pop in bypop.groups:
-                stats[pop] = {
-                    "pop": pop,
-                    "count": counts[pop]
-                }
-                for column in ["fsc_small", "fsc_perp", "pe", "chl_small"]:
-                    if column in df.columns:
-                        stats[pop][column] = means.loc[pop, column]
-        else:
-            raise ValueError(
-                "Particle DataFrame must contain pop column to calculate population statistics"
-            )
-        return stats
-
-    def add_vct(self, vct_dir_or_file):
-        if os.path.isdir(vct_dir_or_file):
-            vct_file = os.path.join(vct_dir_or_file, self.file_id + ".vct")
-            if not os.path.exists(vct_file):
-                vct_file = vct_file + ".gz"
-        else:
-            vct_file = vct_dir_or_file
-
-        if not os.path.exists(vct_file):
-            raise IOError("VCT file for {} could not be found". format(self.file_id))
-
-        vctobj = vct.VCT(vct_file)
-        self.df["pop"] = vctobj.vct["pop"]
-
     def save_opp_to_db(self, filter_id, quantile, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
         if not self.has_data():
@@ -356,12 +301,6 @@ class EVT(seaflowfile.SeaFlowFile):
 
         util.gzip_file(outfile)
 
-    def write_vct(self, outdir, quantile):
-        if "pop" not in self.df.columns:
-            raise ValueError("EVT DataFrame must contain pop column to write VCT csv file")
-        vct_ = vct.VCT(path=self.path, vct=self.df["pop"].values)
-        vct_.write_vct(outdir)
-
     def _create_particle_matrix(self):
         """Return a copy of df ready to write to binary file"""
         if not self.has_data():
@@ -415,14 +354,3 @@ def parse_file_list(files):
             if is_evt(f):
                 files_list.append(f)
     return files_list
-
-
-def vertstopath(verts):
-    """Convert polygon vertices as 2 column pandas DataFrame to a matplotlib.Path"""
-    verts_list = verts.values.tolist()
-    verts_list.append(verts_list[0])  # close the polygon
-    codes = [Path.MOVETO]
-    for i in range(len(verts_list)-2):
-        codes.append(Path.LINETO)
-    codes.append(Path.CLOSEPOLY)
-    return Path(verts_list, codes)

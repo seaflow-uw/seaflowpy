@@ -3,11 +3,11 @@ import seaflowpy as sfp
 
 
 def test_invalid_filename():
-    with pytest.raises(sfp.errors.EVTFileError):
+    with pytest.raises(sfp.errors.FileError):
         f = sfp.seaflowfile.SeaFlowFile("foobar")
 
 def test_invalid_filename_date():
-    with pytest.raises(sfp.errors.EVTFileError):
+    with pytest.raises(sfp.errors.FileError):
         f = sfp.seaflowfile.SeaFlowFile("2014-07-32T00-00-02+00-00")
 
 def test_new_style():
