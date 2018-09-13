@@ -46,7 +46,7 @@ def validate_resolution(ctx, param, value):
 @click.option('-r', '--resolution', default=10.0, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
 def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
-    """Filter EVT data locally"""
+    """Filter EVT data locally."""
     # Validate args
     if not evt_dir and not s3_flag:
         raise click.UsageError('One of --evt_dir or --s3 must be provided')

@@ -1,5 +1,6 @@
 from builtins import str
 from . import errors
+import arrow
 import pandas as pd
 import sqlite3
 import uuid
@@ -180,7 +181,41 @@ def create_db(dbpath):
     ensure_indexes(dbpath)
 
 
+def save_filter_params(dbpath, vals):
+    create_db(dbpath)
+    # NOTE: values inserted must be in the same order as fields in opp
+    # table. Defining that order in a list here makes it easier to verify
+    # that the right order is used.
+    field_order = [
+        "id",
+        "date",
+        "quantile",
+        "beads_fsc_small",
+        "beads_D1",
+        "beads_D2",
+        "width",
+        "notch_small_D1",
+        "notch_small_D2",
+        "notch_large_D1",
+        "notch_large_D2",
+        "offset_small_D1",
+        "offset_small_D2",
+        "offset_large_D1",
+        "offset_large_D2"
+    ]
+    # Construct values string with named placeholders
+    values_str = ", ".join([":" + f for f in field_order])
+    sql_insert = "INSERT OR REPLACE INTO filter VALUES ({})".format(values_str)
+    id_ = str(uuid.uuid4())
+    date = arrow.utcnow().format('YYYY-MM-DDTHH:mm:ssZZ')
+    for v in vals:
+        v['id'] = id_
+        v['date'] = date
+    executemany(dbpath, sql_insert, vals)
+
+
 def save_metadata(dbpath, vals):
+    create_db(dbpath)
     # Bit drastic but there should only be one entry in metadata at a time
     sql_delete = "DELETE FROM metadata"
     executemany(dbpath, sql_delete, vals)
@@ -190,6 +225,7 @@ def save_metadata(dbpath, vals):
 
 
 def save_opp_stats(dbpath, vals):
+    create_db(dbpath)
     # NOTE: values inserted must be in the same order as fields in opp
     # table. Defining that order in a list here makes it easier to verify
     # that the right order is used.
@@ -209,6 +245,7 @@ def save_opp_stats(dbpath, vals):
 
 
 def save_sfl(dbpath, vals):
+    create_db(dbpath)
     # NOTE: values inserted must be in the same order as fields in sfl
     # table. Defining that order in a list here makes it easier to verify
     # that the right order is used.

@@ -1,5 +1,6 @@
 from . import evt_cmd
 from . import filter_evt_cmd
+from . import filter_params_cmd
 from . import julian_cmd
 from . import remote_filter_evt_cmd
 from . import sds2sfl_cmd

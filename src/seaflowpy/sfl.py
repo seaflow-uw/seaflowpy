@@ -15,7 +15,7 @@ from collections import OrderedDict, Sequence
 from past.builtins import basestring
 
 
-sfl_delim = "\t"
+sfl_delim = '\t'
 
 # Mappings between SFL file and SQL table column names
 colname_mapping = {
@@ -335,7 +335,7 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
 
 
 def save_to_db(df, dbpath, cruise=None, serial=None):
-    """Write SFL dataframe to a csv file.
+    """Write SFL dataframe to a SQLite3 database.
 
     Arguments:
     df -- SFL DataFrame.
