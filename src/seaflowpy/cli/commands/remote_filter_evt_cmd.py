@@ -286,7 +286,7 @@ def pull_seaflowpy():
         #run('python setup.py test')
         run('py.test')
         with show('stdout'):
-            run('seaflowpy_filter --version')
+            run('seaflowpy version')
 
 @task
 @parallel
@@ -309,7 +309,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 }
                 with settings(warn_only=True), hide('output'):
                     result = run(
-                        'seaflowpy_filter --s3 -d {cruise}.db -p {process_count} -o {cruise}_opp'.format(**text),
+                        'seaflowpy filter --s3 -d {cruise}.db -p {process_count} -o {cruise}_opp'.format(**text),
                         timeout=10800
                     )
                     cruise_results[c] = result
