@@ -178,7 +178,7 @@ def remote_filter_evt_cmd(output_dir, dryrun, instance_count, no_cleanup,
                 process_count)
     finally:
         disconnect_all()  # always disconnect SSH connections
-        if not nocleanup:
+        if not no_cleanup:
             cloud.cleanup()  # clean up in case of any unhandled exceptions
         print('Finished at {}'.format(datetime.datetime.utcnow().isoformat()))
 

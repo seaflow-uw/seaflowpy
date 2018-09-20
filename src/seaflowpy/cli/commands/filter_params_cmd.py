@@ -5,6 +5,7 @@ import pandas as pd
 import uuid
 from seaflowpy import db
 from seaflowpy import seaflowfile
+from seaflowpy.errors import SeaFlowpyError
 
 
 
@@ -20,7 +21,8 @@ def filter_params_cmd(dbpath, infile, cruise):
 
     File paths must be new-style datestamped paths. Any part of the file
     path except for the filename will be ignored. The filename may include a
-    '.gz' extension.
+    '.gz' extension. If an entry can't be found for the specified cruise this
+    command will exit with a non-zero exit status.
     """
     # If cruise not supplied, try to get from db
     if cruise is None:
@@ -41,6 +43,6 @@ def filter_params_cmd(dbpath, infile, cruise):
     df.columns = [c.replace('.', '_') for c in df.columns]
     params = df[df.cruise == cruise]
     if len(params.index) == 0:
-        click.echo('no filter parameters found for cruise %s' % cruise)
+        raise click.ClickException('no filter parameters found for cruise %s' % cruise)
     else:
         db.save_filter_params(dbpath, params.to_dict('index').values())
