@@ -131,7 +131,6 @@ def ensure_tables(dbpath):
 )""")
 
     cur.execute("""CREATE VIEW IF NOT EXISTS stat AS
-    CREATE VIEW IF NOT EXISTS stat AS
     SELECT
         opp.file as file,
         sfl.date as time,
