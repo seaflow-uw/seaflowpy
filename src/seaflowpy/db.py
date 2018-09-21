@@ -131,29 +131,41 @@ def ensure_tables(dbpath):
 )""")
 
     cur.execute("""CREATE VIEW IF NOT EXISTS stat AS
+    CREATE VIEW IF NOT EXISTS stat AS
     SELECT
         opp.file as file,
         sfl.date as time,
         sfl.lat as lat,
         sfl.lon as lon,
-        opp.opp_evt_ratio as opp_evt_ratio,
+        sfl.ocean_tmp as temp,
+        sfl.salinity as salinity,
+        sfl.conductivity as conductivity,
+        sfl.par as par,
+        sfl.stream_pressure as stream_pressure,
         sfl.file_duration as file_duration,
+        sfl.event_rate as event_rate,
+        opp.opp_evt_ratio as opp_evt_ratio,
         vct.pop as pop,
         vct.count as n_count,
-        vct.count / (sfl.flow_rate * (sfl.file_duration/60) * opp.opp_evt_ratio) as abundance,
-        vct.fsc_small as fsc_small,
-        vct.chl_small as chl_small,
-        vct.pe as pe
+        vct.D1_mean as D1,
+        vct.D2_mean as D2,
+        vct.fsc_small_mean as fsc_small,
+        vct.chl_small_mean as chl_small,
+        vct.pe_mean as pe,
+        vct.fsc_perp_mean as fsc_perp,
+        vct.quantile as quantile
     FROM
         opp, vct, sfl
     WHERE
         opp.filter_id == (select id FROM filter ORDER BY date DESC limit 1)
         AND
+        opp.quantile == vct.quantile
+        AND
         opp.file == vct.file
         AND
         opp.file == sfl.file
     ORDER BY
-        time, pop ASC
+        time, pop ASC;
 """)
 
     con.commit()
