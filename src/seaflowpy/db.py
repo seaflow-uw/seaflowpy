@@ -1,5 +1,6 @@
 from builtins import str
 from . import errors
+from shutil import copyfile
 import arrow
 import pandas as pd
 import sqlite3
@@ -207,7 +208,7 @@ def save_filter_params(dbpath, vals):
     values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT OR REPLACE INTO filter VALUES ({})".format(values_str)
     id_ = str(uuid.uuid4())
-    date = arrow.utcnow().format('YYYY-MM-DDTHH:mm:ssZZ')
+    date = arrow.utcnow().format('YYYY-MM-DDTHH:mm:ssZ')
     for v in vals:
         v['id'] = id_
         v['date'] = date
@@ -313,6 +314,26 @@ def get_opp(dbpath, filter_id):
     with sqlite3.connect(dbpath) as dbcon:
         oppdf = pd.read_sql(sql, dbcon)
     return oppdf
+
+
+def merge_dbs(db1, db2):
+    """Merge two SQLite databases into a new database."""
+    with sqlite3.connect(db1) as con1:
+        with sqlite3.connect(db2) as con2:
+            gatingdf = pd.read_sql('select * from gating', con1)
+            polydf = pd.read_sql('select * from poly', con1)
+            filterdf = pd.read_sql('select * from filter', con1)
+            gatingdf.to_sql('gating', con2, if_exists='append', index=False)
+            polydf.to_sql('poly', con2, if_exists='append', index=False)
+            filterdf.to_sql('filter', con2, if_exists='append', index=False)
+    # Copy db2, will merge db1 into copy of 2
+    # Merge filter
+    # Merge opp
+    # Merge vct
+    # Merge filter
+    # Merge gating
+    # Merge poly
+    # Merge meta
 
 
 def execute(dbpath, sql, values=None, timeout=120):
