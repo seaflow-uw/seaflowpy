@@ -219,7 +219,7 @@ def save_filter_params(dbpath, vals):
     values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT OR REPLACE INTO filter VALUES ({})".format(values_str)
     id_ = str(uuid.uuid4())
-    date = arrow.utcnow().format('YYYY-MM-DDTHH:mm:ssZ')
+    date = arrow.utcnow().format('YYYY-MM-DDTHH:mm:ssZZ')
     for v in vals:
         v['id'] = id_
         v['date'] = date

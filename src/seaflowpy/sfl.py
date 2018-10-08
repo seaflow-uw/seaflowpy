@@ -11,7 +11,7 @@ from . import db
 from . import geo
 from . import util
 from . import seaflowfile
-from collections import OrderedDict, Sequence
+from collections import OrderedDict
 from past.builtins import basestring
 
 
@@ -290,7 +290,7 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
     """Parse SFL files into one DataFrame.
 
     Arguments:
-    files -- SFL file paths or a single path.
+    files -- SFL file paths as a list.
 
     Keyword arguments:
     convert_numerics -- Cast numeric SQL columns as numbers (default True).
@@ -306,11 +306,10 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
     kwargs_defaults = dict(defaults, **kwargs)
 
     df = None
-    if not isinstance(files, Sequence):
-        files = [files]
     for f in files:
         partial_df = pd.read_csv(f, **kwargs_defaults)
         # Add column for input file path and file line numbers
+        # Support both f as file path and as open file
         if isinstance(f, basestring):
             partial_df["input_file_path"] = f
         else:

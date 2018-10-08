@@ -24,7 +24,7 @@ def sfl_cmd():
     help='Output SFL file. - for stdout.')
 def sfl_convert_gga_cmd(infile, outfile):
     """Convert GGA coords to decimal degrees."""
-    df = sfl.read_files(infile, convert_numerics=False)
+    df = sfl.read_files([infile], convert_numerics=False)
     try:
         df = sfl.convert_gga2dd(df)
     except ValueError as e:
@@ -79,7 +79,7 @@ def sfl_db_cmd(infile, dbpath, cruise, force, json, serial, verbose):
     if cruise is None or serial is None:
         raise click.ClickException('instrument serial and cruise must both be specified either in filename as <cruise>_<instrument-serial>.sfl, as command-line options, or in database metadata table.')
 
-    df = sfl.read_files(infile)
+    df = sfl.read_files([infile])
 
     df = sfl.fix(df)
     errors = sfl.check(df)
@@ -103,7 +103,7 @@ def sfl_detect_gga_cmd(infile):
     Detect rows with GGA lat and lon coordinates. If any are found, print
     'True', otherwise print 'False'.
     """
-    df = sfl.read_files(infile, convert_numerics=False)
+    df = sfl.read_files([infile], convert_numerics=False)
     # Has any GGA coordinates?
     if sfl.has_gga(df):
         click.echo('True')
@@ -121,7 +121,7 @@ def sfl_dedup_cmd(infile, outfile):
 
     Remove lines with duplicate file entries. Print files removed to stderr.
     """
-    df = sfl.read_files(infile, convert_numerics=False)
+    df = sfl.read_files([infile], convert_numerics=False)
     dup_files, df = sfl.dedup(df)
     if len(dup_files):
         click.echo(os.linesep.join(['{}\t{}'.format(*d) for d in dup_files]), err=True)
@@ -149,7 +149,7 @@ def manifest_cmd(infile, evt_dir, s3, verbose):
     else:
         found_evt_files = evt.find_evt_files(evt_dir)
 
-    df = sfl.read_files(infile)
+    df = sfl.read_files([infile])
     sfl_evt_ids = [seaflowfile.SeaFlowFile(f).file_id for f in df['file']]
     found_evt_ids = [seaflowfile.SeaFlowFile(f).path_file_id for f in found_evt_files]
     sfl_set = set(sfl_evt_ids)
@@ -180,7 +180,7 @@ def sfl_print_cmd(infile, outfile):
 
     Output columns will match columns selected for database import.
     """
-    df = sfl.read_files(infile)
+    df = sfl.read_files([infile])
     df = sfl.fix(df)
     sfl.save_to_file(df, outfile, convert_colnames=True)
 
@@ -199,7 +199,7 @@ def sfl_validate_cmd(infile, json, verbose):
     columns, bad coordinates. Only the first error of each type will be
     reported by default.
     """
-    df = sfl.read_files(infile)
+    df = sfl.read_files([infile])
     df = sfl.fix(df)
     errors = sfl.check(df)
     if len(errors) > 0:
