@@ -34,15 +34,15 @@ def validate_positive_int(ctx, param, value):
     help='Output directory for SQLite3 database and OPP binary files for each cruise. Will be created if does not exist')
 @click.option('-D', '--dryrun', is_flag=True,
     help='Show cruise to host assignments without starting instances.')
-@click.option('-i', '--instance-count', default=1, metavar='N', callback=validate_positive_int,
+@click.option('-i', '--instance-count', default=1, show_default=True, metavar='N', callback=validate_positive_int,
     help='Number of cloud instances to use.')
-@click.option('-n', '--no-cleanup', is_flag=True, default=False,
+@click.option('-n', '--no-cleanup', is_flag=True, default=False, show_default=True,
     help='Don\'t cleanup resources.')
-@click.option('-p', '--process-count', default=16, metavar='N', callback=validate_positive_int,
+@click.option('-p', '--process-count', default=16, show_default=True, metavar='N', callback=validate_positive_int,
     help='Number of processes to use in filtering.')
-@click.option('-r', '--ramdisk-size', default=60, metavar='GiB', callback=validate_positive_int,
+@click.option('-r', '--ramdisk-size', default=60, show_default=True, metavar='GiB', callback=validate_positive_int,
     help='Size of ramdisk in GiB, limited by instance RAM.')
-@click.option('-t', '--instance-type', default='c5.9xlarge', metavar='EC2_TYPE',
+@click.option('-t', '--instance-type', default='c5.9xlarge', show_default=True, metavar='EC2_TYPE',
     help='EC2 instance type to use. Change with caution. The instance type must have be able to attach 2 instance store devices.')
 @click.argument('dbs', nargs=-1, type=click.Path(exists=True))
 def remote_filter_evt_cmd(output_dir, dryrun, instance_count, no_cleanup,

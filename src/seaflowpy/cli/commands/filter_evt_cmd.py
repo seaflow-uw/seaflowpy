@@ -41,9 +41,9 @@ def validate_resolution(ctx, param, value):
     help='Limit number of files to process.')
 @click.option('-o', '--opp-dir', metavar='DIR',
     help='Directory in which to save OPP files. Will be created if does not exist.')
-@click.option('-p', '--process-count', default=1, metavar="N", callback=validate_process_count,
+@click.option('-p', '--process-count', default=1, show_default=True, metavar="N", callback=validate_process_count,
     help='Number of processes to use in filtering.')
-@click.option('-r', '--resolution', default=10.0, metavar='N', callback=validate_resolution,
+@click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
 def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
