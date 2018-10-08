@@ -91,9 +91,11 @@ def check_date(df):
         errors.append(create_error(df, "date", msg="date column is missing"))
     else:
         # All dates must match RFC 3339 with no fractional seconds
-        bad_dates = df[~df["date"].map(lambda d: check_date_string(d))]["date"]
-        for i, v in bad_dates.iteritems():
-            errors.append(create_error(df, "date", msg="Invalid date format", row=i, val=v))
+        date_flags = df["date"].map(lambda d: check_date_string(d))
+        if len(date_flags) > 0:
+            # select rows that failed date check
+            for i, v in df[~date_flags]["date"].iteritems():
+                errors.append(create_error(df, "date", msg="Invalid date format", row=i, val=v))
     return errors
 
 
