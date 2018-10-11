@@ -337,13 +337,8 @@ def merge_dbs(db1, db2):
             gatingdf.to_sql('gating', con2, if_exists='append', index=False)
             polydf.to_sql('poly', con2, if_exists='append', index=False)
             filterdf.to_sql('filter', con2, if_exists='append', index=False)
-    # Copy db2, will merge db1 into copy of 2
-    # Merge filter
     # Merge opp
     # Merge vct
-    # Merge filter
-    # Merge gating
-    # Merge poly
     # Merge meta
 
 

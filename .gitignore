@@ -12,3 +12,4 @@ build
 .dockerignore
 .pytest_cache
 /.tox
+.Rapp.history

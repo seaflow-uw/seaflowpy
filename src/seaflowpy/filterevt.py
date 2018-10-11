@@ -163,31 +163,39 @@ def filter_one_file(o):
         cloud = clouds.AWS(o["cloud_config_items"])
         fileobj = cloud.download_file_memory(evt_file)
 
+    # Try to read EVT file data, if an error occurs create an EVT object without
+    # any data.
     try:
         evt_ = evt.EVT(path=evt_file, fileobj=fileobj)
     except errors.FileError as e:
         print("Could not parse file %s: %s" % (evt_file, repr(e)))
+        evt_ = evt.EVT(path=evt_file, fileobj=fileobj, read_data=False)
     except Exception as e:
         print("Unexpected error for file %s: %s" % (evt_file, repr(e)))
-    else:
-        for q in [2.5, 50, 97.5]:
-            opp = evt_.filter(o["filter_params"][q])
-            if opp is None:
-                print("All particles in file %s were noise filtered" % (evt_file))
-                break
-            else:
-                if o["dbpath"]:
-                    opp.save_opp_to_db(o["filter_id"], q, o["dbpath"])
+        evt_ = evt.EVT(path=evt_file, fileobj=fileobj, read_data=False)
 
-                if o["opp_dir"]:
-                    opp.write_binary(o["opp_dir"], opp=True, quantile=q)
+    qs = {}
+    for q in [2.5, 50, 97.5]:
+        opp = evt_.filter(o["filter_params"][q])
+        qs[q] = opp
+    if o["dbpath"]:
+        for q in qs:
+            opp = qs[q]
+            opp.save_opp_to_db(o["filter_id"], q, o["dbpath"])
 
-                if q == 50:
-                    # Only report 50 quantile data
-                    result["ok"] = True
-                    result["evt_count"] = opp.parent.event_count
-                    result["evt_signal_count"] = opp.parent.particle_count
-                    result["opp_count"] = opp.particle_count
+    all_quantiles_have_opp = min([opp.particle_count for opp in qs.values()]) > 0
+    if o["opp_dir"] and all_quantiles_have_opp:
+        # Only write files if all quantiles produced OPP data
+        for q in qs:
+            opp = qs[q]
+            opp.write_binary(o["opp_dir"], opp=True, quantile=q)
+
+    # Only report 50 quantile data
+    opp = qs[50]
+    result["ok"] = True
+    result["evt_count"] = opp.parent.event_count
+    result["evt_signal_count"] = opp.parent.particle_count
+    result["opp_count"] = opp.particle_count
 
     return result
 

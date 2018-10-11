@@ -106,6 +106,14 @@ class TestOpen(object):
         with pytest.raises(sfp.errors.FileError):
             evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
+    def test_read_evt_no_read_data(self):
+        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
+        assert evt.header_count == 0
+        assert evt.event_count == 0
+        assert evt.particle_count == 0
+        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
+        assert evt.transformed == False
+
 
 class TestPathFilenameParsing(object):
     def test_is_evt(self):
@@ -155,7 +163,9 @@ class TestPathFilenameParsing(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
             "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
         ]
         assert files == answer
 
@@ -284,7 +294,9 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
             "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
         ]
 
         # python setup.py test doesn't play nice with pytest and
@@ -326,7 +338,9 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
             "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
         ]
         sfp.filterevt.filter_evt_files(
             files=files, process_count=1,
@@ -375,17 +389,41 @@ def multi_file_asserts(tmpout):
     opp_table = sfp.db.get_opp(tmpout["db"], filter_id)
     npt.assert_array_equal(
         opp_table["all_count"],
-        pd.Series([40000, 40000, 40000, 40000, 40000, 40000], name="all_count")
+        pd.Series([
+            40000, 40000, 40000,
+            40000, 40000, 40000,
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            40000, 40000, 40000,
+            40000, 40000, 40000
+        ], name="all_count")
     )
     npt.assert_array_equal(
         opp_table["evt_count"],
-        pd.Series([39928, 39928, 39928, 39925, 39925, 39925], name="evt_count")
+        pd.Series([
+            39928, 39928, 39928,
+            39925, 39925, 39925,
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            39925, 39925, 39925
+        ], name="evt_count")
     )
     npt.assert_array_equal(
         opp_table["opp_count"],
-        pd.Series([423, 107, 86, 492, 182, 147], name="opp_count")
+        pd.Series([
+            423, 107, 86,
+            492, 182, 147,
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            0, 17, 19
+        ], name="opp_count")
     )
     npt.assert_array_equal(
         opp_table["opp_evt_ratio"],
-        opp_table["opp_count"] / opp_table["evt_count"]
+        (opp_table["opp_count"] / opp_table["evt_count"]).replace(pd.np.inf, 0).replace(pd.np.NaN, 0)
     )

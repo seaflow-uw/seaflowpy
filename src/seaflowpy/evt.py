@@ -62,6 +62,8 @@ class EVT(seaflowfile.SeaFlowFile):
 
         if read_data:
             self._read_binary()
+        else:
+            self._make_empty_df()
 
         if transform:
             self.transform_particles()
@@ -74,6 +76,15 @@ class EVT(seaflowfile.SeaFlowFile):
         tostringdict = OrderedDict([(k, getattr(self, k)) for k in keys])
         tostringdict["filter_params"] = self.filter_params
         return json.dumps(tostringdict, indent=2)
+
+    def _make_empty_df(self):
+        self.df = pd.DataFrame(columns=self.columns)
+        # Record the original number of events read from file
+        self.event_count = len(self.df.index)
+        # Assume all events are real particles at first
+        self.particle_count = self.event_count
+        # Record the number of events reported in the header
+        self.header_count = 0
 
     def _read_binary(self):
         """Read an EVT/OPP binary file into a Pandas DataFrame."""
@@ -150,9 +161,6 @@ class EVT(seaflowfile.SeaFlowFile):
 
     def filter(self, params):
         """Filter EVT particle data and return a new EVT object"""
-        if not self.has_data():
-            return
-
         # Check parameters
         param_keys = [
             "width", "notch_small_D1", "notch_small_D2", "notch_large_D1",
@@ -180,10 +188,7 @@ class EVT(seaflowfile.SeaFlowFile):
         df = self.filter_noise()
 
         # Filter for aligned/focused particles
-        if len(df.index) == 0:
-            # All data is noise filtered
-            opp = None
-        else:
+        if len(df.index) > 0:
             # Filter aligned particles (D1 = D2), with correction for D1 D2
             # sensitivity difference
             alignedD1 = df["D1"] < (df["D2"] + params["width"])
@@ -196,8 +201,11 @@ class EVT(seaflowfile.SeaFlowFile):
             opp_large_D1 = aligned["D1"] <= ((aligned["fsc_small"] * params["notch_large_D1"]) + params["offset_large_D1"])
             opp_large_D2 = aligned["D2"] <= ((aligned["fsc_small"] * params["notch_large_D2"]) + params["offset_large_D2"])
             oppdf = aligned[(opp_small_D1 & opp_small_D2) | (opp_large_D1 & opp_large_D2)].copy()
+        else:
+            # All events were noise, just copy the empty dataframe
+            oppdf = df.copy()
 
-            opp = self.clone_with_filtered(oppdf, params)
+        opp = self.clone_with_filtered(oppdf, params)
 
         return opp
 
@@ -205,20 +213,19 @@ class EVT(seaflowfile.SeaFlowFile):
         """Clone this object with new OPP DataFrame."""
         clone = EVT(path=self.path, read_data=False, transform=False)
         clone.df = oppdf
-        if clone.df is not None:
-            clone.header_count = None
-            clone.event_count = len(clone.df.index)  # same as OPP
-            clone.particle_count = len(clone.df.index)  # number of OPP
-            clone.transformed = self.transformed
-            clone.filter_params = params
-            clone.int_columns = self.int_columns
-            clone.float_columns = self.float_columns
-            clone.parent = self
+        clone.event_count = len(clone.df.index)  # same as OPP
+        clone.particle_count = len(clone.df.index)  # number of OPP
+        clone.header_count = None
+        clone.transformed = self.transformed
+        clone.filter_params = params
+        clone.int_columns = self.int_columns
+        clone.float_columns = self.float_columns
+        clone.parent = self
 
-            try:
-                clone.opp_evt_ratio = float(clone.particle_count) / clone.parent.particle_count
-            except ZeroDivisionError:
-                clone.opp_evt_ratio = 0.0
+        try:
+            clone.opp_evt_ratio = float(clone.particle_count) / clone.parent.particle_count
+        except ZeroDivisionError:
+            clone.opp_evt_ratio = 0.0
 
         return clone
 
@@ -242,9 +249,6 @@ class EVT(seaflowfile.SeaFlowFile):
 
     def save_opp_to_db(self, filter_id, quantile, dbpath):
         """Save aggregate statistics for filtered particle data to SQLite"""
-        if not self.has_data():
-            return
-
         vals = {
             "file": self.file_id,
             "all_count": self.parent.event_count,
