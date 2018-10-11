@@ -96,7 +96,7 @@ class EVT(seaflowfile.SeaFlowFile):
                 raise errors.FileError("File is empty")
             if len(buff) != 4:
                 raise errors.FileError("File has invalid particle count header")
-            rowcnt = np.fromstring(buff, dtype="uint32", count=1)[0]
+            rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
             if rowcnt == 0:
                 raise errors.FileError("File has no particle data")
             # Read the rest of the data. Each particle has 12 unsigned
@@ -112,7 +112,7 @@ class EVT(seaflowfile.SeaFlowFile):
                     "File has incorrect number of data bytes. Expected %i, saw %i" %
                     (expected_bytes, len(buff))
                 )
-            events = np.fromstring(buff, dtype="uint16", count=rowcnt*12)
+            events = np.frombuffer(buff, dtype="uint16", count=rowcnt*12)
             # Reshape into a matrix of 12 columns and one row per particle
             events = np.reshape(events, [rowcnt, 12])
             # Create a Pandas DataFrame with descriptive column names.
