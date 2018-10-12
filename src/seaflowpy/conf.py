@@ -15,7 +15,7 @@ CONFIG_FILE = os.path.expanduser("~/.seaflowpy/config")
 
 
 def get_config(config_path=CONFIG_FILE):
-    config = configparser.SafeConfigParser()
+    config = configparser.ConfigParser()
     config.read(config_path)
     return config
 
