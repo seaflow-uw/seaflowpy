@@ -2,6 +2,7 @@ from builtins import str
 from . import errors
 from shutil import copyfile
 import arrow
+import pkg_resources
 import pandas as pd
 import sqlite3
 import uuid
@@ -9,188 +10,11 @@ import uuid
 from collections import OrderedDict
 
 
-def ensure_tables(dbpath):
-    """Ensure all popcycle tables exists."""
-    con = sqlite3.connect(dbpath)
-    cur = con.cursor()
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS metadata (
-    cruise TEXT NOT NULL,
-    inst TEXT NOT NULL,
-    PRIMARY KEY (cruise, inst)
-)""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS vct (
-    file TEXT NOT NULL,
-    pop TEXT NOT NULL,
-    count INTEGER NOT NULL,
-    D1_mean REAL NOT NULL,
-    D1_min REAL NOT NULL,
-    D1_max REAL NOT NULL,
-    D2_mean REAL NOT NULL,
-    D2_min REAL NOT NULL,
-    D2_max REAL NOT NULL,
-    fsc_small_mean REAL NOT NULL,
-    fsc_small_min REAL NOT NULL,
-    fsc_small_max REAL NOT NULL,
-    chl_small_mean REAL NOT NULL,
-    chl_small_min REAL NOT NULL,
-    chl_small_max REAL NOT NULL,
-    pe_mean REAL NOT NULL,
-    pe_min REAL NOT NULL,
-    pe_max REAL NOT NULL,
-    fsc_perp_mean REAL NOT NULL,
-    fsc_perp_min REAL NOT NULL,
-    fsc_perp_max REAL NOT NULL,
-    gating_id TEXT NOT NULL,
-    filter_id TEXT NOT NULL,
-    quantile REAL NOT NULL,
-    PRIMARY KEY (file, pop, quantile)
-)""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS opp (
-    file TEXT NOT NULL,
-    all_count INTEGER NOT NULL,
-    opp_count INTEGER NOT NULL,
-    evt_count INTEGER NOT NULL,
-    opp_evt_ratio REAL NOT NULL,
-    filter_id TEXT NOT NULL,
-    quantile REAL NOT NULL,
-    PRIMARY KEY (file, filter_id, quantile)
-)""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS sfl (
-    file TEXT NOT NULL,
-    date TEXT,
-    file_duration REAL,
-    lat REAL,
-    lon REAL,
-    conductivity REAL,
-    salinity REAL,
-    ocean_tmp REAL,
-    par REAL,
-    bulk_red REAL,
-    stream_pressure REAL,
-    event_rate REAL,
-    PRIMARY KEY (file)
-)""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS filter (
-    id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    quantile REAL NOT NULL,
-    beads_fsc_small REAL NOT NULL,
-    beads_D1 REAL NOT NULL,
-    beads_D2 REAL NOT NULL,
-    width REAL NOT NULL,
-    notch_small_D1 REAL NOT NULL,
-    notch_small_D2 REAL NOT NULL,
-    notch_large_D1 REAL NOT NULL,
-    notch_large_D2 REAL NOT NULL,
-    offset_small_D1 REAL NOT NULL,
-    offset_small_D2 REAL NOT NULL,
-    offset_large_D1 REAL NOT NULL,
-    offset_large_D2 REAL NOT NULL,
-    PRIMARY KEY (id, quantile)
-)""")
-
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS gating (
-    id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    pop_order INTEGER NOT NULL,
-    pop TEXT NOT NULL,
-    method TEXT NOT NULL,
-    channel1 TEXT,
-    channel2 TEXT,
-    gate1 REAL,
-    gate2 REAL,
-    position1 INTEGER,
-    position2 INTEGER,
-    scale REAL,
-    minpe REAL,
-    PRIMARY KEY (id, pop)
-)""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS poly (
-    pop TEXT NOT NULL,
-    fsc_small REAL,
-    fsc_perp REAL,
-    fsc_big REAL,
-    pe REAL,
-    chl_small REAL,
-    chl_big REAL,
-    point_order INTEGER NOT NULL,
-    gating_id TEXT NOT NULL
-)""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS outlier (
-    file TEXT NOT NULL,
-    flag INTEGER,
-    PRIMARY KEY (file)
-)""")
-
-    cur.execute("""CREATE VIEW IF NOT EXISTS stat AS
-    SELECT
-        opp.file as file,
-        sfl.date as time,
-        sfl.lat as lat,
-        sfl.lon as lon,
-        sfl.ocean_tmp as temp,
-        sfl.salinity as salinity,
-        sfl.conductivity as conductivity,
-        sfl.par as par,
-        sfl.stream_pressure as stream_pressure,
-        sfl.file_duration as file_duration,
-        sfl.event_rate as event_rate,
-        opp.opp_evt_ratio as opp_evt_ratio,
-        vct.pop as pop,
-        vct.count as n_count,
-        vct.D1_mean as D1,
-        vct.D2_mean as D2,
-        vct.fsc_small_mean as fsc_small,
-        vct.chl_small_mean as chl_small,
-        vct.pe_mean as pe,
-        vct.fsc_perp_mean as fsc_perp,
-        vct.quantile as quantile
-    FROM
-        opp, vct, sfl
-    WHERE
-        opp.filter_id == (select id FROM filter ORDER BY date DESC limit 1)
-        AND
-        opp.quantile == vct.quantile
-        AND
-        opp.file == vct.file
-        AND
-        opp.file == sfl.file
-    ORDER BY
-        time, pop ASC;
-""")
-
-    con.commit()
-    con.close()
-
-
-def ensure_indexes(dbpath):
-    """Create table indexes."""
-    con = sqlite3.connect(dbpath)
-    cur = con.cursor()
-    index_cmds = [
-        "CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file)",
-        "CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file)",
-        "CREATE INDEX IF NOT EXISTS sflDateIndex ON sfl (date)",
-        "CREATE INDEX IF NOT EXISTS outlierFileIndex ON outlier (file)"
-    ]
-    for cmd in index_cmds:
-        cur.execute(cmd)
-    con.commit()
-    con.close()
-
-
 def create_db(dbpath):
     """Create or complete database"""
-    ensure_tables(dbpath)
-    ensure_indexes(dbpath)
+    schema_path = pkg_resources.resource_filename(__name__, 'data/popcycle.sql')
+    with open(schema_path, 'r') as fh:
+        executescript(dbpath, fh.read())
 
 
 def save_filter_params(dbpath, vals):
@@ -344,16 +168,34 @@ def merge_dbs(db1, db2):
 
 def execute(dbpath, sql, values=None, timeout=120):
     con = sqlite3.connect(dbpath, timeout=timeout)
-    if values is not None:
-        con.execute(sql, values)
-    else:
-        con.execute(sql)
-    con.commit()
-    con.close()
+    try:
+        with con:
+            if values is not None:
+                con.execute(sql, values)
+            else:
+                con.execute(sql)
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when executing a SQL query: {!s}".format(e))
+    finally:
+        con.close()
 
 
 def executemany(dbpath, sql, values=None, timeout=120):
     con = sqlite3.connect(dbpath, timeout=timeout)
-    con.executemany(sql, values)
-    con.commit()
-    con.close()
+    try:
+        with con:
+            con.executemany(sql, values)
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when executing SQL queries: {!s}".format(e))
+    finally:
+        con.close()
+
+def executescript(dbpath, sql_script_text, timeout=120):
+    con = sqlite3.connect(dbpath, timeout=timeout)
+    try:
+        with con:
+            con.executescript(sql_script_text)
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when executing a SQL script: {!s}".format(e))
+    finally:
+        con.close()
