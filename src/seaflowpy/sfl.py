@@ -219,7 +219,7 @@ def fix(df):
     """Return a copy of df ready for db import.
 
     - Adds a "date" column if not present, based on filename datestamp
-    - Adds or replaces julian day directory component of "file" values
+    - Adds or replaces day of year directory component of "file" values
     - Adds any missing db columns
     """
     newdf = df.copy(deep=True)
@@ -228,7 +228,7 @@ def fix(df):
     if "date" not in newdf.columns:
         newdf["date"] = newdf["file"].map(lambda x: seaflowfile.SeaFlowFile(x).rfc3339)
 
-    # Add julian day directory if needed
+    # Add day of year directory if needed
     newdf["file"] = newdf["file"].map(lambda x: seaflowfile.SeaFlowFile(x).file_id)
 
     # Make sure all DB columns are present

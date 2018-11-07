@@ -13,7 +13,7 @@ from collections import OrderedDict
 from operator import itemgetter
 
 
-julian_re = r'^\d{1,4}_\d{1,3}$'
+dayofyear_re = r'^\d{1,4}_\d{1,3}$'
 new_path_re = r'^\d{1,4}_\d{1,3}/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}$'
 new_file_re = r'^(?P<date>\d{4}-\d{2}-\d{2})T(?P<hours>\d{2})-(?P<minutes>\d{2})-(?P<seconds>\d{2})(?P<tzhours>[+-]\d{2})-(?P<tzminutes>\d{2})$'
 old_path_re = r'^\d{1,4}_\d{1,3}/\d+\.evt$'
@@ -45,32 +45,32 @@ class SeaFlowFile(object):
             else:
                 self.date = None
 
-            # YYYY_juliandayofyear directory found in file path and parsed
+            # YYYY_dayofyear directory found in file path and parsed
             # from file datestmap
-            self.path_julian = parts["julian"]
-            self.julian = create_julian_directory(self.date)
+            self.path_dayofyear = parts["dayofyear"]
+            self.dayofyear = create_dayofyear_directory(self.date)
 
             # Identifer to match across file types (EVT/OPP/VCT)
             # Should be something like 2014_142/42.evt for old files. Note always
             # .evt even for opp and vct. No .gz.
             # Should be something like 2014_342/2014-12-08T22-53-34+00-00 for new
             # files. Note no extension including .gz.
-            # The julian day directory will be based on parsed datestamp in
+            # The day of year directory will be based on parsed datestamp in
             # filename when possible, not the given path. The file ID based on
             # the given path is stored in path_file_id.
             if self.is_old_style:
                 # path_file_id and file_id are always the same for old-style
-                # filenames since we can't parse dates to calculate a julian
+                # filenames since we can't parse dates to calculate a day of year
                 # directory
-                if self.path_julian:
-                    self.file_id = "{}/{}".format(self.path_julian, self.filename_noext)
+                if self.path_dayofyear:
+                    self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
                 else:
                     self.file_id = self.filename_noext
                 self.path_file_id = self.file_id
             else:
-                self.file_id = "{}/{}".format(self.julian, self.filename_noext)
-                if self.path_julian:
-                    self.path_file_id = "{}/{}".format(self.path_julian, self.filename_noext)
+                self.file_id = "{}/{}".format(self.dayofyear, self.filename_noext)
+                if self.path_dayofyear:
+                    self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
                 else:
                     self.path_file_id = self.filename_noext
 
@@ -117,11 +117,11 @@ class SeaFlowFile(object):
 
     @property
     def sort_key(self):
-        # Julian from filename if possible first, then from path, then nothing
-        if self.julian:
-            year, day = [int(x) for x in self.julian.split("_")]
-        elif self.path_julian:
-            year, day = [int(x) for x in self.path_julian.split("_")]
+        # day of year from filename if possible first, then from path, then nothing
+        if self.dayofyear:
+            year, day = [int(x) for x in self.dayofyear.split("_")]
+        elif self.path_dayofyear:
+            year, day = [int(x) for x in self.path_dayofyear.split("_")]
         else:
             year, day = 0, 0
         if self.is_old_style:
@@ -134,8 +134,8 @@ class SeaFlowFile(object):
 
 
 
-def create_julian_directory(dt):
-    """Create SeaFlow julian dated directory from a datetime object"""
+def create_dayofyear_directory(dt):
+    """Create SeaFlow day of year directory from a datetime object"""
     if dt:
         return "{}_{}".format(dt.year, dt.strftime('%j'))
 
@@ -158,13 +158,13 @@ def date_from_filename(filename):
 
 
 def parse_path(file_path):
-    """Return a dict with entries for 'julian' dir and 'file' name"""
-    d = { "julian": None, "file": None }
+    """Return a dict with entries for 'dayofyear' dir and 'file' name"""
+    d = { "dayofyear": None, "file": None }
     parts = util.splitpath(file_path)
     d["file"] = parts[-1]
     if len(parts) > 1:
-        if re.match(julian_re, parts[-2]):
-            d["julian"] = parts[-2]
+        if re.match(dayofyear_re, parts[-2]):
+            d["dayofyear"] = parts[-2]
     return d
 
 
@@ -181,7 +181,7 @@ def remove_ext(filename):
 def sorted_files(files):
     """Sort EVT/OPP/VCT file paths in chronological order.
 
-    Order is based on julian day directory parsed from path and then file name.
+    Order is based on day of year directory parsed from path and then file name.
     """
     sfiles = [SeaFlowFile(f) for f in files]
     return [s.path for s in sorted(sfiles, key=lambda x: x.sort_key)]

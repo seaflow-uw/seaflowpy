@@ -17,8 +17,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian is None
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear is None
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -28,8 +28,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014_185/2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian == "2014_185"
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear == "2014_185"
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -39,8 +39,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian is None
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear is None
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -50,8 +50,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014_185/2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian == "2014_185"
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear == "2014_185"
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -61,8 +61,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian is None
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear is None
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -72,8 +72,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian is None
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear is None
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -83,8 +83,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian is None
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear is None
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -94,8 +94,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian is None
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear is None
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -105,8 +105,8 @@ def test_new_style():
     assert f.filename_noext == "2014-07-04T00-00-02+00-00"
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014_185/2014-07-04T00-00-02+00-00"
-    assert f.julian == "2014_185"
-    assert f.path_julian == "2014_185"
+    assert f.dayofyear == "2014_185"
+    assert f.path_dayofyear == "2014_185"
     assert f.is_old_style == False
     assert f.is_new_style == True
 
@@ -118,8 +118,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian is None
+    assert f.dayofyear is None
+    assert f.path_dayofyear is None
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -129,8 +129,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "2014_185/42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian == "2014_185"
+    assert f.dayofyear is None
+    assert f.path_dayofyear == "2014_185"
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -140,8 +140,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.path_file_id == f.file_id
     assert f.file_id == "42.evt"
-    assert f.julian is None
-    assert f.path_julian is None
+    assert f.dayofyear is None
+    assert f.path_dayofyear is None
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -151,8 +151,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "2014_185/42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian == "2014_185"
+    assert f.dayofyear is None
+    assert f.path_dayofyear == "2014_185"
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -162,8 +162,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian is None
+    assert f.dayofyear is None
+    assert f.path_dayofyear is None
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -173,8 +173,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian is None
+    assert f.dayofyear is None
+    assert f.path_dayofyear is None
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -184,8 +184,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian is None
+    assert f.dayofyear is None
+    assert f.path_dayofyear is None
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -195,8 +195,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian is None
+    assert f.dayofyear is None
+    assert f.path_dayofyear is None
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -206,8 +206,8 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "2014_185/42.evt"
     assert f.path_file_id == f.file_id
-    assert f.julian is None
-    assert f.path_julian == "2014_185"
+    assert f.dayofyear is None
+    assert f.path_dayofyear == "2014_185"
     assert f.is_old_style == True
     assert f.is_new_style == False
 
@@ -255,7 +255,7 @@ def test_sorted_files():
         "2014_185/10.evt",
         "2014_186/23.evt",
         "2014_186/100.evt",
-        "2014_350/2014-12-08T22-51-34+00-00",  # note julian_path from path is wrong
+        "2014_350/2014-12-08T22-51-34+00-00",  # note dayofyear_path from path is wrong
         "2014_342/2014-12-08T22-53-34+00-00",
         "2014-12-08T22-56-34+00-00",
         "2015_186/1.evt"
@@ -282,7 +282,7 @@ def test_date_from_file_name():
         assert s.rfc3339 == answers[i]
 
 
-def test_julian_from_filename():
+def test_dayofyear_from_filename():
     files = [
         "2014-07-06T00-00-05+00-00",
         "2014-07-06T00-00-05-00-00",
@@ -293,18 +293,18 @@ def test_julian_from_filename():
         "2014_001/2014-07-06T00-00-05-07-00",
         "2014_001/2014-07-06T00-00-05+00-00.gz"
     ]
-    julian_answer = "2014_187"
-    path_julian_answer = "2014_001"
+    dayofyear_answer = "2014_187"
+    path_dayofyear_answer = "2014_001"
 
     for i, f in enumerate(files[0:4]):
         s = sfp.seaflowfile.SeaFlowFile(f)
-        assert s.julian == julian_answer
-        assert s.path_julian == None
+        assert s.dayofyear == dayofyear_answer
+        assert s.path_dayofyear == None
 
     for i, f in enumerate(files[4:]):
         s = sfp.seaflowfile.SeaFlowFile(f)
-        assert s.julian == julian_answer
-        assert s.path_julian == "2014_001"
+        assert s.dayofyear == dayofyear_answer
+        assert s.path_dayofyear == "2014_001"
 
 def test_parse_path():
     files = [
@@ -315,10 +315,10 @@ def test_parse_path():
     ]
 
     answers = [
-        { "file": "2014-07-06T00-00-05-00-00", "julian": "2014_187"},
-        { "file": "2014-07-06T00-00-05-00-00", "julian": None},
-        { "file": "2014-07-06T00-00-05-00-00.gz", "julian": "2014_187"},
-        { "file": "2014-07-06T00-00-05-00-00.gz", "julian": None}
+        { "file": "2014-07-06T00-00-05-00-00", "dayofyear": "2014_187"},
+        { "file": "2014-07-06T00-00-05-00-00", "dayofyear": None},
+        { "file": "2014-07-06T00-00-05-00-00.gz", "dayofyear": "2014_187"},
+        { "file": "2014-07-06T00-00-05-00-00.gz", "dayofyear": None}
     ]
 
     for i, f in enumerate(files):

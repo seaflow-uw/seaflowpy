@@ -15,37 +15,24 @@ CREATE TABLE IF NOT EXISTS opp (
     PRIMARY KEY (file, filter_id, quantile)
 );
 
-CREATE INDEX IF NOT EXISTS oppFileIndex ON opp (file);
-
 CREATE TABLE IF NOT EXISTS vct (
     file TEXT NOT NULL,
     pop TEXT NOT NULL,
     count INTEGER NOT NULL,
-    D1_mean REAL NOT NULL,
-    D1_min REAL NOT NULL,
-    D1_max REAL NOT NULL,
-    D2_mean REAL NOT NULL,
-    D2_min REAL NOT NULL,
-    D2_max REAL NOT NULL,
-    fsc_small_mean REAL NOT NULL,
-    fsc_small_min REAL NOT NULL,
-    fsc_small_max REAL NOT NULL,
-    chl_small_mean REAL NOT NULL,
-    chl_small_min REAL NOT NULL,
-    chl_small_max REAL NOT NULL,
-    pe_mean REAL NOT NULL,
-    pe_min REAL NOT NULL,
-    pe_max REAL NOT NULL,
-    fsc_perp_mean REAL NOT NULL,
-    fsc_perp_min REAL NOT NULL,
-    fsc_perp_max REAL NOT NULL,
+    chl_small REAL NOT NULL,
+    pe REAL NOT NULL,
+    fsc_small REAL NOT NULL,
+    diam_lwr REAL NOT NULL,
+    diam_mid REAL NOT NULL,
+    diam_upr REAL NOT NULL,
+    Qc_lwr REAL NOT NULL,
+    Qc_mid REAL NOT NULL,
+    Qc_upr REAL NOT NULL,
     gating_id TEXT NOT NULL,
     filter_id TEXT NOT NULL,
     quantile REAL NOT NULL,
-    PRIMARY KEY (file, pop, quantile)
+    PRIMARY KEY (file, pop, gating_id, quantile)
 );
-
-CREATE INDEX IF NOT EXISTS vctFileIndex ON vct (file);
 
 CREATE TABLE IF NOT EXISTS sfl (
   file TEXT NOT NULL,  -- in old files, File+Day. in new files, Timestamp.
@@ -119,8 +106,6 @@ CREATE TABLE IF NOT EXISTS outlier (
   PRIMARY KEY (file)
 );
 
-CREATE INDEX IF NOT EXISTS outlierFileIndex ON outlier (file);
-
 CREATE VIEW IF NOT EXISTS stat AS
   SELECT
     opp.file as file,
@@ -137,12 +122,15 @@ CREATE VIEW IF NOT EXISTS stat AS
     opp.opp_evt_ratio as opp_evt_ratio,
     vct.pop as pop,
     vct.count as n_count,
-    vct.D1_mean as D1,
-    vct.D2_mean as D2,
-    vct.fsc_small_mean as fsc_small,
-    vct.chl_small_mean as chl_small,
-    vct.pe_mean as pe,
-    vct.fsc_perp_mean as fsc_perp,
+    vct.chl_small as chl_small,
+    vct.pe as pe,
+    vct.fsc_small as fsc_small,
+    vct.diam_lwr as diam_lwr,
+    vct.diam_mid as diam_mid,
+    vct.diam_upr as diam_upr,
+    vct.Qc_lwr as Qc_lwr,
+    vct.Qc_mid as Qc_mid,
+    vct.Qcm_upr as Qc_upr,
     vct.quantile as quantile
   FROM
     opp, vct, sfl

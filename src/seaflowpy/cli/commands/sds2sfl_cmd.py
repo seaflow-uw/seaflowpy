@@ -46,7 +46,7 @@ def create_date_field(line, header):
     elif 'computerUTC' in header:
         # Given the following definitions:
         # y = year
-        # j = julian day
+        # j = day of year
         # h = hour
         # m = minute
         # s = second
@@ -55,13 +55,13 @@ def create_date_field(line, header):
         cutc = fields[header['computerUTC']]
         assert len(cutc) == len('yyjjjhhmmss')
         year = int('20' + cutc[:2])
-        julian = int(cutc[2:5])
+        dayofyear = int(cutc[2:5])
         hours = int(cutc[5:7])
         minutes = int(cutc[7:9])
         seconds = int(cutc[9:11])
 
-        # julian to month/day
-        delta = datetime.timedelta(days=julian-1, hours=hours, minutes=minutes,
+        # dayofyear to month/day
+        delta = datetime.timedelta(days=dayofyear-1, hours=hours, minutes=minutes,
                                    seconds=seconds)
         tmpd = datetime.datetime(year, 1, 1) + delta
         # Final UTC ISO8601 SeaFlow compatible timestamp string

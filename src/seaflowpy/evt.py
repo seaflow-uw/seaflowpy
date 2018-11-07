@@ -267,7 +267,7 @@ class EVT(seaflowfile.SeaFlowFile):
         if not self.has_data():
             return
 
-        # Might have julian day, might not
+        # Might have day of year directory, might not
         if quantile is not None:
             root = os.path.join(outdir, str(quantile), os.path.dirname(self.file_id))
         else:
