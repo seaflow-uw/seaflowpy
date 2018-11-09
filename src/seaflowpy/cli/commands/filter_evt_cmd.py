@@ -116,11 +116,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
     # Filter
     try:
         filterevt.filter_evt_files(files, dbpath, opp_dir, s3=s3_flag,
-                                   process_count=process_count,
+                                   worker_count=process_count,
                                    every=resolution)
     except errors.SeaFlowpyError as e:
         raise click.ClickException(str(e))
-
-    # Index
-    if dbpath:
-        db.ensure_indexes(dbpath)

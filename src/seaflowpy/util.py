@@ -94,3 +94,12 @@ def suppress_sigpipe(f):
         finally:
             signal(SIGPIPE, orig_handler)  # restore original Python SIGPIPE handler
     return wrapper
+
+
+def zerodiv(x, y):
+    """Divide x by y, floating point, and default to 0.0 if divisor is 0"""
+    try:
+        answer = float(x) / float(y)
+    except ZeroDivisionError:
+        answer = 0.0
+    return answer

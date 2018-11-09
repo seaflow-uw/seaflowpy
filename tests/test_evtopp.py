@@ -302,7 +302,7 @@ class TestMultiFileFilter(object):
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1,
+            files=files, worker_count=1,
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
         )
 
@@ -319,7 +319,7 @@ class TestMultiFileFilter(object):
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1,
+            files=files, worker_count=1,
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             s3=True)
 
@@ -343,7 +343,7 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
         ]
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1,
+            files=files, worker_count=1,
             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
         )
         opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))
