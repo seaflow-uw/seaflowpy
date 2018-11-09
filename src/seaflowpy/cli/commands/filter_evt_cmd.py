@@ -120,7 +120,3 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
                                    every=resolution)
     except errors.SeaFlowpyError as e:
         raise click.ClickException(str(e))
-
-    # Index
-    if dbpath:
-        db.ensure_indexes(dbpath)
