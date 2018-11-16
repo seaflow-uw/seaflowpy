@@ -1,5 +1,6 @@
 from builtins import str
 from . import errors
+from . import particleops
 from shutil import copyfile
 import arrow
 import pkg_resources
@@ -60,8 +61,26 @@ def save_metadata(dbpath, vals):
     executemany(dbpath, sql_insert, vals)
 
 
-def save_opp_stats(dbpath, vals):
-    create_db(dbpath)
+def save_opp_to_db(file_id, df, all_count, evt_count, filter_id, dbpath):
+    """
+    Save aggregate statistics for filtered particle data to SQLite.
+
+    Parameters
+    ----------
+    file_id: str
+        SeaFlow file ID.
+    df: pandas.DataFrame
+        SeaFlow particle data. Focused particle flag columns for each quantile
+        should be in columns "q<quantile>" e.g. q2.5 for the 2.5 quantile.
+    all_count: int
+        Event count in raw file.
+    evt_count: int
+        Events above noise floor in raw file.
+    filter_id: str
+        DB ID for filtering parameters used to create OPP.
+    dbpath: str
+        Path to SQLite DB file.
+    """
     # NOTE: values inserted must be in the same order as fields in opp
     # table. Defining that order in a list here makes it easier to verify
     # that the right order is used.
@@ -74,10 +93,26 @@ def save_opp_stats(dbpath, vals):
         "filter_id",
         "quantile"
     ]
+    vals = []
+    for q_col, q, q_str, q_df in particleops.quantiles_in_df(df):
+        opp_count = len(q_df.index)
+        try:
+            opp_evt_ratio = opp_count / evt_count
+        except ZeroDivisionError:
+            opp_evt_ratio = 0.0
+        vals.append({
+            "file": file_id,
+            "all_count": all_count,
+            "opp_count": opp_count,
+            "evt_count": evt_count,
+            "opp_evt_ratio": opp_evt_ratio,
+            "filter_id": filter_id,
+            "quantile": q
+        })
     # Construct values string with named placeholders
     values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT OR REPLACE INTO opp VALUES ({})".format(values_str)
-    execute(dbpath, sql_insert, vals)
+    executemany(dbpath, sql_insert, vals)
 
 
 def save_sfl(dbpath, vals):

@@ -6,6 +6,7 @@ from operator import itemgetter
 from signal import getsignal, signal, SIGPIPE, SIG_DFL
 import datetime
 import errno
+import gzip
 import os
 import subprocess
 import time
@@ -76,6 +77,16 @@ def splitpath(path):
                 parts.append(path)
             break
     return parts[::-1]
+
+
+def quantile_str(q):
+    """
+    Display quantile float as string.
+
+    If there is not decimal part, don't display ".0". If there is a decimal
+    part, display it.
+    """
+    return "{0}".format(str(q) if q % 1 else int(q))
 
 
 def suppress_sigpipe(f):
