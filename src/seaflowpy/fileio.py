@@ -32,7 +32,7 @@ def file_open_r(path, fileobj=None):
         if path.endswith('.gz'):
             fh = gzip.GzipFile(fileobj=fileobj)
         else:
-            fh = gzip.GzipFile(path)
+            fh = fileobj
     else:
         if path.endswith('.gz'):
             fh = gzip.GzipFile(path)

@@ -1,6 +1,7 @@
 from builtins import str
 from . import errors
 from . import particleops
+from .seaflowfile import SeaFlowFile
 from shutil import copyfile
 import arrow
 import pkg_resources
@@ -61,14 +62,17 @@ def save_metadata(dbpath, vals):
     executemany(dbpath, sql_insert, vals)
 
 
-def save_opp_to_db(file_id, df, all_count, evt_count, filter_id, dbpath):
+def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
     """
     Save aggregate statistics for filtered particle data to SQLite.
 
     Parameters
     ----------
-    file_id: str
+    file: str
+        Path to SeaFlow file that was filtered. Used to get the canonical
         SeaFlow file ID.
+        e.g. tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00 will become
+        2014_185/2014-07-04T00-00-02+00-00.
     df: pandas.DataFrame
         SeaFlow particle data. Focused particle flag columns for each quantile
         should be in columns "q<quantile>" e.g. q2.5 for the 2.5 quantile.
@@ -101,7 +105,7 @@ def save_opp_to_db(file_id, df, all_count, evt_count, filter_id, dbpath):
         except ZeroDivisionError:
             opp_evt_ratio = 0.0
         vals.append({
-            "file": file_id,
+            "file": SeaFlowFile(file).file_id,
             "all_count": all_count,
             "opp_count": opp_count,
             "evt_count": evt_count,

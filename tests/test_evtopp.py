@@ -371,67 +371,66 @@ class TestMultiFileFilter(object):
         )
 
         multi_file_asserts(tmpout)
-#
-#     @s3
-#     def test_multi_file_filter_S3(self, tmpout):
-#         """Test S3 multi-file filtering and ensure output can be read back OK"""
-#         config = sfp.conf.get_aws_config()
-#         cloud = sfp.clouds.AWS(config.items("aws"))
-#         files = cloud.get_files("testcruise_evt")
-#         files = sfp.evt.parse_file_list(files)
-#
-#         # python setup.py test doesn't play nice with pytest and
-#         # multiprocessing, so we use one core here
-#         sfp.filterevt.filter_evt_files(
-#             files=files, worker_count=1,
-#             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-#             s3=True
-#         )
-#
-#         multi_file_asserts(tmpout)
-#
-#     @popcycle
-#     def test_against_popcycle(self, tmpout):
-#         # Generate popcycle results
-#         popcycledir = tmpout["tmpdir"].join("popcycle")
-#         popcycle_cmd = "Rscript tests/generate_popcycle_results.R tests {}".format(str(popcycledir))
-#         subprocess.check_call(popcycle_cmd.split())
-#
-#         # Generate seaflowpy results
-#         files = [
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
-#             "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
-#         ]
-#         sfp.filterevt.filter_evt_files(
-#             files=files, worker_count=1,
-#             dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
-#         )
-#         opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))
-#
-#         # Compare opp table output
-#         with sqlite3.connect(tmpout["db"]) as con_py:
-#             opp_py = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_py)
-#         with sqlite3.connect(str(popcycledir.join("testcruise.db"))) as con_R:
-#             opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_R)
-#
-#         columns = ["opp_count", "evt_count", "opp_evt_ratio", "quantile"]
-#         npt.assert_allclose(opp_py[columns], opp_R[columns])
-#         assert "\n".join(opp_py["file"].values) == "\n".join(opp_R["file"].values)
-#
-#         # Compare OPP file output
-#         opps_py = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(tmpout["oppdir"]))]
-#         opps_R = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(popcycledir.join("opp")))]
-#         assert len(opps_py) == len(opps_R)
-#         assert len(opps_py) > 0
-#         assert len(opps_R) > 0
-#         for i in range(len(opps_py)):
-#             npt.assert_array_equal(opps_py[i].df, opps_R[i].df)
-#
+
+    @s3
+    def test_multi_file_filter_S3(self, tmpout):
+        """Test S3 multi-file filtering and ensure output can be read back OK"""
+        config = sfp.conf.get_aws_config()
+        cloud = sfp.clouds.AWS(config.items("aws"))
+        files = cloud.get_files("testcruise_evt")
+        files = sfp.evt.parse_file_list(files)
+
+        # python setup.py test doesn't play nice with pytest and
+        # multiprocessing, so we use one core here
+        sfp.filterevt.filter_evt_files(
+            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            worker_count=1, s3=True
+        )
+
+        multi_file_asserts(tmpout)
+
+    @popcycle
+    def test_against_popcycle(self, tmpout):
+        # Generate popcycle results
+        popcycledir = os.path.join(tmpout["tmpdir"], "popcycle")
+        popcycle_cmd = "Rscript tests/generate_popcycle_results.R tests {}".format(str(popcycledir))
+        subprocess.check_call(popcycle_cmd.split())
+
+        # Generate seaflowpy results
+        files = [
+            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
+        ]
+        sfp.filterevt.filter_evt_files(
+            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            worker_count=1
+        )
+        opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))
+
+        # Compare opp table output
+        with sqlite3.connect(tmpout["db"]) as con_py:
+            opp_py = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_py)
+        with sqlite3.connect(os.path.join(popcycledir, "testcruise.db")) as con_R:
+            opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_R)
+
+        columns = ["opp_count", "evt_count", "opp_evt_ratio", "quantile"]
+        npt.assert_allclose(opp_py[columns], opp_R[columns])
+        assert "\n".join(opp_py["file"].values) == "\n".join(opp_R["file"].values)
+
+        # Compare OPP file output
+        opps_py = [sfp.fileio.read_labview(o) for o in sfp.evt.find_evt_files(tmpout["oppdir"])]
+        opps_R = [sfp.fileio.read_labview(o) for o in sfp.evt.find_evt_files(os.path.join(popcycledir, "opp"))]
+        assert len(opps_py) == len(opps_R)
+        assert len(opps_py) > 0
+        assert len(opps_R) > 0
+        for i in range(len(opps_py)):
+            npt.assert_array_equal(opps_py[i], opps_R[i])
+
 def multi_file_asserts(tmpout):
     # Check MD5 checksums of uncompressed OPP files
     hashes = {

@@ -180,7 +180,9 @@ def do_reporting(stats_q, file_count, every):
         else:
             files_ok += 1
 
-        opp = work["opp"]["q50.0"]  # only consider 50% quantile for reporting
+        opp = work["opp"]
+        # only consider 50% quantile for reporting
+        opp = opp[opp["q50.0"]]
         evt_count_block += work["all_count"]
         evt_signal_count_block += work["evt_count"]
         opp_count_block += len(opp.index)
