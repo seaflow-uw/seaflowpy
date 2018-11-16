@@ -491,3 +491,15 @@ def multi_file_asserts(tmpout):
         opp_table["opp_evt_ratio"],
         (opp_table["opp_count"] / opp_table["evt_count"]).replace(pd.np.inf, 0).replace(pd.np.NaN, 0)
     )
+    npt.assert_array_equal(
+        opp_table["file"],
+        pd.Series(' '.join([
+            "2014_185/2014-07-04T00-00-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-03-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-06-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-09-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-12-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-15-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-17-02+00-00 " * 3
+        ]).split(), name="opp_count")
+    )
