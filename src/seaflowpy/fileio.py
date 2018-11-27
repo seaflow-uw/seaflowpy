@@ -41,6 +41,29 @@ def file_open_r(path, fileobj=None):
     return fh
 
 
+def file_open_w(path):
+    """
+    Open path for writing.
+
+    Return a file handle for writing to path. If path ends with '.gz' data will
+    gzip compressed.
+
+    Parameters
+    -----------
+    path: str
+        File path.
+
+    Returns
+    -------
+    Writable file-like object.
+    """
+    if path.endswith('.gz'):
+        fh = gzip.GzipFile(path, mode='wb')
+    else:
+        fh = io.open(path, 'wb')
+    return fh
+
+
 def read_labview(path, fileobj=None):
     """
     Read a labview binary SeaFlow data file.
@@ -117,20 +140,14 @@ def write_labview(df, path):
     path: str
         Output file path. If this ends with '.gz' data will be gzip compressed.
     """
-    if path.endswith('.gz'):
-        gz = True
-        path = path[:-len('.gz')]
-    else:
-        gz = False
-
     # Make sure directory necessary directory tree exists
     util.mkdir_p(os.path.dirname(path))
 
-    with io.open(path, 'wb') as fh:
+    with file_open_w(path) as fh:
         # Create 32-bit uint particle count header
         header = np.array([len(df.index)], np.uint32)
         # Write 32-bit uint particle count header
-        header.tofile(fh)
+        fh.write(header.tobytes())
 
         if len(df.index) > 0:
             # Only keep labview EVT file format columns
@@ -146,10 +163,7 @@ def write_labview(df, path):
             df.insert(1, "zeros", zeros)
 
             # Write particle data
-            df.values.tofile(fh)
-
-    if gz:
-        util.gzip_file(path)
+            fh.write(df.values.tobytes())
 
 
 def write_evt_labview(df, path, outdir, gz=True):

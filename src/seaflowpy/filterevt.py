@@ -10,7 +10,8 @@ import json
 import os
 import sys
 import time
-from multiprocessing import Process, Queue
+import multiprocessing as mp
+
 
 # Stop sentinel value for queues
 stop = 'STOP'
@@ -59,7 +60,7 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         work["cloud_config_items"] = aws_config.items("aws")
 
     # Create input queue with info necessary to filter one file
-    work_q = Queue()
+    work_q = mp.Queue()
     for f in files:
         work_copy = copy.copy(work)
         work_copy["file"] = f
@@ -69,31 +70,28 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         work_q.put(stop)
 
     # Create output queues
-    stats_q = Queue()  # result stats
-    opps_q = Queue(max_opp)   # OPP data
+    stats_q = mp.Queue()  # result stats
+    opps_q = mp.Queue(max_opp)   # OPP data
 
     # Create worker processes
     workers = []
     for i in range(worker_count):
-        p = Process(target=do_filter, args=(work_q, opps_q))
-        p.daemon = True
+        p = mp.Process(target=do_filter, args=(work_q, opps_q))
         p.start()
         workers.append(p)
 
     # Create zipping output process
-    saver = Process(
+    saver = mp.Process(
         target=do_save,
         args=(opps_q, stats_q, len(files))
     )
-    saver.daemon = True
     saver.start()
 
     # Create reporting process
-    reporter = Process(
+    reporter = mp.Process(
         target=do_reporting,
         args=(stats_q, len(files), every)
     )
-    reporter.daemon = True
     reporter.start()
 
     # Wait for everything to finish
@@ -134,7 +132,6 @@ def do_filter(work_q, opps_q):
 
         opps_q.put(work)
         work = work_q.get()
-    #print(f"worker {os.getpid()} is exiting", file=sys.stderr)
 
 
 def do_save(opps_q, stats_q, files_left):
@@ -152,7 +149,6 @@ def do_save(opps_q, stats_q, files_left):
         if work["opp_dir"]:
             fileio.write_opp_labview(work["opp"], work["file"], work["opp_dir"])
         stats_q.put(work)
-    #print(f"saver {os.getpid()} is exiting", file=sys.stderr)
 
 
 def do_reporting(stats_q, file_count, every):
@@ -230,4 +226,3 @@ def do_reporting(stats_q, file_count, every):
     print("OPP particles = %s (%.2f p/s)" % (opp_count, opprate))
     print("OPP/EVT ratio = %.04f" % opp_evt_signal_ratio)
     print("Filtering completed in %.2f seconds" % (delta,))
-    #print(f"reporter {os.getpid()} is exiting", file=sys.stderr)
