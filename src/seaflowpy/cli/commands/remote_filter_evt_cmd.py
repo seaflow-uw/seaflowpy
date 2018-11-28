@@ -18,7 +18,7 @@ from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import util
 
-
+REMOTE_SOURCE_DIR = '/home/ubuntu/src/seaflowpy'
 REMOTE_WORK_DIR = "/mnt/ramdisk"
 REMOTE_DB_DIR = "{}/dbs".format(REMOTE_WORK_DIR)
 
@@ -28,25 +28,37 @@ def validate_positive_int(ctx, param, value):
         raise click.BadParameter('%s must be > 0' % param)
     return value
 
+def validate_source_dir(ctx, param, value):
+    if value and len(value):
+        if not value.endswith('/'):
+            value = value + '/'
+        if not os.path.isdir(value):
+            raise click.BadParameter(f'{source_dir} does not exist or is not a directory')
+    return value
 
 @click.command()
-@click.option('-o', '--output-dir', metavar='DIR', required=True,
-    help='Output directory for SQLite3 database and OPP binary files for each cruise. Will be created if does not exist')
+@click.option('-b', '--branch', metavar='NAME', default='master', show_default=True,
+    help='Which branch of seaflowpy github repo to use on remote servers.')
 @click.option('-D', '--dryrun', is_flag=True,
     help='Show cruise to host assignments without starting instances.')
 @click.option('-i', '--instance-count', default=1, show_default=True, metavar='N', callback=validate_positive_int,
     help='Number of cloud instances to use.')
 @click.option('-n', '--no-cleanup', is_flag=True, default=False, show_default=True,
     help='Don\'t cleanup resources.')
+@click.option('-o', '--output-dir', metavar='DIR', required=True,
+    help='Output directory for SQLite3 database and OPP binary files for each cruise. Will be created if does not exist')
 @click.option('-p', '--process-count', default=16, show_default=True, metavar='N', callback=validate_positive_int,
     help='Number of processes to use in filtering.')
 @click.option('-r', '--ramdisk-size', default=60, show_default=True, metavar='GiB', callback=validate_positive_int,
     help='Size of ramdisk in GiB, limited by instance RAM.')
+@click.option('-s', '--source-dir', metavar='DIR', callback=validate_source_dir,
+    help='Local seaflowpy source directory to use on remote servers. This overrides source code pulls from github.')
 @click.option('-t', '--instance-type', default='c5.9xlarge', show_default=True, metavar='EC2_TYPE',
     help='EC2 instance type to use. Change with caution. The instance type must have be able to attach 2 instance store devices.')
 @click.argument('dbs', nargs=-1, type=click.Path(exists=True))
-def remote_filter_evt_cmd(output_dir, dryrun, instance_count, no_cleanup,
-                          process_count, ramdisk_size, instance_type, dbs):
+def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
+                          output_dir, process_count, ramdisk_size, source_dir,
+                          instance_type, dbs):
     """Filter EVT data on remote servers.
 
     SQLite3 db files must contain filter parameters and cruise name
@@ -55,6 +67,7 @@ def remote_filter_evt_cmd(output_dir, dryrun, instance_count, no_cleanup,
 
     # Print defined parameters and information
     v = {
+        'branch': branch,
         'dbs': dbs,
         'output_dir': output_dir,
         'dryrun': dryrun,
@@ -62,6 +75,7 @@ def remote_filter_evt_cmd(output_dir, dryrun, instance_count, no_cleanup,
         'no_cleanup': no_cleanup,
         'process_count': process_count,
         'instance_type': instance_type,
+        'source_dir': source_dir,
         'ramdisk_size': ramdisk_size,
         'version': pkg_resources.get_distribution("seaflowpy").version
     }
@@ -169,8 +183,19 @@ def remote_filter_evt_cmd(output_dir, dryrun, instance_count, no_cleanup,
         with hide('output'):
             execute(rsync_put, dbs, REMOTE_DB_DIR)
 
+        print('Install miniconda 3')
+        execute(install_miniconda3)
+
+        execute(mkdir, REMOTE_SOURCE_DIR)  # create source dir on each host
+        if source_dir:
+            print('Transfer local seaflowpy source code')
+            execute(rsync_put, [source_dir], REMOTE_SOURCE_DIR)
+        else:
+            print('Pull seaflowpy source code')
+            execute(pull_seaflowpy, branch, REMOTE_SOURCE_DIR)
+
         print('Install seaflowpy')
-        execute(pull_seaflowpy)
+        execute(install_seaflowpy)
 
         # Host list in env.hosts should be populated now and all machines up
         print('Filter data')
@@ -266,25 +291,42 @@ def rsync_get(remotepath, localpath):
 def mkdir(d):
     with quiet():
         if run('test -d {}'.format(d)).failed:
-            run('mkdir {}'.format(d))
+            run('mkdir -p {}'.format(d))
 
 @task
 @parallel
-def pull_seaflowpy():
-    gitdir = '/home/ubuntu/git'
-    repodir = os.path.join(gitdir, 'seaflowpy')
+def install_miniconda3():
+    install_url = 'https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh'
+    install_script = '$HOME/miniconda3.sh'
+    install_dir = '$HOME/miniconda3'
+    with hide('stdout'):
+        run(f'wget {install_url} -O {install_script}')
+        run(f'sh {install_script} -b -p {install_dir}')
+        run(f'echo \'export PATH="{install_dir}/bin:$PATH"\' >>$HOME/.bash_profile')
+        run(f'export PATH="{install_dir}/bin:$PATH"')
+        with show('stdout'):
+            run('which python')
+            run('python -V')
+            run('echo $PATH')
+
+@task
+@parallel
+def pull_seaflowpy(branch, source_dir):
     with quiet():
-        if run('test -d {}'.format(gitdir)).failed:
-            run('mkdir {}'.format(gitdir))
-        if run('test -d {}'.format(repodir)).failed:
-            with show('running', 'warnings', 'stderr'):
-                run('git clone https://github.com/armbrustlab/seaflowpy {}'.format(repodir))
-    with cd(repodir), hide('stdout'):
-        run('git pull')
-        run('pip3 install --user .')
-        run('pip3 install pytest')
-        #run('python setup.py test')
-        run('py.test')
+        with show('running', 'warnings', 'stderr'):
+            run('git clone https://github.com/armbrustlab/seaflowpy {}'.format(REMOTE_SOURCE_DIR))
+    with cd(REMOTE_SOURCE_DIR), hide('stdout'):
+        run(f'git checkout {branch}')
+
+@task
+@parallel
+def install_seaflowpy():
+    with cd(REMOTE_SOURCE_DIR), hide('stdout'):
+        # If this is a git repo, clean it first.
+        run('git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git clean -fdx')
+        run('pip install .')
+        run('pip install pytest')
+        run('pytest')
         with show('stdout'):
             run('seaflowpy version')
 

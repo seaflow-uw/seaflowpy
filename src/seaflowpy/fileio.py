@@ -3,19 +3,25 @@ import io
 import numpy as np
 import os
 import pandas as pd
+from contextlib import contextmanager
+from subprocess import Popen, PIPE
 from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
 from . import util
 
-
+@contextmanager
 def file_open_r(path, fileobj=None):
     """
-    Open path for reading.
+    Open path or fileobj for reading as a context manager.
 
-    Return a file handle for reading from path or preferentially fileobj if
-    provided. If path is provided and ends with '.gz' data will be considered
-    gzip compressed even if read from fileobj.
+    Data read from the return value of this function will come from path or
+    preferentially fileobj if provided. If path is provided and ends with '.gz'
+    data will be considered gzip compressed even if read from fileobj. All
+    resources opened by this function (input file handles) or open resources
+    passed to this function (fileobj) will be cleaned up by context managers.
+    The return value of this function should always be used within a 'with'
+    block.
 
     Parameters
     -----------
@@ -26,27 +32,42 @@ def file_open_r(path, fileobj=None):
 
     Returns
     -------
-    File object of Bytes.
+    Context manager for file-like object of Bytes.
     """
     if fileobj:
         if path.endswith('.gz'):
-            fh = gzip.GzipFile(fileobj=fileobj)
+            with gzip.GzipFile(fileobj=fileobj) as fh:
+                try:
+                    yield fh
+                finally:
+                    # Closing fh will be done by enclosing context manager,
+                    # but it doesn't know about fileobj so we have to do that
+                    # here
+                    fileobj.close()
         else:
-            fh = fileobj
+            try:
+                yield fileobj
+            finally:
+                fileobj.close()
     else:
         if path.endswith('.gz'):
-            fh = gzip.GzipFile(path)
+            with gzip.GzipFile(path) as fh:
+                yield fh
         else:
-            fh = io.open(path, 'rb')
-    return fh
+            with io.open(path, 'rb') as fh:
+                yield fh
 
 
+@contextmanager
 def file_open_w(path):
     """
-    Open path for writing.
+    Open path for writing as a context manager.
 
-    Return a file handle for writing to path. If path ends with '.gz' data will
-    gzip compressed.
+    If path ends with '.gz' data will gzip compressed. Only the write method of
+    the returned object should be used. All resources opened in this function
+    (output file handles, gzipping child processes) will be cleaned up by
+    context managers. The return value of this function should always be used
+    within a 'with' block.
 
     Parameters
     -----------
@@ -55,13 +76,14 @@ def file_open_w(path):
 
     Returns
     -------
-    Writable file-like object.
+    Context manager for writable file-like object.
     """
-    if path.endswith('.gz'):
-        fh = gzip.GzipFile(path, mode='wb')
-    else:
-        fh = io.open(path, 'wb')
-    return fh
+    with io.open(path, 'wb') as fh:
+        if path.endswith('.gz'):
+            with Popen(["gzip", "-c"], stdin=PIPE, stdout=fh) as p1:
+                yield p1.stdin
+        else:
+            yield fh
 
 
 def read_labview(path, fileobj=None):
@@ -84,27 +106,28 @@ def read_labview(path, fileobj=None):
     pandas.DataFrame
         SeaFlow event DataFrame as numpy.float64 values.
     """
-    fh = file_open_r(path, fileobj)
+    with file_open_r(path, fileobj) as fh:
 
-    # Particle count (rows of data) is stored in an initial 32-bit
-    # unsigned int
-    buff = fh.read(4)
-    if len(buff) == 0:
-        raise errors.FileError("File is empty")
-    if len(buff) != 4:
-        raise errors.FileError("File has invalid particle count header")
-    rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
-    if rowcnt == 0:
-        raise errors.FileError("File has no particle data")
+        # Particle count (rows of data) is stored in an initial 32-bit
+        # unsigned int
+        buff = fh.read(4)
+        if len(buff) == 0:
+            raise errors.FileError("File is empty")
+        if len(buff) != 4:
+            raise errors.FileError("File has invalid particle count header")
+        rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
+        if rowcnt == 0:
+            raise errors.FileError("File has no particle data")
 
-    # Read the rest of the data. Each particle has 12 unsigned
-    # 16-bit ints in a row.
-    expected_bytes = rowcnt * 12 * 2  # rowcnt * 12 columns * 2 bytes
-    # must cast to int here because while BufferedIOReader objects
-    # returned from io.open(path, "rb") will accept a numpy.int64 type,
-    # io.BytesIO objects will not accept this type and will only accept
-    # vanilla int types. This is true for Python 3, not for Python 2.
-    buff = fh.read(int(expected_bytes))
+        # Read the rest of the data. Each particle has 12 unsigned
+        # 16-bit ints in a row.
+        expected_bytes = rowcnt * 12 * 2  # rowcnt * 12 columns * 2 bytes
+        # must cast to int here because while BufferedIOReader objects
+        # returned from io.open(path, "rb") will accept a numpy.int64 type,
+        # io.BytesIO objects will not accept this type and will only accept
+        # vanilla int types. This is true for Python 3, not for Python 2.
+        buff = fh.read(int(expected_bytes))
+
     if len(buff) != expected_bytes:
         raise errors.FileError(
             "File has incorrect number of data bytes. Expected %i, saw %i" %
@@ -143,12 +166,11 @@ def write_labview(df, path):
     # Make sure directory necessary directory tree exists
     util.mkdir_p(os.path.dirname(path))
 
+    # Open output file
     with file_open_w(path) as fh:
-        # Create 32-bit uint particle count header
-        header = np.array([len(df.index)], np.uint32)
         # Write 32-bit uint particle count header
+        header = np.array([len(df.index)], np.uint32)
         fh.write(header.tobytes())
-
         if len(df.index) > 0:
             # Only keep labview EVT file format columns
             df = df[particleops.columns]
