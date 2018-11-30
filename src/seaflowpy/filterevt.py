@@ -12,6 +12,11 @@ import sys
 import time
 import multiprocessing as mp
 
+try:
+    import mkl
+    mkl.set_num_threads(1)
+except ImportError:
+    pass
 
 # Stop sentinel value for queues
 stop = 'STOP'

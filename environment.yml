@@ -1,0 +1,14 @@
+name: seaflowpy
+channels:
+  - defaults
+dependencies:
+  - arrow
+  - boto3
+  - click
+  - fabric3
+  - numexpr
+  - python=3.7
+  - pandas
+  - pip
+  - pip:
+    - tox

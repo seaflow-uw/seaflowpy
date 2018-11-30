@@ -1,5 +1,3 @@
-from __future__ import unicode_literals
-from builtins import object
 import numpy.testing as npt
 import os
 import py.path
@@ -7,7 +5,7 @@ import pytest
 import seaflowpy as sfp
 
 
-class TestGGA2DecimalDegrees(object):
+class TestGGA2DecimalDegrees:
     def test_gga2dd(self):
         # GGA inputs
         gga_lons = [
@@ -90,7 +88,7 @@ class TestGGA2DecimalDegrees(object):
                 dd = sfp.geo.ggalat2dd(lat)
 
 
-class TestGGA(object):
+class TestGGA:
     def test_is_gga_lat(self):
         gga_lats = [
             "1536.43", "-1536.43",

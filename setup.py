@@ -47,8 +47,7 @@ setup(
         'click',
         'numexpr',
         'pandas',
-        'fabric3',
-        'future'
+        'fabric3'
     ],
     tests_require=['pytest'],
     cmdclass = {'test': PyTest},

@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function
 import argparse
 import botocore
 import click
@@ -324,8 +323,9 @@ def install_seaflowpy():
     with cd(REMOTE_SOURCE_DIR), hide('stdout'):
         # If this is a git repo, clean it first.
         run('git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git clean -fdx')
+        run('conda env create -n seaflowpy -f environment.lock.yml')
+        run('conda activate seaflowpy')
         run('pip install .')
-        run('pip install pytest')
         run('pytest')
         with show('stdout'):
             run('seaflowpy version')
@@ -383,6 +383,14 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
             else:
                 sys.stderr.write('Filtering failed for cruise {}\n'.format(c))
 
+            # Capture conda environment information
+            with settings(warn_only=True), hide('output'):
+                result = run('conda list')
+            if result.succeeded:
+                conda_env_text = result
+            else:
+                conda_env_text = ""
+
             # Always write log output
             logpath = os.path.join(output_dir, '{}.seaflowpy_filter.log'.format(c))
 
@@ -390,5 +398,8 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 logfh.write('command={}\n'.format(cruise_results[c].command))
                 logfh.write('real_command={}\n'.format(cruise_results[c].real_command))
                 logfh.write(cruise_results[c] + '\n')
+                logfh.write(cruise_results[c] + '\n')
+                logfh.write('conda env list' + '\n')
+                logfh.write(conda_env_text + '\n')
 
     return cruise_results

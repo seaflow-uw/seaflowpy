@@ -10,9 +10,6 @@ download_file_memory() - Download a file from cloud storage to memory
 These methods are intended to be independent of any specific cloud provider,
 making it simple to replace one provider for another.
 """
-from __future__ import print_function
-
-from builtins import object
 import boto3
 import botocore
 import io
@@ -20,7 +17,7 @@ import random
 import time
 
 
-class AWS(object):
+class AWS:
     """
     A class for high-level operations in EC2 and S3.
     """

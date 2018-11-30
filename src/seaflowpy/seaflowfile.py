@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-from builtins import object
 import arrow
 import gzip
 import io
@@ -20,7 +18,7 @@ old_path_re = r'^\d{1,4}_\d{1,3}/\d+\.evt$'
 old_file_re = r'^\d+\.evt$'
 
 
-class SeaFlowFile(object):
+class SeaFlowFile:
     """Base class for EVT/OPP/VCT file classes"""
 
     def __init__(self, path):
