@@ -301,8 +301,8 @@ def install_miniconda3():
     with hide('stdout'):
         run(f'wget {install_url} -O {install_script}')
         run(f'sh {install_script} -b -p {install_dir}')
-        run(f'echo \'export PATH="{install_dir}/bin:$PATH"\' >>$HOME/.bash_profile')
-        run(f'export PATH="{install_dir}/bin:$PATH"')
+        run(f'echo ". {install_dir}/etc/profile.d/conda.sh" >> $HOME/.profile')
+        run(f'echo "conda activate" >> $HOME/.profile')
         with show('stdout'):
             run('which python')
             run('python -V')
@@ -323,8 +323,8 @@ def install_seaflowpy():
     with cd(REMOTE_SOURCE_DIR), hide('stdout'):
         # If this is a git repo, clean it first.
         run('git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git clean -fdx')
-        run('conda env create -n seaflowpy -f environment.lock.yml')
-        run('conda activate seaflowpy')
+        run('conda env update -f environment.yml')
+        run(f'echo "conda activate seaflowpy" >> $HOME/.profile')
         run('pip install .')
         run('pytest')
         with show('stdout'):
@@ -398,8 +398,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 logfh.write('command={}\n'.format(cruise_results[c].command))
                 logfh.write('real_command={}\n'.format(cruise_results[c].real_command))
                 logfh.write(cruise_results[c] + '\n')
-                logfh.write(cruise_results[c] + '\n')
-                logfh.write('conda env list' + '\n')
+                logfh.write('\nconda env list' + '\n')
                 logfh.write(conda_env_text + '\n')
 
     return cruise_results
