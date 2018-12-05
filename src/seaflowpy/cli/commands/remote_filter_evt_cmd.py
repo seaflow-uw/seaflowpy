@@ -397,8 +397,14 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
             with open(logpath, 'w') as logfh:
                 logfh.write('command={}\n'.format(cruise_results[c].command))
                 logfh.write('real_command={}\n'.format(cruise_results[c].real_command))
-                logfh.write(cruise_results[c] + '\n')
+                logfh.write(norm(cruise_results[c].stdout) + '\n')
                 logfh.write('\nconda env list' + '\n')
-                logfh.write(conda_env_text + '\n')
+                logfh.write(norm(conda_env_text.stdout) + '\n')
 
     return cruise_results
+
+# Fabric3 seems to be defaulting to /r/n line-endings. This function should fix
+# that.
+def norm(text):
+    """Normalize line-endings in a text string."""
+    return text.replace('\r\n', os.linesep).replace('\r', os.linesep)
