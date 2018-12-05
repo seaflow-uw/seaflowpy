@@ -137,7 +137,7 @@ def do_filter(work_q, opps_q):
             work["opp"] = particleops.select_focused(evt_df)
         except Exception as e:
             work["error"] = f"Unexpected error when filtering file {evt_file}: {e}"
-            evt_df = particleops.empty_df()
+            work["opp"] = particleops.select_focused(particleops.empty_df())
 
         opps_q.put(work)
         work = work_q.get()
