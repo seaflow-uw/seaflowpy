@@ -117,23 +117,27 @@ def do_filter(work_q, opps_q):
 
         evt_file = work["file"]
         fileobj = None
-        if work["s3"]:
-            cloud = clouds.AWS(work["cloud_config_items"])
-            fileobj = cloud.download_file_memory(evt_file)
 
         try:
+            if work["s3"]:
+                cloud = clouds.AWS(work["cloud_config_items"])
+                fileobj = cloud.download_file_memory(evt_file)
             evt_df = fileio.read_labview(path=evt_file, fileobj=fileobj)
         except errors.FileError as e:
             work["error"] = f"Could not parse file {evt_file}: {e}"
             evt_df = particleops.empty_df()
         except Exception as e:
-            work["error"] = f"Unexpected error for file {evt_file}: {e}"
+            work["error"] = f"Unexpected error when parsing file {evt_file}: {e}"
             evt_df = particleops.empty_df()
 
-        particleops.mark_focused(evt_df, work["filter_params"])
-        work["all_count"] = len(evt_df.index)
-        work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
-        work["opp"] = particleops.select_focused(evt_df)
+        try:
+            particleops.mark_focused(evt_df, work["filter_params"])
+            work["all_count"] = len(evt_df.index)
+            work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
+            work["opp"] = particleops.select_focused(evt_df)
+        except Exception as e:
+            work["error"] = f"Unexpected error when filtering file {evt_file}: {e}"
+            evt_df = particleops.empty_df()
 
         opps_q.put(work)
         work = work_q.get()
@@ -144,15 +148,22 @@ def do_save(opps_q, stats_q, files_left):
         work = opps_q.get()
         files_left -= 1
 
-        # Save to DB
-        if work["dbpath"]:
-            filter_id = work["filter_params"]["id"].unique().tolist()[0]
-            db.save_opp_to_db(work["file"], work["opp"], work["all_count"],
-                work["evt_count"], filter_id, work["dbpath"])
+        try:
+            # Save to DB
+            if work["dbpath"]:
+                filter_id = work["filter_params"]["id"].unique().tolist()[0]
+                db.save_opp_to_db(work["file"], work["opp"], work["all_count"],
+                    work["evt_count"], filter_id, work["dbpath"])
+        except Exception as e:
+            work["error"] = f"Unexpected error when saving file {evt_file} to db: {e}"
 
-        # Write to OPP file if all quantiles have focused data
-        if work["opp_dir"]:
-            fileio.write_opp_labview(work["opp"], work["file"], work["opp_dir"])
+        try:
+            # Write to OPP file if all quantiles have focused data
+            if work["opp_dir"]:
+                fileio.write_opp_labview(work["opp"], work["file"], work["opp_dir"])
+        except Exception as e:
+            work["error"] = f"Unexpected error when saving file {evt_file}: {e}"
+
         stats_q.put(work)
 
 
