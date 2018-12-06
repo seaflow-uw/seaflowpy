@@ -6,7 +6,7 @@ dependencies:
   - boto3
   - click
   - fabric3
-  - mkl-service
+  - nomkl
   - numexpr
   - python=3.7
   - pandas
