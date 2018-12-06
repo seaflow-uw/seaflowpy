@@ -9,6 +9,7 @@ from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import evt
 from seaflowpy import filterevt
+from seaflowpy import util
 
 
 def validate_limit(ctx, param, value):
@@ -44,6 +45,7 @@ def validate_resolution(ctx, param, value):
     help='Number of processes to use in filtering.')
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
+@util.quiet_keyboardinterrupt
 def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Validate args

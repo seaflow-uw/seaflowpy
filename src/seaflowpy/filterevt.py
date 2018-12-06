@@ -25,7 +25,7 @@ quantiles = [2.5, 50, 97.5]
 # Max OPP in queue, for backpressure if writing is slow
 max_opp = 100
 
-
+@util.quiet_keyboardinterrupt
 def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
                      every=10.0):
     """Filter a list of EVT files.
@@ -66,14 +66,6 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
 
     # Create input queue with info necessary to filter one file
     work_q = mp.Queue()
-    for f in files:
-        work_copy = copy.copy(work)
-        work_copy["file"] = f
-        work_q.put(work_copy)
-    # Put sentinel stop values on the input queue, one for each consumer process
-    for i in range(worker_count):
-        work_q.put(stop)
-
     # Create output queues
     stats_q = mp.Queue()  # result stats
     opps_q = mp.Queue(max_opp)   # OPP data
@@ -82,14 +74,16 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
     workers = []
     for i in range(worker_count):
         p = mp.Process(target=do_filter, args=(work_q, opps_q))
+        p.daemon = True
         p.start()
         workers.append(p)
 
-    # Create zipping output process
+    # Create db output process
     saver = mp.Process(
         target=do_save,
         args=(opps_q, stats_q, len(files))
     )
+    saver.daemon = True
     saver.start()
 
     # Create reporting process
@@ -97,15 +91,23 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         target=do_reporting,
         args=(stats_q, len(files), every)
     )
+    reporter.daemon = True
     reporter.start()
 
+    # Add work to the work queue
+    for f in files:
+        work_copy = copy.copy(work)
+        work_copy["file"] = f
+        work_q.put(work_copy)
+    # Put sentinel stop values on the input queue, one for each consumer process
+    for i in range(worker_count):
+        work_q.put(stop)
+
     # Wait for everything to finish
-    for w in workers:
-        w.join()
-    saver.join()
     reporter.join()
 
 
+@util.quiet_keyboardinterrupt
 def do_filter(work_q, opps_q):
     """Filter one EVT file, save to sqlite3, return filter stats"""
     work = work_q.get()
@@ -139,10 +141,20 @@ def do_filter(work_q, opps_q):
             work["error"] = f"Unexpected error when filtering file {evt_file}: {e}"
             work["opp"] = particleops.select_focused(particleops.empty_df())
 
+        # Write to OPP file if all quantiles have focused data. Would like to
+        # write in a different process (do_save) but this quickly becomes a
+        # significant bottleneck.
+        try:
+            if work["opp_dir"]:
+                fileio.write_opp_labview(work["opp"], work["file"], work["opp_dir"])
+        except Exception as e:
+            work["error"] = f"Unexpected error when saving file {evt_file}: {e}"
+
         opps_q.put(work)
         work = work_q.get()
 
 
+@util.quiet_keyboardinterrupt
 def do_save(opps_q, stats_q, files_left):
     while files_left > 0:
         work = opps_q.get()
@@ -157,16 +169,10 @@ def do_save(opps_q, stats_q, files_left):
         except Exception as e:
             work["error"] = f"Unexpected error when saving file {evt_file} to db: {e}"
 
-        try:
-            # Write to OPP file if all quantiles have focused data
-            if work["opp_dir"]:
-                fileio.write_opp_labview(work["opp"], work["file"], work["opp_dir"])
-        except Exception as e:
-            work["error"] = f"Unexpected error when saving file {evt_file}: {e}"
-
         stats_q.put(work)
 
 
+@util.quiet_keyboardinterrupt
 def do_reporting(stats_q, file_count, every):
     evt_count = 0
     evt_signal_count = 0

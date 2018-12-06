@@ -7,6 +7,7 @@ import errno
 import gzip
 import os
 import subprocess
+import sys
 import time
 
 
@@ -102,6 +103,17 @@ def suppress_sigpipe(f):
             f(*args, **kwargs)
         finally:
             signal(SIGPIPE, orig_handler)  # restore original Python SIGPIPE handler
+    return wrapper
+
+
+def quiet_keyboardinterrupt(f):
+    """Decorator to exit quietly on keyboard interrupt."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            f(*args, **kwargs)
+        except KeyboardInterrupt:
+            sys.exit()
     return wrapper
 
 
