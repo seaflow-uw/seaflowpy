@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import multiprocessing as mp
+import queue
 
 try:
     import mkl
@@ -69,12 +70,12 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
     # Create output queues
     stats_q = mp.Queue()  # result stats
     opps_q = mp.Queue(max_opp)   # OPP data
+    done_q = mp.Queue()   # signal we're done to main thread
 
     # Create worker processes
     workers = []
     for i in range(worker_count):
         p = mp.Process(target=do_filter, args=(work_q, opps_q))
-        p.daemon = True
         p.start()
         workers.append(p)
 
@@ -83,15 +84,13 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         target=do_save,
         args=(opps_q, stats_q, len(files))
     )
-    saver.daemon = True
     saver.start()
 
     # Create reporting process
     reporter = mp.Process(
         target=do_reporting,
-        args=(stats_q, len(files), every)
+        args=(stats_q, done_q, len(files), every)
     )
-    reporter.daemon = True
     reporter.start()
 
     # Add work to the work queue
@@ -103,8 +102,27 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
     for i in range(worker_count):
         work_q.put(stop)
 
-    # Wait for everything to finish
-    reporter.join()
+    try:
+        # Wait for reporter to tell us we're done
+        done = done_q.get()
+        if done is not None:
+            # Something went wrong, shut child processes down
+            print(done, file=sys.stderr)
+            for w in workers:
+                w.terminate()
+                w.join()
+            saver.terminate()
+            saver.join()
+
+        # All child processes should be finished by now
+        reporter.join()
+    finally:
+        for w in workers:
+            w.terminate()
+            w.join()
+        saver.terminate()
+        saver.join()
+        reporter.join()
 
 
 @util.quiet_keyboardinterrupt
@@ -157,7 +175,15 @@ def do_filter(work_q, opps_q):
 @util.quiet_keyboardinterrupt
 def do_save(opps_q, stats_q, files_left):
     while files_left > 0:
-        work = opps_q.get()
+        try:
+            work = opps_q.get(True, 60)  # We should get one file every minute at least
+        except queue.Empty as e:
+            stats_q.put("EMPTY QUEUE")
+            break
+        except Exception:
+            stats_q.put("QUEUE ERROR")
+            break
+
         files_left -= 1
 
         try:
@@ -173,7 +199,7 @@ def do_save(opps_q, stats_q, files_left):
 
 
 @util.quiet_keyboardinterrupt
-def do_reporting(stats_q, file_count, every):
+def do_reporting(stats_q, done_q, file_count, every):
     evt_count = 0
     evt_signal_count = 0
     opp_count = 0
@@ -188,10 +214,18 @@ def do_reporting(stats_q, file_count, every):
     evt_count_block = 0  # EVT particles in this block (between milestones)
     evt_signal_count_block = 0  # EVT noise filtered particles in this block
     opp_count_block = 0  # OPP particles in this block
+    files_seen = 0
 
     # Filter particles in parallel with process pool
     for i in range(file_count):
         work = stats_q.get()  # get next result
+
+        if work == "EMPTY QUEUE" or work == "QUEUE ERROR":
+            # Something went wrong upstream, exit with an error message
+            done_q.put(f"A fatal error occurred after filtering {files_seen}/{file_count} files")
+            sys.exit(1)
+
+        files_seen += 1
 
         if work["error"]:
             print(work["error"], file=sys.stderr)
@@ -248,3 +282,5 @@ def do_reporting(stats_q, file_count, every):
     print("OPP particles = %s (%.2f p/s)" % (opp_count, opprate))
     print("OPP/EVT ratio = %.04f" % opp_evt_signal_ratio)
     print("Filtering completed in %.2f seconds" % (delta,))
+
+    done_q.put(None)
