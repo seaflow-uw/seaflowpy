@@ -151,6 +151,9 @@ def check_numerics(df):
     required = set(numeric_columns)
     for column in required.difference(present):
         errors.append(create_error(df, column, msg="{} column is missing".format(column)))
+    for column in required.intersection(present):
+        if df[column].isna().all():
+            errors.append(create_error(df, column, msg="{} column has no data".format(column)))
     return errors
 
 
@@ -218,6 +221,7 @@ def fix(df):
 
     - Adds a "date" column if not present, based on filename datestamp
     - Adds or replaces day of year directory component of "file" values
+    - Set any stream pressure values <= 0 to 1e-4 (small positive number)
     - Adds any missing db columns
     """
     newdf = df.copy(deep=True)
@@ -228,6 +232,9 @@ def fix(df):
 
     # Add day of year directory if needed
     newdf["file"] = newdf["file"].map(lambda x: seaflowfile.SeaFlowFile(x).file_id)
+
+    # Convert stream pressure <= 0 to small positive number
+    newdf.loc[newdf["stream_pressure"] <= 0, "stream_pressure"] = 1e-4
 
     # Make sure all DB columns are present
     for k in colname_mapping["table_to_file"]:
