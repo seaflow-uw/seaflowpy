@@ -29,8 +29,8 @@ s3 = pytest.mark.skipif(
 
 
 @pytest.fixture()
-def evt():
-    return sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
+def evt_df():
+    return sfp.fileio.read_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
 
 
 @pytest.fixture()
@@ -38,84 +38,63 @@ def params():
     # Params created with popcycle function
     # create.filter.params(740, 33759, 19543, 19440)
     # taking the 50.0 quantile values.
-    return {
-        "width": 2500,
-        "notch_small_D1": 0.656,
-        "notch_small_D2": 0.683,
-        "notch_large_D1": 1.635,
-        "notch_large_D2": 1.632,
-        "offset_small_D1": 0,
-        "offset_small_D2": 0,
-        "offset_large_D1": -33050,
-        "offset_large_D2": -32038
-    }
+    return pd.DataFrame.from_dict({
+        "width": [2500],
+        "notch_small_D1": [0.656],
+        "notch_small_D2": [0.683],
+        "notch_large_D1": [1.635],
+        "notch_large_D2": [1.632],
+        "offset_small_D1": [0],
+        "offset_small_D2": [0],
+        "offset_large_D1": [-33050],
+        "offset_large_D2": [-32038],
+        "quantile": [50.0]
+    })
 
 
 @pytest.fixture()
-def tmpout(tmpdir, evt):
+def tmpout(tmpdir):
     """Setup to test complete filter workflow"""
     # Copy db with filtering params
     db = str(tmpdir.join("testcruise.db"))
     shutil.copyfile("tests/testcruise_paramsonly.db", db)
     os.chmod(db, 0o664)  # make the db writeable
-    evt_path = py.path.local(evt.path)
+    evt_path = py.path.local("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
     return {
         "db": db,
-        "oppdir": tmpdir.join("oppdir"),
-        "opp_path": tmpdir.join(str(evt_path.basename) + ".opp.gz"),
-        "tmpdir": tmpdir,
-        "evt": evt
+        "oppdir": str(tmpdir.join("oppdir")),
+        "opp_path": str(tmpdir.join(str(evt_path.basename) + ".opp.gz")),
+        "tmpdir": str(tmpdir),
+        "evt_df": sfp.fileio.read_labview(str(evt_path)),
+        "evt_path": str(evt_path)
     }
 
 
-class TestOpen(object):
+class TestOpen:
     def test_read_valid_evt(self):
-        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
-        assert evt.header_count == 40000
-        assert evt.event_count == 40000
-        assert evt.particle_count == 40000
-        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.transformed == False
-
-    def test_read_valid_evt_and_transform(self):
-        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-                      transform=True)
-        assert evt.header_count == 40000
-        assert evt.event_count == 40000
-        assert evt.particle_count == 40000
-        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.transformed == True
+        df = sfp.fileio.read_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
+        assert len(df.index) == 40000
+        assert list(df) == sfp.particleops.columns
 
     def test_read_valid_gz_evt(self):
-        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
-        assert evt.header_count == 40000
-        assert evt.event_count == 40000
-        assert evt.particle_count == 40000
-        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
-        assert evt.transformed == False
+        df = sfp.fileio.read_labview("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
+        assert len(df.index) == 40000
+        assert list(df) == sfp.particleops.columns
 
     def test_read_empty_evt(self):
         with pytest.raises(sfp.errors.FileError):
-            evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
+            df = sfp.fileio.read_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_bad_header_count_evt(self):
         with pytest.raises(sfp.errors.FileError):
-            evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
+            df = sfp.fileio.read_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_short_header_evt(self):
         with pytest.raises(sfp.errors.FileError):
-            evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
-
-    def test_read_evt_no_read_data(self):
-        evt = sfp.EVT("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", read_data=False)
-        assert evt.header_count == 0
-        assert evt.event_count == 0
-        assert evt.particle_count == 0
-        assert evt.path == "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
-        assert evt.transformed == False
+            df = sfp.fileio.read_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
 
-class TestPathFilenameParsing(object):
+class TestPathFilenameParsing:
     def test_is_evt(self):
         files = [
             # Valid names
@@ -170,140 +149,225 @@ class TestPathFilenameParsing(object):
         assert files == answer
 
 
-class TestFilter(object):
-    def test_filter_no_params(self, evt):
+class TestFilter:
+    def test_mark_focused_no_params(self, evt_df):
         with pytest.raises(ValueError):
-            evt.filter(None)
+            sfp.particleops.mark_focused(evt_df, None)
 
-    def test_filter_empty_params(self, evt):
+    def test_mark_focused_empty_params(self, evt_df):
         with pytest.raises(ValueError):
-            evt.filter({})
+            sfp.particleops.mark_focused(evt_df, pd.DataFrame.from_dict({}))
 
-    def test_filter_with_set_params(self, evt, params):
-        opp = evt.filter(params)
-        assert opp.parent.event_count == 40000
-        assert opp.parent.particle_count == 39928
-        assert opp.particle_count == 107
-        assert opp.filter_params == params
-        assert opp.parent == evt
+    def test_mark_focused_with_set_params(self, evt_df, params):
+        sfp.particleops.mark_focused(evt_df, params)
+        assert len(evt_df.index) == 40000
+        assert len(evt_df[evt_df["q50.0"]].index) == 107
+        assert len(sfp.particleops.select_focused(evt_df).index) == 107
 
-    def test_noise_filter(self, evt):
+    def test_noise_filter(self, evt_df):
         """Events with zeroes in all of D1, D2, and fsc_small are noise"""
         # There are events which could be considered noise (no signal in any of
         # D1, D2, or fsc_small
-        assert np.any((evt.df["D1"] == 0) & (evt.df["D2"] == 0) & (evt.df["fsc_small"] == 0)) == True
+        assert np.any((evt_df["D1"] == 0) & (evt_df["D2"] == 0) & (evt_df["fsc_small"] == 0)) == True
 
-        signal = evt.filter_noise()
+        sfp.particleops.mark_noise(evt_df)
+        signal_df = evt_df[~evt_df["noise"]]
 
-        # We made a new dataframe
-        assert signal is not evt.df
-        # Things actually got removed
-        assert len(signal.index) < len(evt.df.index)
         # Correct event count
-        assert len(signal.index) == 39928
-        assert evt.particle_count == len(signal.index)
+        assert len(signal_df.index) == 39928
 
         # No events are all zeroes D1, D2, and fsc_small
-        assert np.any((signal["D1"] == 0) & (signal["D2"] == 0) & (signal["fsc_small"] == 0)) == False
+        assert np.any((signal_df["D1"] == 0) & (signal_df["D2"] == 0) & (signal_df["fsc_small"] == 0)) == False
 
 
-class TestTransform(object):
-    def test_transform_one_value(self):
-        npt.assert_almost_equal(sfp.EVT.transform(56173.714285714275),
-            1000.0, decimal=10)
+class TestTransform:
+    def test_transform_four_values(self):
+        input_df = pd.DataFrame({
+            "fsc_small": [32768, 65536],
+            "D1": [0, 1]
+        })
+        output_df = pd.DataFrame({
+            "fsc_small": [56.234132519, 3162.2776601684],
+            "D1": [1, 1.0001229789]
+        })
+        npt.assert_array_almost_equal(
+            sfp.particleops.transform_particles(input_df, columns=["fsc_small", "D1"]),
+            output_df
+        )
 
-    def test_transform(self, evt):
-        orig_df = evt.df.copy()
-        npt.assert_array_equal(orig_df, evt.df)
-        assert evt.transformed == False
-        t_df = evt.transform_particles()
-        assert evt.transformed == True
-        assert t_df is evt.df
+    def test_transform_inplace(self, evt_df):
+        orig_df = evt_df.copy()
+        npt.assert_array_equal(orig_df, evt_df)
+        t_df = sfp.particleops.transform_particles(evt_df)
+        assert t_df is evt_df
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
 
-    def test_transform_copy(self, evt):
-        orig_df = evt.df.copy()
-        npt.assert_array_equal(orig_df, evt.df)
-        assert evt.transformed == False
-        t_df = evt.transform_particles(inplace=False)
-        assert evt.transformed == False
-        assert t_df is not evt.df
+    def test_transform_copy(self, evt_df):
+        orig_df = evt_df.copy()
+        npt.assert_array_equal(orig_df, evt_df)
+        t_df = sfp.particleops.transform_particles(evt_df, inplace=False)
+        assert t_df is not evt_df
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
 
 
-class TestOutput(object):
+class TestOutput:
     def test_sqlite3_opp_counts_and_params(self, tmpout, params):
-        opp = tmpout["evt"].filter(params)
-        opp.save_opp_to_db("UUID", 50.0, tmpout["db"])
+        sf_file = sfp.SeaFlowFile(tmpout["evt_path"])
+        df = tmpout["evt_df"]
+        sfp.particleops.mark_focused(df, params)
+
+        raw_count = len(df.index)
+        signal_count = len(df[df["noise"] == False].index)
+
+        sfp.db.save_opp_to_db(sf_file.file_id, df, raw_count, signal_count,
+            "UUID", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
-        assert opp.file_id == sqlitedf["file"][0]
+        try:
+            opp_evt_ratio = sqlitedf["opp_count"] / sqlitedf["evt_count"]
+        except ZeroDivisionError:
+            opp_evt_ratio = 0.0
+
+        assert sf_file.file_id == sqlitedf["file"][0]
+        assert "UUID" == sqlitedf["filter_id"][0]
+        assert 50.0 == sqlitedf["quantile"][0]
+        npt.assert_array_equal(
+            [ 107, 39928, 40000, opp_evt_ratio ],
+            sqlitedf[[
+                "opp_count", "evt_count", "all_count", "opp_evt_ratio"
+            ]].values[0]
+        )
+
+    def test_sqlite3_opp_counts_and_params_empty(self, tmpout, params):
+        sf_file = sfp.SeaFlowFile(tmpout["evt_path"])
+        df = sfp.particleops.empty_df()
+        sfp.particleops.mark_focused(df, params)
+
+        raw_count = len(df.index)
+        signal_count = len(df[df["noise"] == False].index)
+
+        sfp.db.save_opp_to_db(sf_file.file_id, df, raw_count, signal_count,
+            "UUID", tmpout["db"])
+        con = sqlite3.connect(tmpout["db"])
+        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
+
+        try:
+            opp_evt_ratio = sqlitedf["opp_count"] / sqlitedf["evt_count"]
+        except ZeroDivisionError:
+            opp_evt_ratio = 0.0
+
+        assert sf_file.file_id == sqlitedf["file"][0]
         assert "UUID" == sqlitedf["filter_id"][0]
         assert 50.0 == sqlitedf["quantile"][0]
         npt.assert_array_equal(
             [
-                opp.particle_count, opp.parent.particle_count,
-                opp.parent.event_count, opp.opp_evt_ratio
+                0, 0, 0, 0.0
             ],
             sqlitedf[[
                 "opp_count", "evt_count", "all_count", "opp_evt_ratio"
             ]].values[0]
         )
 
-    def test_binary_evt_output(self, tmpdir):
-        evtdir = tmpdir.join("evtdir")
-        evt_file = "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
-        evt = sfp.EVT(evt_file)
-        evt.write_binary(str(evtdir), opp=False)  # output to binary file
+    def test_binary_evt_output(self, tmpout):
+        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
+        evtdir = os.path.join(tmpout["tmpdir"], "evtdir")
+        evt_df = sfp.fileio.read_labview(tmpout["evt_path"])
 
+        # Output to gzipped binary file
+        sfp.fileio.write_evt_labview(evt_df, sfile.file_id, evtdir)
         # Make sure EVT binary file written can be read back as EVT and
         # DataFrame is the the same
-        reread_evt = sfp.EVT(str(evtdir.join("2014_185/2014-07-04T00-00-02+00-00.gz")))
-        npt.assert_array_equal(evt.df, reread_evt.df)
-
+        out_evt_path = os.path.join(evtdir, sfile.file_id + ".gz")
+        reread_evt_df = sfp.fileio.read_labview(out_evt_path)
+        npt.assert_array_equal(evt_df, reread_evt_df)
         # Check that output evt binary file matches input file
-        input_evt = io.open(evt_file, "rb").read()
-        new_evt = gzip.open(str(evtdir.join("2014_185/2014-07-04T00-00-02+00-00.gz"))).read()
+        input_evt = io.open(tmpout["evt_path"], "rb").read()
+        new_evt = gzip.open(out_evt_path).read()
         assert input_evt == new_evt
 
-    def test_binary_opp_output(self, tmpdir):
-        oppdir = tmpdir.join("oppdir")
-        opp_file = "tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz"
-        opp = sfp.EVT(opp_file)
-        opp.write_binary(str(oppdir))  # output to binary file
+        # Output to binary uncompressed file
+        sfp.fileio.write_evt_labview(evt_df, sfile.file_id, evtdir, gz=False)
+        # Make sure EVT binary file written can be read back as EVT and
+        # DataFrame is the the same
+        out_evt_path = os.path.join(evtdir, sfile.file_id)
+        reread_evt_df = sfp.fileio.read_labview(out_evt_path)
+        npt.assert_array_equal(evt_df, reread_evt_df)
+        # Check that output evt binary file matches input file
+        input_evt = io.open(tmpout["evt_path"], "rb").read()
+        new_evt = io.open(out_evt_path, "rb").read()
+        assert input_evt == new_evt
 
+    def test_binary_opp_output(self, tmpout):
+        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
+        oppdir = os.path.join(tmpout["tmpdir"], "oppdir")
+        evt_df = sfp.fileio.read_labview(tmpout["evt_path"])
+        # Fix up evt to look like opp, every other row is focused
+        evt_df["q50.0"] = False
+        evt_df.loc[evt_df.index % 2 == 0, "q50.0"] = True
+
+        # Output to gzipped binary file
+        out_opp_path = os.path.join(oppdir, "50", sfile.file_id + ".opp.gz")
+        sfp.fileio.write_opp_labview(evt_df, sfile.file_id, oppdir,
+            require_all=False)
         # Make sure OPP binary file written can be read back as EVT and
         # DataFrame is the the same
-        reread_opp = sfp.EVT(str(oppdir.join("2014_185/2014-07-04T00-00-02+00-00.opp.gz")))
-        npt.assert_array_equal(opp.df, reread_opp.df)
+        reread_opp_df = sfp.fileio.read_labview(out_opp_path)
+        npt.assert_array_equal(evt_df[evt_df["q50.0"]].drop("q50.0", axis="columns"), reread_opp_df)
 
-        # Check that output opp binary file matches input file
-        input_opp = gzip.open(opp_file).read()
-        new_opp = gzip.open(str(oppdir.join("2014_185/2014-07-04T00-00-02+00-00.opp.gz"))).read()
-        assert input_opp == new_opp
+        # Output to gzipped binary file
+        out_opp_path = os.path.join(oppdir, "50", sfile.file_id + ".opp")
+        sfp.fileio.write_opp_labview(evt_df, sfile.file_id, oppdir, gz=False,
+            require_all=False)
+        # Make sure OPP binary file written can be read back as EVT and
+        # DataFrame is the the same
+        reread_opp_df = sfp.fileio.read_labview(out_opp_path)
+        npt.assert_array_equal(evt_df[evt_df["q50.0"]].drop("q50.0", axis="columns"), reread_opp_df)
+
+    def test_binary_opp_output_require_all_quantiles(self, tmpout):
+        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
+        oppdir = os.path.join(tmpout["tmpdir"], "oppdir")
+        evt_df = sfp.fileio.read_labview(tmpout["evt_path"])
+        # Fix up evt to look like opp, every other row is focused
+        evt_df["q2.5"] = False
+        evt_df["q50.0"] = False
+        evt_df["q97.5"] = False
+        evt_df.loc[evt_df.index % 2 == 0, "q50.0"] = True  # only q50 at first
+
+        # Output to binary file, don't expect any writes
+        out_opp_path = os.path.join(oppdir, "50", sfile.file_id + ".opp.gz")
+        sfp.fileio.write_opp_labview(evt_df, sfile.file_id, oppdir)
+        assert os.path.exists(out_opp_path) == False
+
+    def test_binary_opp_output_None(self, tmpout):
+        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
+        oppdir = os.path.join(tmpout["tmpdir"], "oppdir")
+        evt_df = None
+        out_opp_path = os.path.join(oppdir, "50", sfile.file_id + ".opp.gz")
+        sfp.fileio.write_opp_labview(evt_df, sfile.file_id, oppdir)
+        assert os.path.exists(out_opp_path) == False
 
 
 class TestMultiFileFilter(object):
     def test_multi_file_filter_local(self, tmpout):
         """Test multi-file filtering and ensure output can be read back OK"""
         files = [
-            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",     # normal file
+            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",  # normal file, gz
+            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",     # empty file
+            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",     # truncated after header
+            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",     # file only 2 bytes, should be at least 4 for header
+            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",  # all noise
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"   # only 2 quantiles have OPP
         ]
 
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1,
-            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
+            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            worker_count=1
         )
 
         multi_file_asserts(tmpout)
@@ -319,16 +383,16 @@ class TestMultiFileFilter(object):
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1,
-            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            s3=True)
+            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            worker_count=1, s3=True
+        )
 
         multi_file_asserts(tmpout)
 
     @popcycle
     def test_against_popcycle(self, tmpout):
         # Generate popcycle results
-        popcycledir = tmpout["tmpdir"].join("popcycle")
+        popcycledir = os.path.join(tmpout["tmpdir"], "popcycle")
         popcycle_cmd = "Rscript tests/generate_popcycle_results.R tests {}".format(str(popcycledir))
         subprocess.check_call(popcycle_cmd.split())
 
@@ -343,15 +407,15 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
         ]
         sfp.filterevt.filter_evt_files(
-            files=files, process_count=1,
-            dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"])
+            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            worker_count=1
         )
         opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))
 
         # Compare opp table output
         with sqlite3.connect(tmpout["db"]) as con_py:
             opp_py = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_py)
-        with sqlite3.connect(str(popcycledir.join("testcruise.db"))) as con_R:
+        with sqlite3.connect(os.path.join(popcycledir, "testcruise.db")) as con_R:
             opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_R)
 
         columns = ["opp_count", "evt_count", "opp_evt_ratio", "quantile"]
@@ -359,13 +423,13 @@ class TestMultiFileFilter(object):
         assert "\n".join(opp_py["file"].values) == "\n".join(opp_R["file"].values)
 
         # Compare OPP file output
-        opps_py = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(tmpout["oppdir"]))]
-        opps_R = [sfp.evt.EVT(o) for o in sfp.evt.find_evt_files(str(popcycledir.join("opp")))]
+        opps_py = [sfp.fileio.read_labview(o) for o in sfp.evt.find_evt_files(tmpout["oppdir"])]
+        opps_R = [sfp.fileio.read_labview(o) for o in sfp.evt.find_evt_files(os.path.join(popcycledir, "opp"))]
         assert len(opps_py) == len(opps_R)
         assert len(opps_py) > 0
         assert len(opps_R) > 0
         for i in range(len(opps_py)):
-            npt.assert_array_equal(opps_py[i].df, opps_R[i].df)
+            npt.assert_array_equal(opps_py[i], opps_R[i])
 
 def multi_file_asserts(tmpout):
     # Check MD5 checksums of uncompressed OPP files
@@ -379,9 +443,9 @@ def multi_file_asserts(tmpout):
     }
     for q in ["2.5", "50", "97.5"]:
         for f in ["2014_185/2014-07-04T00-00-02+00-00.opp.gz", "2014_185/2014-07-04T00-03-02+00-00.opp.gz"]:
-            f_path = str(tmpout["oppdir"].join("{}/{}".format(q, f)))
+            f_path = os.path.join(tmpout["oppdir"], q, f)
             f_md5 = hashlib.md5(gzip.open(f_path).read()).hexdigest()
-            assert f_md5 == hashes["{}/{}".format(q, f)]
+            assert f_md5 == hashes[os.path.join(q, f)]
 
     # Check numbers stored in opp table are correct
     filter_params = sfp.db.get_latest_filter(tmpout["db"])
@@ -426,4 +490,16 @@ def multi_file_asserts(tmpout):
     npt.assert_array_equal(
         opp_table["opp_evt_ratio"],
         (opp_table["opp_count"] / opp_table["evt_count"]).replace(pd.np.inf, 0).replace(pd.np.NaN, 0)
+    )
+    npt.assert_array_equal(
+        opp_table["file"],
+        pd.Series(' '.join([
+            "2014_185/2014-07-04T00-00-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-03-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-06-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-09-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-12-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-15-02+00-00 " * 3,
+            "2014_185/2014-07-04T00-17-02+00-00 " * 3
+        ]).split(), name="opp_count")
     )

@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-from builtins import object
 import arrow
 import gzip
 import io
@@ -20,59 +18,55 @@ old_path_re = r'^\d{1,4}_\d{1,3}/\d+\.evt$'
 old_file_re = r'^\d+\.evt$'
 
 
-class SeaFlowFile(object):
+class SeaFlowFile:
     """Base class for EVT/OPP/VCT file classes"""
 
-    def __init__(self, path=None, fileobj=None):
-        # If fileobj is set, read data from this object. The path will be used
-        # to set the file name in the database and detect compression.
-        self.path = path  # file path, local or in S3
-        self.fileobj = fileobj  # data in file object
+    def __init__(self, path):
+        self.path = path  # file path
 
-        if self.path:
-            parts = parse_path(self.path)
-            self.filename = parts["file"]
-            self.filename_noext = remove_ext(parts["file"])
+        parts = parse_path(self.path)
+        self.filename = parts["file"]
+        self.filename_noext = remove_ext(parts["file"])
 
-            if not (self.is_old_style or self.is_new_style):
-                raise errors.FileError("Filename doesn't look like a SeaFlow file")
+        if not (self.is_old_style or self.is_new_style):
+            raise errors.FileError("Filename doesn't look like a SeaFlow file")
 
-            if self.is_new_style:
-                try:
-                    self.date = date_from_filename(self.filename_noext)
-                except ValueError as e:
-                    raise errors.FileError("Error parsing date from filename: {}".format(e))
+        if self.is_new_style:
+            try:
+                self.date = date_from_filename(self.filename_noext)
+            except ValueError as e:
+                raise errors.FileError("Error parsing date from filename: {}".format(e))
+        else:
+            self.date = None
+
+        # YYYY_dayofyear directory found in file path and parsed
+        # from file datestmap
+        self.path_dayofyear = parts["dayofyear"]
+        self.dayofyear = create_dayofyear_directory(self.date)
+
+        # Identifer to match across file types (EVT/OPP/VCT)
+        # Should be something like 2014_142/42.evt for old files. Note always
+        # .evt even for opp and vct. No .gz.
+        # Should be something like 2014_342/2014-12-08T22-53-34+00-00 for new
+        # files. Note no extension including .gz.
+        # The day of year directory will be based on parsed datestamp in
+        # filename when possible, not the given path. The file ID based on
+        # the given path is stored in path_file_id.
+        if self.is_old_style:
+            # path_file_id and file_id are always the same for old-style
+            # filenames since we can't parse dates to calculate a day of year
+            # directory
+            if self.path_dayofyear:
+                self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
             else:
-                self.date = None
-
-            # YYYY_dayofyear directory found in file path and parsed
-            # from file datestmap
-            self.path_dayofyear = parts["dayofyear"]
-            self.dayofyear = create_dayofyear_directory(self.date)
-
-            # Identifer to match across file types (EVT/OPP/VCT)
-            # Should be something like 2014_142/42.evt for old files. Note always
-            # .evt even for opp and vct. No .gz.
-            # Should be something like 2014_342/2014-12-08T22-53-34+00-00 for new
-            # files. Note no extension including .gz.
-            # The day of year directory will be based on parsed datestamp in
-            # filename when possible, not the given path. The file ID based on
-            # the given path is stored in path_file_id.
-            if self.is_old_style:
-                # path_file_id and file_id are always the same for old-style
-                # filenames since we can't parse dates to calculate a day of year
-                # directory
-                if self.path_dayofyear:
-                    self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
-                else:
-                    self.file_id = self.filename_noext
-                self.path_file_id = self.file_id
+                self.file_id = self.filename_noext
+            self.path_file_id = self.file_id
+        else:
+            self.file_id = "{}/{}".format(self.dayofyear, self.filename_noext)
+            if self.path_dayofyear:
+                self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
             else:
-                self.file_id = "{}/{}".format(self.dayofyear, self.filename_noext)
-                if self.path_dayofyear:
-                    self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
-                else:
-                    self.path_file_id = self.filename_noext
+                self.path_file_id = self.filename_noext
 
 
     def __str__(self):
@@ -93,21 +87,6 @@ class SeaFlowFile(object):
     def is_new_style(self):
         """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.evt.gz"""
         return bool(re.match(new_file_re, self.filename_noext))
-
-    def open(self):
-        """Return a file-like object for reading."""
-        handle = None
-        if self.fileobj:
-            if self.isgz:
-                handle = gzip.GzipFile(fileobj=self.fileobj)
-            else:
-                handle = self.fileobj
-        else:
-            if self.isgz:
-                handle = gzip.GzipFile(self.path)
-            else:
-                handle = io.open(self.path, 'rb')
-        return handle
 
     @property
     def rfc3339(self):

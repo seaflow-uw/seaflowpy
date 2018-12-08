@@ -1,13 +1,13 @@
-from __future__ import print_function
-from __future__ import absolute_import
 from . import errors
 from functools import wraps
 from operator import itemgetter
 from signal import getsignal, signal, SIGPIPE, SIG_DFL
 import datetime
 import errno
+import gzip
 import os
 import subprocess
+import sys
 import time
 
 
@@ -78,6 +78,16 @@ def splitpath(path):
     return parts[::-1]
 
 
+def quantile_str(q):
+    """
+    Display quantile float as string.
+
+    If there is not decimal part, don't display ".0". If there is a decimal
+    part, display it.
+    """
+    return "{0}".format(str(q) if q % 1 else int(q))
+
+
 def suppress_sigpipe(f):
     """Decorator to handle SIGPIPE cleanly.
 
@@ -94,3 +104,23 @@ def suppress_sigpipe(f):
         finally:
             signal(SIGPIPE, orig_handler)  # restore original Python SIGPIPE handler
     return wrapper
+
+
+def quiet_keyboardinterrupt(f):
+    """Decorator to exit quietly on keyboard interrupt."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            f(*args, **kwargs)
+        except KeyboardInterrupt:
+            sys.exit()
+    return wrapper
+
+
+def zerodiv(x, y):
+    """Divide x by y, floating point, and default to 0.0 if divisor is 0"""
+    try:
+        answer = float(x) / float(y)
+    except ZeroDivisionError:
+        answer = 0.0
+    return answer

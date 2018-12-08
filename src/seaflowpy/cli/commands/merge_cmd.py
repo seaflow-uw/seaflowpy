@@ -1,5 +1,4 @@
 """Import SFl file into sqlite3 database."""
-from __future__ import absolute_import
 import click
 from seaflowpy import db
 from seaflowpy import errors

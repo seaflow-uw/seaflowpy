@@ -1,5 +1,4 @@
 """Do things to SFL data DataFrames"""
-from __future__ import unicode_literals
 import arrow
 import csv
 import json
@@ -12,7 +11,6 @@ from . import geo
 from . import util
 from . import seaflowfile
 from collections import OrderedDict
-from past.builtins import basestring
 
 
 sfl_delim = '\t'
@@ -312,7 +310,7 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
         partial_df = pd.read_csv(f, **kwargs_defaults)
         # Add column for input file path and file line numbers
         # Support both f as file path and as open file
-        if isinstance(f, basestring):
+        if isinstance(f, str):
             partial_df["input_file_path"] = f
         else:
             partial_df["input_file_path"] = f.name

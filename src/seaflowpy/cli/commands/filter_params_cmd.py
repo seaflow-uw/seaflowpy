@@ -1,5 +1,4 @@
 """Import filter parameters to database."""
-from __future__ import absolute_import
 import click
 import pandas as pd
 import uuid

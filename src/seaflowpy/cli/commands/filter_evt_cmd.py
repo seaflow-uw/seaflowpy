@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function
 import botocore
 import click
 import json
@@ -10,6 +9,7 @@ from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import evt
 from seaflowpy import filterevt
+from seaflowpy import util
 
 
 def validate_limit(ctx, param, value):
@@ -45,6 +45,7 @@ def validate_resolution(ctx, param, value):
     help='Number of processes to use in filtering.')
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
+@util.quiet_keyboardinterrupt
 def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Validate args
@@ -116,7 +117,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
     # Filter
     try:
         filterevt.filter_evt_files(files, dbpath, opp_dir, s3=s3_flag,
-                                   process_count=process_count,
+                                   worker_count=process_count,
                                    every=resolution)
     except errors.SeaFlowpyError as e:
         raise click.ClickException(str(e))
