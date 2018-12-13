@@ -323,7 +323,7 @@ def install_seaflowpy():
     with cd(REMOTE_SOURCE_DIR), hide('stdout'):
         # If this is a git repo, clean it first.
         run('git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git clean -fdx')
-        run('conda env update -f environment.yml')
+        run('conda env create -f environment.yml')
         run(f'echo "conda activate seaflowpy" >> $HOME/.profile')
         run('pip install .')
         run('pytest')

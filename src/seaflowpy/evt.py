@@ -5,7 +5,7 @@ from . import seaflowfile
 
 
 def is_evt(file_path):
-    """Does the file specified by this path look like a valid EVT file?"""
+    """Does the file specified by this path look like a valid EVT/OPP file?"""
     # EVT/OPP file name regexes
     evt_re = re.compile(
         r'^(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-?\d{2}(?:\.evt)?(?:\.opp)?|\d+\.evt)(?:\.opp)?'

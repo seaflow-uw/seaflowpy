@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 from . import util
 
@@ -8,6 +9,40 @@ columns = [
     "pe", "chl_small", "chl_big"
 ]
 channel_columns = columns[2:]  # flow cytometer channel data columns
+
+# Focused particle masks by quantile column. These get combined into bit flags
+# when storing OPP data in a binary file. e.g. 0b110 (6) means a particle is
+# focused in quantiles 50.0 and 97.5 but not 2.5.
+flags = {
+    "q2.5": 1,
+    "q50": 2,
+    "q97.5": 4
+}
+
+
+def decode_bit_flags(df):
+    """
+    Convert "bitflags" column to per-quantile focused particles booleans.
+
+    This removes the "bitflags" column and adds a new boolean column for each
+    quantile encoded by the bit flags.
+
+    df: pandas.DataFrame
+        SeaFlow focused particle DataFrame with "bitflags" column.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Reference to original modified DataFrame.
+    """
+    # This sort is ASCII-alphabetical! But that works for the set of quantile
+    # column names we have so far. If this changes then do a numeric sort by
+    # quantile value.
+    bitflags = df["bitflags"]
+    df = df.drop(["bitflags"], axis="columns")
+    for col, f in sorted(flags.items()):
+        df[col] = (bitflags & f) > 0
+    return df
 
 
 def empty_df():
@@ -21,6 +56,36 @@ def empty_df():
     return pd.DataFrame(dtype=float, columns=columns)
 
 
+def encode_bit_flags(df):
+    """
+    Encode a "bitflags" column for per-quantile focused particles booleans.
+
+    This removes the the noise and the per-quantile focused particles boolean
+    columns and adds a new column "bitflags" with bit flags values for each
+    quantile. See particleops.flags for the flag definitions.
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow focused particle DataFrame with boolean columns for each
+        quantile.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Reference to original modified DataFrame.
+    """
+    # Construct bit flags to efficiently capture all quantile flag columns
+    bitflags = None
+    for col, f in flags.items():
+        if bitflags is None:
+            bitflags = pd.np.left_shift(df[col], int(math.log(f, 2)))
+        else:
+            bitflags = bitflags | pd.np.left_shift(df[col], int(math.log(f, 2)))
+    df["bitflags"] = bitflags  # new column
+    return df
+
+
 def mark_focused(df, params):
     """
     Mark focused particle data.
@@ -32,9 +97,15 @@ def mark_focused(df, params):
     Parameters
     ----------
     df: pandas.DataFrame
-        SeaFlow event DataFrame.
+        SeaFlow raw event DataFrame.
     params: pandas.DataFrame
         Filtering parameters as pandas DataFrame.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Reference to input DataFrame with boolean columns for noise and
+        focused particles by quantile.
     """
     # Check parameters
     param_keys = [
@@ -46,16 +117,16 @@ def mark_focused(df, params):
         raise ValueError("Must provide filtering parameters")
     for k in param_keys:
         if not k in params.columns:
-            raise ValueError(f"Missing filter parameter {k} in EVT.filter()")
+            raise ValueError(f"Missing filter parameter {k} in mark_focused")
 
     # Apply noise filter
-    mark_noise(df)
+    df = mark_noise(df)
 
     # Filter for aligned/focused particles
     for q in params["quantile"].sort_values():
         p = params[params["quantile"] == q].iloc[0]  # get first row of dataframe as series
-        colname = f"q{q}"
-        df[colname] = False  # all particles are out of focus until shown otherwise
+        colname = f"q{util.quantile_str(q)}"
+        df[colname] = False  # new column, all particles are out of focus to start
         if len(df[~df["noise"]].index) > 0:
             # Filter aligned particles (D1 = D2), with correction for D1 D2
             # sensitivity difference
@@ -72,6 +143,7 @@ def mark_focused(df, params):
 
             # Mark focused particles
             df.loc[opp_df.index, colname] = True
+    return df
 
 
 def mark_noise(df):
@@ -84,13 +156,20 @@ def mark_noise(df):
     Parameters
     ----------
     df: pandas.DataFrame
-        SeaFlow event data.
+        SeaFlow raw event data.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Reference to input DataFrame with boolean column for noise.
     """
     if len(set(list(df)).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
         raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
+
     # Mark noise events in new column "noise"
     signal_selector = (df["fsc_small"] > 1) | (df["D1"] > 1) | (df["D2"] > 1)
-    df["noise"] = ~signal_selector
+    df["noise"] = ~signal_selector  # new column
+    return df
 
 
 def select_focused(df):
@@ -105,15 +184,15 @@ def select_focused(df):
     Returns
     -------
     pandas.DataFrame
-        Subset of df where each row is focused in at least on quantile.
+        Copy of subset of df where each row is focused in at least on quantile.
     """
     selector = False
     for qcolumn in [c for c in df.columns if c.startswith("q")]:
         selector = selector | df[qcolumn]
-    return df[selector]
+    return df[selector].copy()
 
 
-def transform_particles(df, columns=channel_columns, inplace=True):
+def transform_particles(df, columns=channel_columns):
     """
     Exponentiate logged SeaFlow data.
 
@@ -129,18 +208,13 @@ def transform_particles(df, columns=channel_columns, inplace=True):
         SeaFlow event data.
     columns: list of str, default seaflowpy.particleops.channel_columns
         Names of columns to transform.
-    inplace: bool, default True
-        Modify event DataFrame in-place.
 
     Returns
     -------
     pandas.DataFrame
-        Original event DataFrame or a copy with transformed values.
+        Copy of df with transformed values.
     """
-    if inplace:
-        events = df
-    else:
-        events = df.copy()
+    events = df.copy()
     if len(events.index) > 0:
         events[columns] = 10**((events[columns] / 2**16) * 3.5)
     return events

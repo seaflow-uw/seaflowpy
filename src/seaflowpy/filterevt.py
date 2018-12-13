@@ -142,7 +142,7 @@ def do_filter(work_q, opps_q):
             if work["s3"]:
                 cloud = clouds.AWS(work["cloud_config_items"])
                 fileobj = cloud.download_file_memory(evt_file)
-            evt_df = fileio.read_labview(path=evt_file, fileobj=fileobj)
+            evt_df = fileio.read_evt_labview(path=evt_file, fileobj=fileobj)
         except errors.FileError as e:
             work["error"] = f"Could not parse file {evt_file}: {e}"
             evt_df = particleops.empty_df()
@@ -150,14 +150,11 @@ def do_filter(work_q, opps_q):
             work["error"] = f"Unexpected error when parsing file {evt_file}: {e}"
             evt_df = particleops.empty_df()
 
-        try:
-            particleops.mark_focused(evt_df, work["filter_params"])
-            work["all_count"] = len(evt_df.index)
-            work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
-            work["opp"] = particleops.select_focused(evt_df)
-        except Exception as e:
-            work["error"] = f"Unexpected error when filtering file {evt_file}: {e}"
-            work["opp"] = particleops.select_focused(particleops.empty_df())
+
+        evt_df = particleops.mark_focused(evt_df, work["filter_params"])
+        work["all_count"] = len(evt_df.index)
+        work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
+        work["opp"] = particleops.select_focused(evt_df)
 
         # Write to OPP file if all quantiles have focused data. Would like to
         # write in a different process (do_save) but this quickly becomes a
@@ -234,7 +231,7 @@ def do_reporting(stats_q, done_q, file_count, every):
 
         opp = work["opp"]
         # only consider 50% quantile for reporting
-        opp = opp[opp["q50.0"]]
+        opp = opp[opp["q50"]]
         evt_count_block += work["all_count"]
         evt_signal_count_block += work["evt_count"]
         opp_count_block += len(opp.index)
