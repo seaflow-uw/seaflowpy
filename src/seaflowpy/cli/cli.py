@@ -1,4 +1,5 @@
 import click
+from seaflowpy.cli.commands.compare_vct_tables_cmd import compare_vct_tables_cmd
 from seaflowpy.cli.commands.evt_cmd import evt_cmd
 from seaflowpy.cli.commands.filter_evt_cmd import filter_evt_cmd
 from seaflowpy.cli.commands.filter_params_cmd import filter_params_cmd
@@ -15,6 +16,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 def cli():
     pass
 
+cli.add_command(compare_vct_tables_cmd, 'compare-vct-tables')
 cli.add_command(evt_cmd, 'evt')
 cli.add_command(filter_evt_cmd, 'filter')
 cli.add_command(filter_params_cmd, 'filter-params')

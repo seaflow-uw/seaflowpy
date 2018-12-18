@@ -1,3 +1,4 @@
+from . import compare_vct_tables_cmd
 from . import evt_cmd
 from . import filter_evt_cmd
 from . import filter_params_cmd
