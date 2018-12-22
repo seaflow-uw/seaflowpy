@@ -189,6 +189,7 @@ def do_save(opps_q, stats_q, files_left):
                 filter_id = work["filter_params"]["id"].unique().tolist()[0]
                 db.save_opp_to_db(work["file"], work["opp"], work["all_count"],
                     work["evt_count"], filter_id, work["dbpath"])
+                db.save_outlier(work["file"], 0, work["dbpath"])
         except Exception as e:
             work["error"] = f"Unexpected error when saving file {evt_file} to db: {e}"
 

@@ -119,6 +119,31 @@ def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
     executemany(dbpath, sql_insert, vals)
 
 
+def save_outlier(file, flag, dbpath):
+    """
+    Save a entry in outlier table for this file.
+
+    Parameters
+    ----------
+    file: str
+        Path to SeaFlow file that was filtered. Used to get the canonical
+        SeaFlow file ID.
+        e.g. tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00 will become
+        2014_185/2014-07-04T00-00-02+00-00.
+    flag: int
+        Outlier table value, 0 for OK.
+    dbpath: str
+        Path to SQLite DB file.
+    """
+    field_order = [ "file", "flag" ]
+    vals = []
+    vals.append({ "file": SeaFlowFile(file).file_id, "flag": flag })
+    # Construct values string with named placeholders
+    values_str = ", ".join([":" + f for f in field_order])
+    sql_insert = "INSERT OR REPLACE INTO outlier VALUES ({})".format(values_str)
+    executemany(dbpath, sql_insert, vals)
+
+
 def save_sfl(dbpath, vals):
     create_db(dbpath)
     # NOTE: values inserted must be in the same order as fields in sfl
@@ -183,11 +208,25 @@ def get_latest_filter(dbpath):
     return df[df["id"] == _id]
 
 
-def get_opp(dbpath, filter_id):
+def get_opp_table(dbpath, filter_id):
     sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
     with sqlite3.connect(dbpath) as dbcon:
         oppdf = pd.read_sql(sql, dbcon)
     return oppdf
+
+
+def get_outlier_table(dbpath):
+    sql = "SELECT * FROM outlier ORDER BY file ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        outlierdf = pd.read_sql(sql, dbcon)
+    return outlierdf
+
+
+def get_sfl_table(dbpath):
+    sql = "SELECT * FROM sfl ORDER BY date ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = pd.read_sql(sql, dbcon)
+    return df
 
 
 def merge_dbs(db1, db2):
@@ -203,20 +242,6 @@ def merge_dbs(db1, db2):
     # Merge opp
     # Merge vct
     # Merge meta
-
-
-def execute(dbpath, sql, values=None, timeout=120):
-    con = sqlite3.connect(dbpath, timeout=timeout)
-    try:
-        with con:
-            if values is not None:
-                con.execute(sql, values)
-            else:
-                con.execute(sql)
-    except sqlite3.Error as e:
-        raise errors.SeaFlowpyError("An error occurred when executing a SQL query: {!s}".format(e))
-    finally:
-        con.close()
 
 
 def executemany(dbpath, sql, values=None, timeout=120):

@@ -164,3 +164,18 @@ def sorted_files(files):
     """
     sfiles = [SeaFlowFile(f) for f in files]
     return [s.path for s in sorted(sfiles, key=lambda x: x.sort_key)]
+
+
+def filtered_file_list(total_list, filter_list):
+    """
+    Only keep files from total_list that are in filter_list.
+
+    Match by file_id, but return original path in total_list.
+    """
+    filter_set = set([SeaFlowFile(f).file_id for f in filter_list])
+    files = []
+    for f in total_list:
+        if SeaFlowFile(f).file_id in filter_set:
+            files.append(f)
+    files = sorted_files(files)
+    return files

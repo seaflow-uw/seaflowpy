@@ -143,7 +143,8 @@ class TestPathFilenameParsing:
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
             "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
+            "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00"
         ]
         assert files == answer
 
@@ -349,11 +350,14 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",     # truncated after header
             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",     # file only 2 bytes, should be at least 4 for header
             "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",  # all noise
-            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"   # only 2 quantiles have OPP
+            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",  # only 2 quantiles have OPP
+            "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00.gz"   # skip this one, only here to test SFL file list filtering
         ]
 
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
+        sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
+        files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
             files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             worker_count=1
@@ -371,6 +375,8 @@ class TestMultiFileFilter(object):
 
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
+        sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
+        files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
             files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             worker_count=1, s3=True
@@ -395,6 +401,8 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
             "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
         ]
+        sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
+        files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
             files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             worker_count=1
@@ -434,7 +442,7 @@ def multi_file_asserts(tmpout):
     # Check numbers stored in opp table are correct
     filter_params = sfp.db.get_latest_filter(tmpout["db"])
     filter_id = filter_params.iloc[0]["id"]
-    opp_table = sfp.db.get_opp(tmpout["db"], filter_id)
+    opp_table = sfp.db.get_opp_table(tmpout["db"], filter_id)
     npt.assert_array_equal(
         opp_table["all_count"],
         pd.Series([
@@ -475,15 +483,23 @@ def multi_file_asserts(tmpout):
         opp_table["opp_evt_ratio"],
         (opp_table["opp_count"] / opp_table["evt_count"]).replace(pd.np.inf, 0).replace(pd.np.NaN, 0)
     )
-    npt.assert_array_equal(
-        opp_table["file"],
-        pd.Series(' '.join([
-            "2014_185/2014-07-04T00-00-02+00-00 " * 3,
-            "2014_185/2014-07-04T00-03-02+00-00 " * 3,
-            "2014_185/2014-07-04T00-06-02+00-00 " * 3,
-            "2014_185/2014-07-04T00-09-02+00-00 " * 3,
-            "2014_185/2014-07-04T00-12-02+00-00 " * 3,
-            "2014_185/2014-07-04T00-15-02+00-00 " * 3,
-            "2014_185/2014-07-04T00-17-02+00-00 " * 3
-        ]).split(), name="opp_count")
-    )
+
+    files = [
+        "2014_185/2014-07-04T00-00-02+00-00",
+        "2014_185/2014-07-04T00-03-02+00-00",
+        "2014_185/2014-07-04T00-06-02+00-00",
+        "2014_185/2014-07-04T00-09-02+00-00",
+        "2014_185/2014-07-04T00-12-02+00-00",
+        "2014_185/2014-07-04T00-15-02+00-00",
+        "2014_185/2014-07-04T00-17-02+00-00"
+    ]
+    answer = []
+    for threes in [[f,f,f] for f in files]:
+        for f in threes:
+            answer.append(f)
+    assert opp_table["file"].tolist() == answer
+
+    # Check that outlier table has entry for every file
+    outlier_table = sfp.db.get_outlier_table(tmpout["db"])
+    assert outlier_table["file"].tolist() == files
+    assert outlier_table["flag"].tolist() == [0 for f in files]

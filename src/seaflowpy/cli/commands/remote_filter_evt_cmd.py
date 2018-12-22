@@ -14,8 +14,10 @@ from fabric.network import disconnect_all
 from seaflowpy import clouds
 from seaflowpy import conf
 from seaflowpy import db
+from seaflowpy import evt
 from seaflowpy import errors
 from seaflowpy import util
+from seaflowpy import seaflowfile
 
 REMOTE_SOURCE_DIR = '/home/ubuntu/src/seaflowpy'
 REMOTE_WORK_DIR = "/mnt/ramdisk"
@@ -120,7 +122,7 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
                 print('Error retrieving cruise name from DB: {}'.format(e))
                 return 1
             try:
-                cruise_files[c] = cloud.get_files(c)
+                evt_files = evt.parse_file_list(cloud.get_files(c))
             except botocore.exceptions.NoCredentialsError as e:
                 print('Please configure aws first:')
                 print('  $ conda install aws')
@@ -129,7 +131,18 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
                 print('  then')
                 print('  $ aws configure')
                 return 1
-            print('{:<20} {}'.format(c, len(cruise_files[c])))
+            # Filter cruise files by SFL entries
+            try:
+                sfl_df = db.get_sfl_table(dbfile)
+            except errors.SeaFlowpyError as e:
+                print('Error retrieving SFL file list from DB: {}'.format(e))
+                return 1
+            sfl_files = sfl_df["file"].tolist()
+            # Find intersection of SFL files and EVT files
+            cruise_files[c] = seaflowfile.filtered_file_list(evt_files, sfl_files)
+            print('{:<20} sfl={} evt={} intersection={}'.format(
+                c, len(sfl_files), len(evt_files), len(cruise_files[c])
+            ))
         print('')
 
         if dryrun:

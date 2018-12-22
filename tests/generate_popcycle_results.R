@@ -24,4 +24,6 @@ opp.dir <- file.path(wd, "opp")
 
 file.copy(paramsdb, db, copy.mode=F)
 get.filter.params.latest(db)
-filter.evt.files(db, evt.dir, get.evt.files(evt.dir), opp.dir)
+evt_files <- get.evt.files(evt.dir)
+# Filter files and skip the last EVT file (not in SFL file)
+filter.evt.files(db, evt.dir, evt_files[1:length(evt_files)-1], opp.dir)

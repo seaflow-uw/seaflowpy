@@ -329,3 +329,30 @@ def test_fix_file_id():
     correctid = "2014_342/2014-12-08T22-53-34+00-00"
     assert sfp.seaflowfile.SeaFlowFile(origid).file_id == correctid
     assert sfp.seaflowfile.SeaFlowFile(origid).path_file_id == origid
+
+
+def test_file_list_filter():
+    files = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00"
+    ]
+    filter_list = [
+        "2014_185/2014-07-04T00-00-02+00-00",
+        "testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "foo/2014_185/2014-07-04T00-06-02+00-00",
+        "2014_185/2014-07-04T00-17-02+00-00.gz"
+    ]
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
+    ]
+    result = sfp.seaflowfile.filtered_file_list(files, filter_list)
+    assert answer == result

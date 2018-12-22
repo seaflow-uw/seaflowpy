@@ -10,6 +10,7 @@ from seaflowpy import errors
 from seaflowpy import evt
 from seaflowpy import filterevt
 from seaflowpy import util
+from seaflowpy import seaflowfile
 
 
 def validate_limit(ctx, param, value):
@@ -65,9 +66,6 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
     except errors.SeaFlowpyError as e:
         raise click.ClickException(str(e))
 
-    # Capture software version
-    version = pkg_resources.get_distribution("seaflowpy").version
-
     # Capture run parameters and information
     v = {
         'evt_dir': evt_dir,
@@ -77,7 +75,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
         'opp_dir': opp_dir,
         'process_count': process_count,
         'resolution': resolution,
-        'version': version,
+        'version': pkg_resources.get_distribution("seaflowpy").version,
         'cruise': cruise
     }
     to_delete = [k for k in v if v[k] is None]
@@ -89,9 +87,16 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
     print(json.dumps(v, indent=2))
     print('')
 
+    # Get list of files in sfl table.
+    try:
+        sfl_df = db.get_sfl_table(dbpath)
+    except errors.SeaFlowpyError as e:
+        raise click.ClickException(str(e))
+    sfl_files = sfl_df["file"].tolist()
+
     # Find EVT files
     if evt_dir:
-        files = evt.find_evt_files(evt_dir)
+        evt_files = evt.find_evt_files(evt_dir)
     elif s3_flag:
         # Make sure configuration for s3 is ready to go
         config = conf.get_aws_config(s3_only=True)
@@ -99,8 +104,8 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
         # Make sure try to access S3 up front to setup AWS credentials before
         # launching child processes.
         try:
-            files = cloud.get_files(cruise)
-            files = evt.parse_file_list(files)  # Only keep EVT files
+            evt_files = cloud.get_files(cruise)
+            evt_files = evt.parse_file_list(evt_files)  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
             print("Please configure aws first:")
             print("  $ conda install aws")
@@ -109,6 +114,9 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
             print("  then")
             print("  $ aws configure")
             raise click.Abort()
+
+    # Find intersection of SFL files and EVT files
+    files = seaflowfile.filtered_file_list(evt_files, sfl_files)
 
     # Restrict length of file list with --limit
     if (limit is not None) and (limit > 0):
