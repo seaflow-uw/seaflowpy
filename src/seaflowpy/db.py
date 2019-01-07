@@ -4,7 +4,7 @@ from . import particleops
 from .seaflowfile import SeaFlowFile
 from shutil import copyfile
 import arrow
-import pkg_resources
+import pkgutil
 import pandas as pd
 import sqlite3
 import uuid
@@ -14,9 +14,8 @@ from collections import OrderedDict
 
 def create_db(dbpath):
     """Create or complete database"""
-    schema_path = pkg_resources.resource_filename(__name__, 'data/popcycle.sql')
-    with open(schema_path, 'r') as fh:
-        executescript(dbpath, fh.read())
+    schema_text = pkgutil.get_data(__name__, 'data/popcycle.sql').decode('UTF-8', 'ignore')
+    executescript(dbpath, schema_text)
 
 
 def save_filter_params(dbpath, vals):
