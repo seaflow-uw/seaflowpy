@@ -14,3 +14,6 @@ build
 /.tox
 .Rapp.history
 E2E_tests
+pyinstaller/**/build
+pyinstaller/**/dist
+pyinstaller/**/seaflowpy.spec
