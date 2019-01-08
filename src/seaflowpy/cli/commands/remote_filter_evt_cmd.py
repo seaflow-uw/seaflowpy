@@ -64,7 +64,7 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
 
     SQLite3 db files must contain filter parameters and cruise name
     """
-    print("Started at {}".format(datetime.datetime.utcnow().isoformat()))
+    print("Started at {}{}".format(datetime.datetime.utcnow().isoformat(), os.linesep))
 
     # Print defined parameters and information
     v = {
@@ -99,120 +99,121 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
     env.key_filename = os.path.expanduser(config.get('ssh', 'ssh-key-file'))
 
     try:
-        print('Getting lists of files for each cruise')
-        cruise_files = {}
-        for dbfile in dbs:
-            # Make sure file exists
-            if not os.path.exists(dbfile):
-                print('DB file {} does not exist'.format(dbfile))
-                return 1
-            # Make sure db has filter parameters filled in
-            try:
-                filter_table = db.get_latest_filter(dbfile)
-            except errors.SeaFlowpyError as e:
-                print('No filter parameters found in database file {}'.format(dbfile))
-                return 1
-            if len(filter_table) != 3:
-                print('Unusual filter parameters found in database file {}'.format(dbfile))
-                return 1
-            # Get cruise name DB
-            try:
-                c = db.get_cruise(dbfile)
-            except errors.SeaFlowpyError as e:
-                print('Error retrieving cruise name from DB: {}'.format(e))
-                return 1
-            try:
-                evt_files = evt.parse_file_list(cloud.get_files(c))
-            except botocore.exceptions.NoCredentialsError as e:
-                print('Please configure aws first:')
-                print('  $ conda install aws')
-                print('  or')
-                print('  $ pip install aws')
-                print('  then')
-                print('  $ aws configure')
-                return 1
-            # Filter cruise files by SFL entries
-            try:
-                sfl_df = db.get_sfl_table(dbfile)
-            except errors.SeaFlowpyError as e:
-                print('Error retrieving SFL file list from DB: {}'.format(e))
-                return 1
-            sfl_files = sfl_df["file"].tolist()
-            # Find intersection of SFL files and EVT files
-            cruise_files[c] = seaflowfile.filtered_file_list(evt_files, sfl_files)
-            print('{:<20} sfl={} evt={} intersection={}'.format(
-                c, len(sfl_files), len(evt_files), len(cruise_files[c])
-            ))
-        print('')
-
-        if dryrun:
-            # Create dummy host list
-            print('Creating {} dummy hosts'.format(instance_count))
-            env.hosts = ['dummy{}'.format(i) for i in range(instance_count)]
-        else:
-            print('Starting {} instances'.format(instance_count))
-            result = cloud.start(
-                count=instance_count,
-                instance_type=instance_type
-            )
-            for iid, iip in zip(result['InstanceIds'], result['publicips']):
-                print('  InstanceId = {}, IP = {}'.format(iid, iip))
-            env.hosts.extend(result['publicips'])
-        print('')
-
-        # Fairly divide cruises into hosts based on number of files
-        print('Assigning cruises to {} hosts'.format(len(env.hosts)))
-        host_assignments = assign_keys_to_hosts(env.hosts, cruise_files)
-        for h in host_assignments:
-            htotal = sum([c[1] for c in host_assignments[h]])
-            print('{:<20} {}'.format(h, htotal))
-            for c in host_assignments[h]:
-                print('  {:<18} {}'.format(c[0], c[1]))
-        print('')
-
-        if dryrun:
-            print('Dry run complete')
+        if len(dbs) > 0:
+            print('Getting lists of files for each cruise')
+            cruise_files = {}
+            for dbfile in dbs:
+                # Make sure file exists
+                if not os.path.exists(dbfile):
+                    print('DB file {} does not exist'.format(dbfile))
+                    return 1
+                # Make sure db has filter parameters filled in
+                try:
+                    filter_table = db.get_latest_filter(dbfile)
+                except errors.SeaFlowpyError as e:
+                    print('No filter parameters found in database file {}'.format(dbfile))
+                    return 1
+                if len(filter_table) != 3:
+                    print('Unusual filter parameters found in database file {}'.format(dbfile))
+                    return 1
+                # Get cruise name DB
+                try:
+                    c = db.get_cruise(dbfile)
+                except errors.SeaFlowpyError as e:
+                    print('Error retrieving cruise name from DB: {}'.format(e))
+                    return 1
+                try:
+                    evt_files = evt.parse_file_list(cloud.get_files(c))
+                except botocore.exceptions.NoCredentialsError as e:
+                    print('Please configure aws first:')
+                    print('  $ conda install aws')
+                    print('  or')
+                    print('  $ pip install aws')
+                    print('  then')
+                    print('  $ aws configure')
+                    return 1
+                # Filter cruise files by SFL entries
+                try:
+                    sfl_df = db.get_sfl_table(dbfile)
+                except errors.SeaFlowpyError as e:
+                    print('Error retrieving SFL file list from DB: {}'.format(e))
+                    return 1
+                sfl_files = sfl_df["file"].tolist()
+                # Find intersection of SFL files and EVT files
+                cruise_files[c] = seaflowfile.filtered_file_list(evt_files, sfl_files)
+                print('{:<20} sfl={} evt={} intersection={}'.format(
+                    c, len(sfl_files), len(evt_files), len(cruise_files[c])
+                ))
             print('')
-            return
 
-        print('Waiting for hosts to come up with SSH')
-        execute(wait_for_up)
+            if dryrun:
+                # Create dummy host list
+                print('Creating {} dummy hosts'.format(instance_count))
+                env.hosts = ['dummy{}'.format(i) for i in range(instance_count)]
+            else:
+                print('Starting {} instances'.format(instance_count))
+                result = cloud.start(
+                    count=instance_count,
+                    instance_type=instance_type
+                )
+                for iid, iip in zip(result['InstanceIds'], result['publicips']):
+                    print('  InstanceId = {}, IP = {}'.format(iid, iip))
+                env.hosts.extend(result['publicips'])
+            print('')
 
-        print('Creating initial ramdisk')
-        with hide('output'):
-            execute(create_ramdisk, ramdisk_size)
+            # Fairly divide cruises into hosts based on number of files
+            print('Assigning cruises to {} hosts'.format(len(env.hosts)))
+            host_assignments = assign_keys_to_hosts(env.hosts, cruise_files)
+            for h in host_assignments:
+                htotal = sum([c[1] for c in host_assignments[h]])
+                print('{:<20} {}'.format(h, htotal))
+                for c in host_assignments[h]:
+                    print('  {:<18} {}'.format(c[0], c[1]))
+            print('')
 
-        print('Transfer AWS credentials')
-        with hide('output'):
-            execute(rsync_put, ['~/.aws/'], '.aws')
+            if dryrun:
+                print('Dry run complete')
+                print('')
+                return
 
-        print('Transfer seaflowpy configuration')
-        with hide('output'):
-            execute(rsync_put, ['~/.seaflowpy/'], '.seaflowpy')
+            print('Waiting for hosts to come up with SSH')
+            execute(wait_for_up)
 
-        print('Transfer initial databases')
-        execute(mkdir, REMOTE_DB_DIR)  # create db dir on each host
-        with hide('output'):
-            execute(rsync_put, dbs, REMOTE_DB_DIR)
+            print('Creating initial ramdisk')
+            with hide('output'):
+                execute(create_ramdisk, ramdisk_size)
 
-        print('Install miniconda 3')
-        execute(install_miniconda3)
+            print('Transfer AWS credentials')
+            with hide('output'):
+                execute(rsync_put, ['~/.aws/'], '.aws')
 
-        execute(mkdir, REMOTE_SOURCE_DIR)  # create source dir on each host
-        if source_dir:
-            print('Transfer local seaflowpy source code')
-            execute(rsync_put, [source_dir], REMOTE_SOURCE_DIR)
-        else:
-            print('Pull seaflowpy source code')
-            execute(pull_seaflowpy, branch, REMOTE_SOURCE_DIR)
+            print('Transfer seaflowpy configuration')
+            with hide('output'):
+                execute(rsync_put, ['~/.seaflowpy/'], '.seaflowpy')
 
-        print('Install seaflowpy')
-        execute(install_seaflowpy)
+            print('Transfer initial databases')
+            execute(mkdir, REMOTE_DB_DIR)  # create db dir on each host
+            with hide('output'):
+                execute(rsync_put, dbs, REMOTE_DB_DIR)
 
-        # Host list in env.hosts should be populated now and all machines up
-        print('Filter data')
-        execute(filter_cruise, host_assignments, output_dir,
-                process_count)
+            print('Install miniconda 3')
+            execute(install_miniconda3)
+
+            execute(mkdir, REMOTE_SOURCE_DIR)  # create source dir on each host
+            if source_dir:
+                print('Transfer local seaflowpy source code')
+                execute(rsync_put, [source_dir], REMOTE_SOURCE_DIR)
+            else:
+                print('Pull seaflowpy source code')
+                execute(pull_seaflowpy, branch, REMOTE_SOURCE_DIR)
+
+            print('Install seaflowpy')
+            execute(install_seaflowpy)
+
+            # Host list in env.hosts should be populated now and all machines up
+            print('Filter data')
+            execute(filter_cruise, host_assignments, output_dir,
+                    process_count)
     finally:
         disconnect_all()  # always disconnect SSH connections
         if not no_cleanup:
