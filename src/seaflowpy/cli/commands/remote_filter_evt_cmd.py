@@ -394,6 +394,11 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 # on local, just to make it clear in logs which host is being
                 # transferred from
                 puts(rsyncout[env.host_string])
+
+                # Erase data for this cruise on remote filtering server
+                puts('Removing results for cruise {} after successful transfer'.format(c))
+                with hide('commands'):
+                    run('rm -rf {} {}.zip'.format(c, c))
             else:
                 sys.stderr.write('Filtering failed for cruise {}\n'.format(c))
 
