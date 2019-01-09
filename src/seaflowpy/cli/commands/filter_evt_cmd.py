@@ -95,6 +95,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
     sfl_files = sfl_df["file"].tolist()
 
     # Find EVT files
+    print('Getting lists of files to filter')
     if evt_dir:
         evt_files = evt.find_evt_files(evt_dir)
     elif s3_flag:
@@ -117,6 +118,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
 
     # Find intersection of SFL files and EVT files
     files = seaflowfile.filtered_file_list(evt_files, sfl_files)
+    print('sfl={} evt={} intersection={}'.format(len(sfl_files), len(evt_files), len(files)))
 
     # Restrict length of file list with --limit
     if (limit is not None) and (limit > 0):
