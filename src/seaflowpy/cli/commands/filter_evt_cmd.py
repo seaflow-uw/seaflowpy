@@ -108,13 +108,18 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
             evt_files = cloud.get_files(cruise)
             evt_files = evt.parse_file_list(evt_files)  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
-            print("Please configure aws first:")
-            print("  $ conda install aws")
-            print("  or")
-            print("  $ pip install aws")
-            print("  then")
-            print("  $ aws configure")
+            print('Please configure aws first:', file=sys.stderr)
+            print('  $ conda install aws', file=sys.stderr)
+            print('  or', file=sys.stderr)
+            print('  $ pip install aws', file=sys.stderr)
+            print('  then', file=sys.stderr)
+            print('  $ aws configure', file=sys.stderr)
             raise click.Abort()
+
+    # Check for duplicates, exit with message if any exist
+    uniques = set([seaflowfile.SeaFlowFile(f).file_id for f in evt_files])
+    if len(uniques) < len(evt_files):
+        raise click.ClickException('Duplicate EVT file(s) detected')
 
     # Find intersection of SFL files and EVT files
     files = seaflowfile.filtered_file_list(evt_files, sfl_files)

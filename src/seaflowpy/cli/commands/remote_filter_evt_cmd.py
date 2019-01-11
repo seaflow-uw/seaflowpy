@@ -105,33 +105,35 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
             for dbfile in dbs:
                 # Make sure file exists
                 if not os.path.exists(dbfile):
-                    print('DB file {} does not exist'.format(dbfile))
-                    return 1
+                    raise click.Exception('DB file {} does not exist'.format(dbfile))
                 # Make sure db has filter parameters filled in
                 try:
                     filter_table = db.get_latest_filter(dbfile)
                 except errors.SeaFlowpyError as e:
-                    print('No filter parameters found in database file {}'.format(dbfile))
-                    return 1
+                    raise click.Exception('No filter parameters found in database file {}'.format(dbfile))
                 if len(filter_table) != 3:
-                    print('Unusual filter parameters found in database file {}'.format(dbfile))
-                    return 1
+                    raise click.Exception('Unusual filter parameters found in database file {}'.format(dbfile))
                 # Get cruise name DB
                 try:
                     c = db.get_cruise(dbfile)
                 except errors.SeaFlowpyError as e:
-                    print('Error retrieving cruise name from DB: {}'.format(e))
-                    return 1
+                    raise click.Exception('Could not retrieve cruise name from DB. {}'.format(e))
                 try:
                     evt_files = evt.parse_file_list(cloud.get_files(c))
                 except botocore.exceptions.NoCredentialsError as e:
-                    print('Please configure aws first:')
-                    print('  $ conda install aws')
-                    print('  or')
-                    print('  $ pip install aws')
-                    print('  then')
-                    print('  $ aws configure')
-                    return 1
+                    print('Please configure aws first:', file=sys.stderr)
+                    print('  $ conda install aws', file=sys.stderr)
+                    print('  or', file=sys.stderr)
+                    print('  $ pip install aws', file=sys.stderr)
+                    print('  then', file=sys.stderr)
+                    print('  $ aws configure', file=sys.stderr)
+                    raise click.Abort()
+
+                # Check for duplicates, exit with message if any exist
+                uniques = set([seaflowfile.SeaFlowFile(f).file_id for f in evt_files])
+                if len(uniques) < len(evt_files):
+                    raise click.ClickException('Duplicate EVT file(s) detected')
+
                 # Filter cruise files by SFL entries
                 try:
                     sfl_df = db.get_sfl_table(dbfile)
