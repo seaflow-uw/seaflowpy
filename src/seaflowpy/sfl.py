@@ -69,17 +69,25 @@ def check_coords(df):
     else:
         notnas = df[df["lat"].notna()]
         lat_numbers = pd.to_numeric(notnas["lat"], errors="coerce")
-        bad_lats = notnas[~((lat_numbers <= 90) & (lat_numbers >= -90))]["lat"]
+        bad_lats = notnas.loc[~((lat_numbers <= 90) & (lat_numbers >= -90)), "lat"]
         for i, v in bad_lats.iteritems():
             errors.append(create_error(df, "lat", msg="Invalid latitude", row=i, val=v))
+        na_lats = df.loc[df["lat"].isna(), "lat"]
+        if len(na_lats) > 0:
+            for i, v in na_lats.iteritems():
+                errors.append(create_error(df, "lat", msg="Missing required data", row=i, val=v, level="error"))
     if "lon" not in df.columns:
         errors.append(create_error(df, "lon", msg="lon column is missing"))
     else:
         notnas = df[df["lon"].notna()]
         lon_numbers = pd.to_numeric(notnas["lon"], errors="coerce")
-        bad_lons = notnas[~((lon_numbers <= 180) & (lon_numbers >= -180))]["lon"]
+        bad_lons = notnas.loc[~((lon_numbers <= 180) & (lon_numbers >= -180)), "lon"]
         for i, v in bad_lons.iteritems():
             errors.append(create_error(df, "lon", msg="Invalid longitude", row=i, val=v))
+        na_lons = df.loc[df["lon"].isna(), "lon"]
+        if len(na_lons) > 0:
+            for i, v in na_lons.iteritems():
+                errors.append(create_error(df, "lon", msg="Missing required data", row=i, val=v, level="error"))
     return errors
 
 
@@ -153,7 +161,7 @@ def check_numerics(df):
         errors.append(create_error(df, column, msg="{} column is missing".format(column)))
     for column in required.intersection(present):
         if df[column].isna().all():
-            errors.append(create_error(df, column, msg="{} column has no data".format(column)))
+            errors.append(create_error(df, column, msg="{} column has no data".format(column), level="warning"))
     return errors
 
 
@@ -165,18 +173,24 @@ def convert_gga2dd(df):
     return newdf
 
 
-def create_error(df, col, msg, row=None, val=None):
-    """Create an error dictionary"""
+def create_error(df, col, msg, row=None, val=None, level='error'):
+    """Create an error dictionary.
+
+    Error levels can be 'error' (fatal) or 'warning'.
+    """
+    level_values = ['error', 'warning']
+    if not level in level_values:
+        raise ValueError(f"valid values for 'level' are {level_values}")
+
     e = {
         "column": col,
         "message": msg,
-        "file": None,
         "line (1-based)": None,
-        "value": None
+        "value": None,
+        "level": level,
     }
     if row is not None:
-        e["file"] = df.loc[row, "input_file_path"]
-        e["line (1-based)"] = int(df.loc[row, "input_file_line_number"])
+        e["line (1-based)"] = row + 2
     if val is not None:
         e["value"] = make_json_serializable(val)
     elif row is not None:
@@ -293,11 +307,11 @@ def print_tsv_errors(errors, fh, print_all=True):
         writer.writerow(e)
 
 
-def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
-    """Parse SFL files into one DataFrame.
+def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs):
+    """Parse SFL file into a DataFrame.
 
     Arguments:
-    files -- SFL file paths as a list.
+    file -- SFL file path.
 
     Keyword arguments:
     convert_numerics -- Cast numeric SQL columns as numbers (default True).
@@ -312,21 +326,7 @@ def read_files(files, convert_numerics=True, convert_colnames=True, **kwargs):
     }
     kwargs_defaults = dict(defaults, **kwargs)
 
-    df = None
-    for f in files:
-        partial_df = pd.read_csv(f, **kwargs_defaults)
-        # Add column for input file path and file line numbers
-        # Support both f as file path and as open file
-        if isinstance(f, str):
-            partial_df["input_file_path"] = f
-        else:
-            partial_df["input_file_path"] = f.name
-        # Start at 2 to account for zero-based counting and header
-        partial_df["input_file_line_number"] = range(2, len(partial_df)+2)
-        if df is None:
-            df = partial_df
-        else:
-            df = df.append(partial_df, ignore_index=True)
+    df = pd.read_csv(file_path, **kwargs_defaults)
     df = df.rename(columns=colname_mapping["file_to_table"])
 
     if convert_numerics:
@@ -372,8 +372,6 @@ def save_to_file(df, outpath, convert_colnames=True, all_columns=False):
     """
     # Remove input file path and line number columns that may have been
     # added.
-    if "input_file_path" in df.columns and "input_file_line_number" in df.columns:
-        df = df.drop(["input_file_path", "input_file_line_number"], axis=1)
     if not all_columns:
         df = df[output_columns]
     if convert_colnames:
