@@ -356,3 +356,61 @@ def test_file_list_filter():
     ]
     result = sfp.seaflowfile.filtered_file_list(files, filter_list)
     assert answer == result
+
+evt_files = [
+    "testcruise/2014_185/2014-07-04T00-00-02+00-00",
+    "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+    "testcruise/2014_185/100.evt",
+    "testcruise/2014_185/200.evt.gz",
+    "2014_185/2014-07-04T00-00-02+00-00",
+    "2014_185/2014-07-04T00-00-02+00-00.gz",
+    "2014-07-04T00-00-02+00-00",
+    "2014-07-04T00-00-02+00-00.gz"
+]
+opp_files = [
+    "testcruise/2014_185/2014-07-04T00-00-02+00-00.opp",
+    "testcruise/2014_185/2014-07-04T00-03-02+00-00.opp.gz",
+    "testcruise/2014_185/100.evt.opp",
+    "testcruise/2014_185/200.evt.opp.gz",
+    "2014_185/2014-07-04T00-00-02+00-00.opp",
+    "2014_185/2014-07-04T00-00-02+00-00.opp.gz",
+    "2014-07-04T00-00-02+00-00.opp",
+    "2014-07-04T00-00-02+00-00.opp.gz"
+]
+
+def test_is_evt():
+    results = [sfp.seaflowfile.SeaFlowFile(f).is_evt for f in evt_files]
+    assert results == [True] * len(evt_files)
+    results = [sfp.seaflowfile.SeaFlowFile(f).is_evt for f in opp_files]
+    assert results == [False] * len(opp_files)
+
+def test_is_opp():
+    results = [sfp.seaflowfile.SeaFlowFile(f).is_opp for f in opp_files]
+    assert results == [True] * len(opp_files)
+    results = [sfp.seaflowfile.SeaFlowFile(f).is_opp for f in evt_files]
+    assert results == [False] * len(evt_files)
+
+def test_keep_evt_files():
+    files = [
+        "testcruise/2014_185/100.evt",
+        "testcruise/2014_185/200.evt.gz",
+        "not_evt_file",
+        "testcruise/2014_185/2014-07-04T00-00-02+00-00",
+        "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
+    ]
+    parsed = sfp.seaflowfile.keep_evt_files(files)
+    assert parsed == (files[:2] + files[3:])
+
+def test_find_evt_files():
+    files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00"
+    ]
+    assert files == answer

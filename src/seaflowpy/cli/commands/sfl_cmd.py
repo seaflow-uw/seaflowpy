@@ -5,7 +5,6 @@ from seaflowpy import clouds
 from seaflowpy import conf
 from seaflowpy import db
 from seaflowpy.errors import SeaFlowpyError
-from seaflowpy import evt
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
 
@@ -144,9 +143,9 @@ def manifest_cmd(infile, evt_dir, s3, verbose):
         config = conf.get_aws_config()
         cloud = clouds.AWS(config.items('aws'))
         files = cloud.get_files(evt_dir)
-        found_evt_files = seaflowfile.sorted_files(evt.parse_file_list(files))
+        found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files))
     else:
-        found_evt_files = evt.find_evt_files(evt_dir)
+        found_evt_files = seaflowfile.find_evt_files(evt_dir)
 
     df = sfl.read_file(infile)
     sfl_evt_ids = [seaflowfile.SeaFlowFile(f).file_id for f in df['file']]

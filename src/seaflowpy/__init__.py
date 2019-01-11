@@ -2,13 +2,9 @@ from . import clouds
 from . import conf
 from . import db
 from . import errors
-from . import evt
 from . import fileio
 from . import filterevt
 from . import geo
 from . import particleops
 from . import sfl
 from . import util
-from .cli import cli
-from .seaflowfile import SeaFlowFile
-from .evt import find_evt_files

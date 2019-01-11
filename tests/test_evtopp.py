@@ -93,62 +93,6 @@ class TestOpen:
             df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
 
-class TestPathFilenameParsing:
-    def test_is_evt(self):
-        files = [
-            # Valid names
-            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "testcruise/2014_185/100.evt",
-            "testcruise/2014_185/100.evt.opp",
-            "testcruise/2014_185/100.evt.opp.gz",
-            "testcruise/2014_185/200.evt.gz",
-            "2014_185/2014-07-04T00-00-02+00-00",
-            "2014-07-04T00-00-02+00-00",
-            "2014-07-04T00-00-02+00-00.opp",
-            "2014-07-04T00-00-02+00-00.evt",
-
-            # Bad names
-            "not_evt_file",
-            "x.evt",
-            "testcruise/2014_185/100_1.evt",
-            "2014-07-0400-00-02+00-00",
-            "2014-07-04T00-00-02+00-00.op",
-            "2014-07-04T00-00-02+00-00.ev"
-        ]
-        results = [sfp.evt.is_evt(f) for f in files]
-        answers = [
-            True, True, True, True, True, True, True, True, True, True,
-            False, False, False, False, False, False
-        ]
-        assert results == answers
-
-    def test_parse_file_list(self):
-        files = [
-            "testcruise/2014_185/100.evt",
-            "testcruise/2014_185/200.evt.gz",
-            "not_evt_file",
-            "testcruise/2014_185/2014-07-04T00-00-02+00-00",
-            "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
-        ]
-        parsed = sfp.evt.parse_file_list(files)
-        assert parsed == (files[:2] + files[3:])
-
-    def test_find_evt_files(self):
-        files = sfp.find_evt_files("tests/testcruise_evt")
-        answer = [
-            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00"
-        ]
-        assert files == answer
-
-
 class TestFilter:
     def test_mark_focused_no_params(self, evt_df):
         with pytest.raises(ValueError):
@@ -208,7 +152,7 @@ class TestTransform:
 
 class TestOutput:
     def test_sqlite3_opp_counts_and_params(self, tmpout, params):
-        sf_file = sfp.SeaFlowFile(tmpout["evt_path"])
+        sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         df = tmpout["evt_df"]
         df = sfp.particleops.mark_focused(df, params)
 
@@ -235,7 +179,7 @@ class TestOutput:
 
 
     def test_sqlite3_opp_counts_and_params_empty(self, tmpout, params):
-        sf_file = sfp.SeaFlowFile(tmpout["evt_path"])
+        sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         df = sfp.particleops.empty_df()
         df = sfp.particleops.mark_focused(df, params)
 
@@ -303,7 +247,7 @@ class TestOutput:
         assert os.path.exists(out_opp_path) == False
 
     def test_binary_opp_output(self, tmpout, params):
-        sfile = sfp.SeaFlowFile(tmpout["evt_path"])
+        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
 
         df = tmpout["evt_df"]
         df = sfp.particleops.mark_focused(df, params)
@@ -321,7 +265,7 @@ class TestOutput:
         )
 
     def test_binary_opp_output_gz(self, tmpout, params):
-        sfile = sfp.SeaFlowFile(tmpout["evt_path"])
+        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
 
         df = tmpout["evt_df"]
         df = sfp.particleops.mark_focused(df, params)
@@ -371,7 +315,7 @@ class TestMultiFileFilter(object):
         config = sfp.conf.get_aws_config()
         cloud = sfp.clouds.AWS(config.items("aws"))
         files = cloud.get_files("testcruise_evt")
-        files = sfp.evt.parse_file_list(files)
+        files = sfp.seaflowfile.keep_evt_files(files)
 
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
@@ -407,7 +351,7 @@ class TestMultiFileFilter(object):
             files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             worker_count=1
         )
-        opp_files = sfp.evt.find_evt_files(str(tmpout["oppdir"]))
+        opp_files = sfp.seaflowfile.find_evt_files(str(tmpout["oppdir"]))
 
         # Compare opp table output
         with sqlite3.connect(tmpout["db"]) as con_py:
@@ -420,8 +364,8 @@ class TestMultiFileFilter(object):
         assert "\n".join(opp_py["file"].values) == "\n".join(opp_R["file"].values)
 
         # Compare OPP file output
-        opps_py = [sfp.fileio.read_opp_labview(o) for o in sfp.evt.find_evt_files(tmpout["oppdir"])]
-        opps_R = [sfp.fileio.read_opp_labview(o) for o in sfp.evt.find_evt_files(os.path.join(popcycledir, "opp"))]
+        opps_py = [sfp.fileio.read_opp_labview(o) for o in sfp.seaflowfile.find_evt_files(tmpout["oppdir"], opp=True)]
+        opps_R = [sfp.fileio.read_opp_labview(o) for o in sfp.seaflowfile.find_evt_files(os.path.join(popcycledir, "opp"), opp=True)]
         assert len(opps_py) == len(opps_R)
         assert len(opps_py) == 2
         assert len(opps_R) == 2

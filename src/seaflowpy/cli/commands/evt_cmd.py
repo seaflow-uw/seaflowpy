@@ -1,29 +1,37 @@
 import click
 from seaflowpy import errors
-from seaflowpy import evt
+from seaflowpy import seaflowfile
 from seaflowpy import fileio
 
 @click.command()
 @click.option('-H', '--no-header', is_flag=True, default=False,
     help="Don't print column headers.")
+@click.option('-o', '--opp', is_flag=True, default=False,
+    help="Files are OPP (multi-quantile).")
 @click.option('-S', '--no-summary', is_flag=True, default=False,
     help="Don't print final summary line.")
 @click.option('-v', '--verbose', is_flag=True,
     help='Show information for all files. If not specified then only files errors are printed.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
-def evt_cmd(no_header, no_summary, verbose, files):
-    """Validate EVT files."""
+def evt_cmd(no_header, opp, no_summary, verbose, files):
+    """Validate EVT/OPP files."""
     if not files:
         return
     header_printed = False
     ok, bad = 0, 0
     for evt_file in files:
-        if not evt.is_evt(evt_file):
+        if not opp and not seaflowfile.SeaFlowFile(evt_file).is_evt:
             status = "Filename does not look like an EVT file"
+            bad += 1
+        elif opp and not seaflowfile.SeaFlowFile(evt_file).is_opp:
+            status = "Filename does not look like an OPP file"
             bad += 1
         else:
             try:
-                data = fileio.read_labview(evt_file)
+                if opp:
+                    data = fileio.read_opp_labview(evt_file)
+                else:
+                    data = fileio.read_evt_labview(evt_file)
             except errors.FileError as e:
                 status = str(e)
                 bad += 1

@@ -14,7 +14,6 @@ from fabric.network import disconnect_all
 from seaflowpy import clouds
 from seaflowpy import conf
 from seaflowpy import db
-from seaflowpy import evt
 from seaflowpy import errors
 from seaflowpy import util
 from seaflowpy import seaflowfile
@@ -119,7 +118,7 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
                 except errors.SeaFlowpyError as e:
                     raise click.Exception('Could not retrieve cruise name from DB. {}'.format(e))
                 try:
-                    evt_files = evt.parse_file_list(cloud.get_files(c))
+                    evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(cloud.get_files(c)))
                 except botocore.exceptions.NoCredentialsError as e:
                     print('Please configure aws first:', file=sys.stderr)
                     print('  $ conda install aws', file=sys.stderr)

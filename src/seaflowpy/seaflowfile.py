@@ -16,6 +16,8 @@ new_path_re = r'^\d{1,4}_\d{1,3}/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d
 new_file_re = r'^(?P<date>\d{4}-\d{2}-\d{2})T(?P<hours>\d{2})-(?P<minutes>\d{2})-(?P<seconds>\d{2})(?P<tzhours>[+-]\d{2})-(?P<tzminutes>\d{2})$'
 old_path_re = r'^\d{1,4}_\d{1,3}/\d+\.evt$'
 old_file_re = r'^\d+\.evt$'
+evt_file_re = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}(?:\.gz)?$|^\d+\.evt(?:\.gz)?$'
+opp_file_re = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}\.opp(?:\.gz)?$|^\d+\.evt\.opp(?:\.gz)?$'
 
 
 class SeaFlowFile:
@@ -85,8 +87,18 @@ class SeaFlowFile:
 
     @property
     def is_new_style(self):
-        """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.evt.gz"""
+        """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.gz"""
         return bool(re.match(new_file_re, self.filename_noext))
+
+    @property
+    def is_evt(self):
+        """Is this an EVT file?"""
+        return bool(re.match(evt_file_re, self.filename))
+
+    @property
+    def is_opp(self):
+        """Is this an OPP file?"""
+        return bool(re.match(opp_file_re, self.filename))
 
     @property
     def rfc3339(self):
@@ -179,3 +191,24 @@ def filtered_file_list(total_list, filter_list):
             files.append(f)
     files = sorted_files(files)
     return files
+
+
+def find_evt_files(root_dir, opp=False):
+    """Return a chronologically sorted list of EVT/OPP file paths in root_dir."""
+    files = util.find_files(root_dir)
+    files = keep_evt_files(files, opp=opp)
+    return sorted_files(files)
+
+
+def keep_evt_files(files, opp=False):
+    """Filter list of files to only keep EVT files."""
+    files_list = []
+    for f in files:
+        try:
+            sfile = SeaFlowFile(f)
+        except errors.FileError as e:
+            pass
+        else:
+            if (opp and sfile.is_opp) | (not opp and sfile.is_evt):
+                files_list.append(f)
+    return files_list

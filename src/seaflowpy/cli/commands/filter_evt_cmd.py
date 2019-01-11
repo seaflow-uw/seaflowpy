@@ -7,7 +7,6 @@ from seaflowpy import clouds
 from seaflowpy import conf
 from seaflowpy import db
 from seaflowpy import errors
-from seaflowpy import evt
 from seaflowpy import filterevt
 from seaflowpy import util
 from seaflowpy import seaflowfile
@@ -97,7 +96,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
     # Find EVT files
     print('Getting lists of files to filter')
     if evt_dir:
-        evt_files = evt.find_evt_files(evt_dir)
+        evt_files = seaflowfile.sorted_files(seaflowfile.find_evt_files(evt_dir))
     elif s3_flag:
         # Make sure configuration for s3 is ready to go
         config = conf.get_aws_config(s3_only=True)
@@ -106,7 +105,7 @@ def filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, reso
         # launching child processes.
         try:
             evt_files = cloud.get_files(cruise)
-            evt_files = evt.parse_file_list(evt_files)  # Only keep EVT files
+            evt_files = seaflowfile.keep_evt_files(evt_files)  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
             print('Please configure aws first:', file=sys.stderr)
             print('  $ conda install aws', file=sys.stderr)
