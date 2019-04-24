@@ -16,18 +16,6 @@ import seaflowpy as sfp
 from subprocess import check_output
 
 
-popcycle = pytest.mark.skipif(
-    not pytest.config.getoption("--popcycle"),
-    reason="need --popcycle option to run"
-)
-
-
-s3 = pytest.mark.skipif(
-    not pytest.config.getoption("--s3"),
-    reason="need --s3 option to run"
-)
-
-
 @pytest.fixture()
 def evt_df():
     return sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
@@ -318,7 +306,7 @@ class TestMultiFileFilter(object):
 
         multi_file_asserts(tmpout)
 
-    @s3
+    @pytest.mark.s3
     def test_multi_file_filter_S3(self, tmpout):
         """Test S3 multi-file filtering and ensure output can be read back OK"""
         config = sfp.conf.get_aws_config()
@@ -337,7 +325,7 @@ class TestMultiFileFilter(object):
 
         multi_file_asserts(tmpout)
 
-    @popcycle
+    @pytest.mark.popcycle
     def test_against_popcycle(self, tmpout):
         # Generate popcycle results
         popcycledir = os.path.join(tmpout["tmpdir"], "popcycle")
