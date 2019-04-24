@@ -83,10 +83,18 @@ class TestOpen:
     def test_read_empty_evt(self):
         with pytest.raises(sfp.errors.FileError):
             df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
-
-    def test_read_bad_header_count_evt(self):
+    
+    def test_read_no_data_after_header_evt(self):
         with pytest.raises(sfp.errors.FileError):
             df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
+    
+    def test_read_less_data_than_header_count_evt(self):
+        with pytest.raises(sfp.errors.FileError):
+            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
+    
+    def test_read_more_data_than_header_count_evt(self):
+        with pytest.raises(sfp.errors.FileError):
+            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
 
     def test_read_short_header_evt(self):
         with pytest.raises(sfp.errors.FileError):
@@ -295,7 +303,8 @@ class TestMultiFileFilter(object):
             "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",     # file only 2 bytes, should be at least 4 for header
             "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",  # all noise
             "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",  # only 2 quantiles have OPP
-            "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00.gz"   # skip this one, only here to test SFL file list filtering
+            "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00",     # not in SFL and more data than header reports
+            "tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00"      # not in SFL and less data than header reports
         ]
 
         # python setup.py test doesn't play nice with pytest and

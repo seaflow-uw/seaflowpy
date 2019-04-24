@@ -411,6 +411,7 @@ def test_find_evt_files():
         "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
         "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
         "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
-        "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00"
+        "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00"
     ]
     assert files == answer

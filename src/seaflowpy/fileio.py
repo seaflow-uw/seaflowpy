@@ -130,11 +130,23 @@ def read_labview(path, columns, fileobj=None):
         # vanilla int types. This is true for Python 3, not for Python 2.
         buff = fh.read(int(expected_bytes))
 
-    if len(buff) != expected_bytes:
+        # Read any extra data at the end of the file for error checking
+        extra_bytes = 0
+        while True:
+            new_bytes = len(fh.read(8192))
+            extra_bytes += new_bytes
+            if new_bytes == 0:  # end of file
+                break
+    
+    # Check that file has the expected number of data bytes. This should
+    # not read any more data unless the file is the wrong format.
+    found_bytes = len(buff) + extra_bytes
+    if found_bytes != expected_bytes:
         raise errors.FileError(
             "File has incorrect number of data bytes. Expected %i, saw %i" %
-            (expected_bytes, len(buff))
+            (expected_bytes, found_bytes)
         )
+
     events = np.frombuffer(buff, dtype="uint16", count=rowcnt*colcnt)
     # Reshape into a matrix of colcnt columns and one row per particle
     events = np.reshape(events, [rowcnt, colcnt])
