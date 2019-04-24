@@ -7,7 +7,7 @@ import numpy as np
 import numpy.testing as npt
 import os
 import pandas as pd
-import py.path
+import py
 import pytest
 import shutil
 import sqlite3
