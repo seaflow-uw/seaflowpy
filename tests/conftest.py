@@ -10,7 +10,7 @@ def pytest_addoption(parser):
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--s3"):
         # --s3 given in cli: do not skip s3 tests
-        return
+        pass
     else:
         skip_s3 = pytest.mark.skip(reason="need --s3 option to run")
         for item in items:
@@ -19,7 +19,7 @@ def pytest_collection_modifyitems(config, items):
     
     if config.getoption("--popcycle"):
         # --popcycle given in cli: do not skip popcycle tests
-        return
+        pass
     else:
         skip_popcycle = pytest.mark.skip(reason="need --popcycle option to run")
         for item in items:
