@@ -32,12 +32,12 @@ def ggalon2dd(coord):
     """
     match = ggalon_re.match(coord)
     if not match:
-        raise ValueError("Invalid GGA latitude string '{}'".format(coord))
+        raise ValueError("Invalid GGA longitude string '{}'".format(coord))
     if match:
         degrees = int(match.group('degrees'))
         minutes = float(match.group('minutes'))
         if abs(degrees) > 180 or minutes > 60:
-            raise ValueError("Invalid GGA latitude string '{}'".format(coord))
+            raise ValueError("Invalid GGA longitude string '{}'".format(coord))
         sign = -1 if match.group('degrees')[0] == '-' else 1
     return "{:.4f}".format(sign * (abs(degrees) + (minutes / 60.0)))
 
