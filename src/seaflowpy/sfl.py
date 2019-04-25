@@ -108,8 +108,8 @@ def check_date(df):
 def check_date_string(date):
     """Confirm value is an RFC3339 string with timezone as [+-]00:00"""
     formats = [
-        "YYYY-MM-DDTHH:mm:ss\+00:00",
-        "YYYY-MM-DDTHH:mm:ss\-00:00"
+        "YYYY-MM-DDTHH:mm:ss+00:00",
+        "YYYY-MM-DDTHH:mm:ss-00:00"
     ]
     passed = False
     for f in formats:
