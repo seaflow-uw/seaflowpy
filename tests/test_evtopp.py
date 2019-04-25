@@ -7,7 +7,6 @@ import numpy as np
 import numpy.testing as npt
 import os
 import pandas as pd
-import py
 import pytest
 import shutil
 import sqlite3
@@ -47,56 +46,56 @@ def tmpout(tmpdir):
     db = str(tmpdir.join("testcruise.db"))
     shutil.copyfile("tests/testcruise_paramsonly.db", db)
     os.chmod(db, 0o664)  # make the db writeable
-    evt_path = py.path.local("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
+    evt_path = "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
     return {
         "db": db,
         "oppdir": str(tmpdir.join("oppdir")),
         "tmpdir": str(tmpdir),
         "evt_df": sfp.fileio.read_evt_labview(str(evt_path)),
-        "evt_path": str(evt_path)
+        "evt_path": evt_path
     }
 
 
 class TestOpen:
-    def test_read_valid_evt(self):
+    def test_read_evt_valid(self):
         df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert len(df.index) == 40000
         assert list(df) == sfp.particleops.columns
 
-    def test_read_valid_gz_evt(self):
+    def test_read_evt_valid_gz(self):
         df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert len(df.index) == 40000
         assert list(df) == sfp.particleops.columns
 
-    def test_read_empty_evt(self):
+    def test_read_evt_empty(self):
         with pytest.raises(sfp.errors.FileError):
-            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
     
-    def test_read_no_data_after_header_evt(self):
+    def test_read_evt_no_data_after_header(self):
         with pytest.raises(sfp.errors.FileError):
-            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
     
-    def test_read_less_data_than_header_count_evt(self):
+    def test_read_evt_less_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
-            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
     
-    def test_read_more_data_than_header_count_evt(self):
+    def test_read_evt_more_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
-            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
 
-    def test_read_short_header_evt(self):
+    def test_read_evt_short_header(self):
         with pytest.raises(sfp.errors.FileError):
-            df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
 
 class TestFilter:
     def test_mark_focused_no_params(self, evt_df):
         with pytest.raises(ValueError):
-            df = sfp.particleops.mark_focused(evt_df, None)
+            _df = sfp.particleops.mark_focused(evt_df, None)
 
     def test_mark_focused_empty_params(self, evt_df):
         with pytest.raises(ValueError):
-            df = sfp.particleops.mark_focused(evt_df, pd.DataFrame.from_dict({}))
+            _df = sfp.particleops.mark_focused(evt_df, pd.DataFrame.from_dict({}))
 
     def test_mark_focused_with_set_params(self, evt_df, params):
         evt_df = sfp.particleops.mark_focused(evt_df, params)
@@ -186,11 +185,6 @@ class TestOutput:
             "UUID", tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-
-        try:
-            opp_evt_ratio = sqlitedf["opp_count"] / sqlitedf["evt_count"]
-        except ZeroDivisionError:
-            opp_evt_ratio = 0.0
 
         assert sf_file.file_id == sqlitedf["file"][1]
         assert "UUID" == sqlitedf["filter_id"][1]
@@ -283,20 +277,9 @@ class TestOutput:
 class TestMultiFileFilter(object):
     def test_multi_file_filter_local(self, tmpout):
         """Test multi-file filtering and ensure output can be read back OK"""
-        files = [
-            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",     # normal file
-            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",  # normal file, gz
-            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",     # empty file
-            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",     # truncated after header
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",     # file only 2 bytes, should be at least 4 for header
-            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",  # all noise
-            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",  # only 2 quantiles have OPP
-            "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00",     # not in SFL and more data than header reports
-            "tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00"      # not in SFL and less data than header reports
-        ]
-
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
+        files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
         sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
         files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
@@ -333,22 +316,13 @@ class TestMultiFileFilter(object):
         subprocess.check_call(popcycle_cmd.split())
 
         # Generate seaflowpy results
-        files = [
-            "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
-            "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
-        ]
+        files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
         sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
         files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
             files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
             worker_count=1
         )
-        opp_files = sfp.seaflowfile.find_evt_files(str(tmpout["oppdir"]))
 
         # Compare opp table output
         with sqlite3.connect(tmpout["db"]) as con_py:

@@ -7,7 +7,6 @@ dependencies:
   - click
   - fabric3
   - nomkl
-  - numexpr
   - python=3.7
   - pandas
   - pip

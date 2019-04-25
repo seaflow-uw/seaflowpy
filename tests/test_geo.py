@@ -1,6 +1,5 @@
 import numpy.testing as npt
 import os
-import py.path
 import pytest
 import seaflowpy as sfp
 
@@ -82,10 +81,10 @@ class TestGGA2DecimalDegrees:
 
         for lon in bad_lons:
             with pytest.raises(ValueError):
-                dd = sfp.geo.ggalon2dd(lon)
+                _dd = sfp.geo.ggalon2dd(lon)
         for lat in bad_lats:
             with pytest.raises(ValueError):
-                dd = sfp.geo.ggalat2dd(lat)
+                _dd = sfp.geo.ggalat2dd(lat)
 
 
 class TestGGA:

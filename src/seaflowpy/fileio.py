@@ -130,7 +130,8 @@ def read_labview(path, columns, fileobj=None):
         # vanilla int types. This is true for Python 3, not for Python 2.
         buff = fh.read(int(expected_bytes))
 
-        # Read any extra data at the end of the file for error checking
+        # Read any extra data at the end of the file for error checking. There
+        # shouldn't be any extra data, btw.
         extra_bytes = 0
         while True:
             new_bytes = len(fh.read(8192))
@@ -138,8 +139,7 @@ def read_labview(path, columns, fileobj=None):
             if new_bytes == 0:  # end of file
                 break
     
-    # Check that file has the expected number of data bytes. This should
-    # not read any more data unless the file is the wrong format.
+    # Check that file has the expected number of data bytes.
     found_bytes = len(buff) + extra_bytes
     if found_bytes != expected_bytes:
         raise errors.FileError(
