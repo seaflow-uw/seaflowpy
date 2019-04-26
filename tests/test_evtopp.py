@@ -71,21 +71,21 @@ class TestOpen:
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
     
-    def test_read_evt_no_data_after_header(self):
+    def test_read_evt_zero_header(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
     
-    def test_read_evt_less_data_than_header_count(self):
-        with pytest.raises(sfp.errors.FileError):
-            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
-    
-    def test_read_evt_more_data_than_header_count(self):
-        with pytest.raises(sfp.errors.FileError):
-            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
-
     def test_read_evt_short_header(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
+
+    def test_read_evt_more_data_than_header_count(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
+    
+    def test_read_evt_less_data_than_header_count(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
 
 
 class TestFilter:
