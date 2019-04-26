@@ -346,13 +346,14 @@ def test_file_list_filter():
         "2014_185/2014-07-04T00-00-02+00-00",
         "testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
         "foo/2014_185/2014-07-04T00-06-02+00-00",
-        "2014_185/2014-07-04T00-17-02+00-00.gz"
+        "2014_185/2014-07-04T00-17-02+00-00.gz",
+        "2014_185/2014-07-04T00-30-02+00-00.gz"
     ]
     answer = [
         "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
         "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
         "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
-        "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz"
     ]
     result = sfp.seaflowfile.filtered_file_list(files, filter_list)
     assert answer == result
