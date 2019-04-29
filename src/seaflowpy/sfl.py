@@ -1,12 +1,13 @@
 """Do things to SFL data DataFrames"""
-import arrow
 import csv
+import datetime
 import json
 import os
 import pandas as pd
 import re
 import sys
 from . import db
+from . import errors as sfperrors
 from . import geo
 from . import util
 from . import seaflowfile
@@ -106,18 +107,14 @@ def check_date(df):
 
 
 def check_date_string(date):
-    """Confirm value is an RFC3339 string with timezone as [+-]00:00"""
-    formats = [
-        "YYYY-MM-DDTHH:mm:ss+00:00",
-        "YYYY-MM-DDTHH:mm:ss-00:00"
-    ]
+    """Confirm value is an RFC3339 string with UTC timezone as [+-]00:00"""
     passed = False
-    for f in formats:
-        try:
-            arrow.get(date, f)
-        except (arrow.parser.ParserError, ValueError, TypeError):
-            pass
-        else:
+    try:
+        dt = datetime.datetime.fromisoformat(date)
+    except ValueError:
+        pass
+    else:
+        if dt.tzinfo == datetime.timezone.utc and (date.endswith('+00:00') or date.endswith('-00:00')):
             passed = True
     # Return true if any format is correct
     return passed
@@ -129,11 +126,18 @@ def check_file(df):
     if "file" not in df.columns:
         errors.append(create_error(df, "file", msg="file column is missing"))
     else:
-        # File field must contain well formatted file strings
-        old_files_selector = df["file"].str.match(seaflowfile.old_path_re)
-        new_files_selector = df["file"].str.match(seaflowfile.new_path_re)
-        invalid_files = df[~old_files_selector & ~new_files_selector]["file"]
-        for i, v in invalid_files.iteritems():
+        # File field must contain well formatted file strings, valid dates, and
+        # day-of-year directory.
+        def parse_filename(f):
+            try:
+                s = seaflowfile.SeaFlowFile(f)
+            except sfperrors.FileError:
+                return False
+            if s.path_dayofyear:
+                return True
+        
+        good_files_selector = df["file"].map(parse_filename)
+        for i, v in df[~good_files_selector]["file"].iteritems():
             errors.append(create_error(df, "file", msg="Invalid file name", row=i, val=v))
 
         # Files must be unique
@@ -142,8 +146,9 @@ def check_file(df):
             errors.append(create_error(df, "file", msg="Duplicate file", row=i, val=v))
 
         # Files should be in order
-        inorder = seaflowfile.sorted_files(df["file"])
-        files_equal = df["file"] == inorder
+        # Only consider files that are parseable by seaflowfile.SeaFlowFile
+        inorder = seaflowfile.sorted_files(df[good_files_selector]["file"])
+        files_equal = df[good_files_selector]["file"] == inorder
         if not (files_equal).all():
             i = int(df[~files_equal].index[0])
             v = "First out of order file. Saw {}, expected {}.".format(df.loc[i, "file"], inorder[i])
@@ -223,7 +228,7 @@ def find_sfl_files(root):
     """
     root = os.path.expanduser(root)
     sfl_paths = []
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root):
         for f in filenames:
             if f.endswith(".sfl"):
                 sfl_paths.append(os.path.join(dirpath, f))
@@ -241,11 +246,25 @@ def fix(df):
     newdf = df.copy(deep=True)
 
     # Add a date column if needed
+    def date_from_file(f):
+        try:
+            d = seaflowfile.SeaFlowFile(f).rfc3339
+        except sfperrors.FileError:
+            d = ''
+        return d
+
     if "date" not in newdf.columns:
-        newdf["date"] = newdf["file"].map(lambda x: seaflowfile.SeaFlowFile(x).rfc3339)
+        newdf["date"] = newdf["file"].map(date_from_file)
 
     # Add day of year directory if needed
-    newdf["file"] = newdf["file"].map(lambda x: seaflowfile.SeaFlowFile(x).file_id)
+    def dayofyear_from_file(f):
+        try:
+            d = seaflowfile.SeaFlowFile(f).file_id
+        except sfperrors.FileError:
+            d = f  # don't change anything if can't parse filename
+        return d
+
+    newdf["file"] = newdf["file"].map(dayofyear_from_file)
 
     # Convert stream pressure <= 0 to small positive number
     newdf.loc[newdf["stream_pressure"] <= 0, "stream_pressure"] = 1e-4

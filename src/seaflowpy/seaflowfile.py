@@ -1,4 +1,4 @@
-import arrow
+import datetime
 import gzip
 import io
 import json
@@ -34,10 +34,13 @@ class SeaFlowFile:
             raise errors.FileError("Filename doesn't look like a SeaFlow file")
 
         if self.is_new_style:
+            err = None
             try:
                 self.date = date_from_filename(self.filename_noext)
             except ValueError as e:
-                raise errors.FileError("Error parsing date from filename: {}".format(e))
+                err = e
+            if err:
+                raise errors.FileError(str(err))
         else:
             self.date = None
 
@@ -72,7 +75,6 @@ class SeaFlowFile:
 
 
     def __str__(self):
-        keys = ["path", "file_id"]
         return "SeaFlowFile: {}, {}".format(self.file_id, self.path)
 
     @property
@@ -104,7 +106,7 @@ class SeaFlowFile:
     def rfc3339(self):
         """Return RFC 3339 YYYY-MM-DDThh:mm:ss[+-]hh:mm parsed from filename"""
         if self.date:
-            return arrow.Arrow.fromdatetime(self.date).format("YYYY-MM-DDTHH:mm:ssZZ")
+            return self.date.isoformat(timespec='seconds')
 
     @property
     def sort_key(self):
@@ -142,9 +144,13 @@ def date_from_filename(filename):
         # New style EVT filenames, e.g.
         # - 2014-05-15T17-07-08+00-00
         # - 2014-05-15T17-07-08-07-00
-        # Parse RFC 3339 date string with arrow, then get datetime
-        date  = arrow.get("{}T{}:{}:{}{}{}".format(*m.groups())).datetime
-        return date
+        # Parse RFC 3339 date string
+        try:
+            date = datetime.datetime.fromisoformat("{date}T{hours}:{minutes}:{seconds}{tzhours}:{tzminutes}".format(**m.groupdict()))
+        except ValueError as e:
+            raise e
+        else:
+            return date
     raise ValueError('filename does not look like a new-style SeaFlow file')
 
 

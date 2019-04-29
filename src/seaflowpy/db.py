@@ -3,7 +3,7 @@ from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
 from shutil import copyfile
-import arrow
+import datetime
 import pkgutil
 import pandas as pd
 import sqlite3
@@ -44,7 +44,9 @@ def save_filter_params(dbpath, vals):
     values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT OR REPLACE INTO filter VALUES ({})".format(values_str)
     id_ = str(uuid.uuid4())
-    date = arrow.utcnow().format('YYYY-MM-DDTHH:mm:ssZZ')
+    # Create an ISO8601 timestamp in the format '2019-04-29T20:54:26+00:00'
+    utcnow = datetime.datetime.now(datetime.timezone.utc)
+    date = utcnow.isoformat(timespec='seconds')
     for v in vals:
         v['id'] = id_
         v['date'] = date

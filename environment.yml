@@ -2,7 +2,6 @@ name: seaflowpy
 channels:
   - defaults
 dependencies:
-  - arrow
   - boto3
   - click
   - fabric3

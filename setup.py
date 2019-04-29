@@ -42,7 +42,6 @@ setup(
     package_dir={'': 'src'},
     include_package_data=True,
     install_requires=[
-        'arrow',
         'boto3',
         'click',
         'numexpr',
