@@ -4,11 +4,11 @@ import seaflowpy as sfp
 
 def test_invalid_filename():
     with pytest.raises(sfp.errors.FileError):
-        f = sfp.seaflowfile.SeaFlowFile("foobar")
+        _ = sfp.seaflowfile.SeaFlowFile("foobar")
 
 def test_invalid_filename_date():
     with pytest.raises(sfp.errors.FileError):
-        f = sfp.seaflowfile.SeaFlowFile("2014-07-32T00-00-02+00-00")
+        _ = sfp.seaflowfile.SeaFlowFile("2014-07-32T00-00-02+00-00")
 
 def test_new_style():
     f = sfp.seaflowfile.SeaFlowFile("2014-07-04T00-00-02+00-00")
@@ -296,15 +296,15 @@ def test_dayofyear_from_filename():
     dayofyear_answer = "2014_187"
     path_dayofyear_answer = "2014_001"
 
-    for i, f in enumerate(files[0:4]):
+    for f in files[0:4]:
         s = sfp.seaflowfile.SeaFlowFile(f)
         assert s.dayofyear == dayofyear_answer
         assert s.path_dayofyear == None
 
-    for i, f in enumerate(files[4:]):
+    for f in files[4:]:
         s = sfp.seaflowfile.SeaFlowFile(f)
         assert s.dayofyear == dayofyear_answer
-        assert s.path_dayofyear == "2014_001"
+        assert s.path_dayofyear == path_dayofyear_answer
 
 def test_parse_path():
     files = [

@@ -97,7 +97,7 @@ def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
         "quantile"
     ]
     vals = []
-    for q_col, q, q_str, q_df in particleops.quantiles_in_df(df):
+    for _q_col, q, _q_str, q_df in particleops.quantiles_in_df(df):
         opp_count = len(q_df.index)
         try:
             opp_evt_ratio = opp_count / evt_count
