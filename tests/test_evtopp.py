@@ -3,16 +3,15 @@ from builtins import object
 import gzip
 import hashlib
 import io
-import numpy as np
-import numpy.testing as npt
 import os
-import pandas as pd
-import pytest
 import shutil
 import sqlite3
 import subprocess
+import numpy as np
+import numpy.testing as npt
+import pandas as pd
+import pytest
 import seaflowpy as sfp
-from subprocess import check_output
 
 
 @pytest.fixture()
@@ -60,21 +59,21 @@ class TestOpen:
     def test_read_evt_valid(self):
         df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert len(df.index) == 40000
-        assert list(df) == sfp.particleops.columns
+        assert list(df) == sfp.particleops.COLUMNS
 
     def test_read_evt_valid_gz(self):
         df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert len(df.index) == 40000
-        assert list(df) == sfp.particleops.columns
+        assert list(df) == sfp.particleops.COLUMNS
 
     def test_read_evt_empty(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
-    
+
     def test_read_evt_zero_header(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
-    
+
     def test_read_evt_short_header(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
@@ -82,7 +81,7 @@ class TestOpen:
     def test_read_evt_more_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
-    
+
     def test_read_evt_less_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
@@ -168,7 +167,7 @@ class TestOutput:
         assert "UUID" == sqlitedf["filter_id"][1]
         assert 50 == sqlitedf["quantile"][1]
         npt.assert_array_equal(
-            [ 107, 39928, 40000, opp_evt_ratio ],
+            [107, 39928, 40000, opp_evt_ratio],
             sqlitedf[["opp_count", "evt_count", "all_count", "opp_evt_ratio"]].values[1]
         )
 
@@ -190,7 +189,7 @@ class TestOutput:
         assert "UUID" == sqlitedf["filter_id"][1]
         assert 50 == sqlitedf["quantile"][1]
         npt.assert_array_equal(
-            [ 0, 0, 0, 0.0 ],
+            [0, 0, 0, 0.0],
             sqlitedf[["opp_count", "evt_count", "all_count", "opp_evt_ratio"]].values[1]
         )
 
@@ -234,7 +233,7 @@ class TestOutput:
         evt_df = None
         out_opp_path = os.path.join(oppdir, sfile.file_id + ".opp.gz")
         sfp.fileio.write_opp_labview(evt_df, sfile.file_id, oppdir)
-        assert os.path.exists(out_opp_path) == False
+        assert os.path.exists(out_opp_path) is False
 
     def test_binary_opp_output(self, tmpout, params):
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
@@ -409,7 +408,7 @@ def multi_file_asserts(tmpout):
         "2014_185/2014-07-04T00-17-02+00-00"
     ]
     answer = []
-    for threes in [[f,f,f] for f in files]:
+    for threes in [[f, f, f] for f in files]:
         for f in threes:
             answer.append(f)
     assert opp_table["file"].tolist() == answer

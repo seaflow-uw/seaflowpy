@@ -2,8 +2,8 @@
 import re
 
 
-ggalat_re = re.compile(r'^(?P<degrees>-?\d{2})(?P<minutes>\d{2}(?:\.\d+)?)$')
-ggalon_re = re.compile(r'^(?P<degrees>-?\d{3})(?P<minutes>\d{2}(?:\.\d+)?)$')
+GGALAT_RE = re.compile(r'^(?P<degrees>-?\d{2})(?P<minutes>\d{2}(?:\.\d+)?)$')
+GGALON_RE = re.compile(r'^(?P<degrees>-?\d{3})(?P<minutes>\d{2}(?:\.\d+)?)$')
 
 
 def ggalat2dd(coord):
@@ -12,7 +12,7 @@ def ggalat2dd(coord):
     Precision to 4 decimal places (11.132 m)
     e.g. "2116.6922" -> "21.2782"
     """
-    match = ggalat_re.match(coord)
+    match = GGALAT_RE.match(coord)
     if not match:
         raise ValueError("Invalid GGA latitude string '{}'".format(coord))
     if match:
@@ -30,7 +30,7 @@ def ggalon2dd(coord):
     Precision to 4 decimal places (11.132 m)
     e.g. "2116.6922" -> "21.2782"
     """
-    match = ggalon_re.match(coord)
+    match = GGALON_RE.match(coord)
     if not match:
         raise ValueError("Invalid GGA longitude string '{}'".format(coord))
     if match:
@@ -43,8 +43,10 @@ def ggalon2dd(coord):
 
 
 def is_gga_lat(coord):
-    return bool(ggalat_re.match(coord))
+    """Does this string look like a GGA latitude coordinate"""
+    return bool(GGALAT_RE.match(coord))
 
 
 def is_gga_lon(coord):
-    return bool(ggalon_re.match(coord))
+    """Does this string look like a GGA longitude coordinate"""
+    return bool(GGALON_RE.match(coord))

@@ -1,10 +1,6 @@
-from . import errors
 from functools import wraps
-from operator import itemgetter
 from signal import getsignal, signal, SIGPIPE, SIG_DFL
-import datetime
 import errno
-import gzip
 import os
 import subprocess
 import sys
@@ -14,7 +10,7 @@ import time
 def find_files(root_dir):
     """Return a list of all file paths below root_dir."""
     allfiles = []
-    for root, dirs, files in os.walk(root_dir):
+    for root, _dirs, files in os.walk(root_dir):
         for f in files:
             allfiles.append(os.path.join(root, f))
     return allfiles
@@ -30,7 +26,7 @@ def gzip_file(path, print_timing=False):
     try:
         subprocess.check_call(["pigz", "--version"], stdout=devnull,
                               stderr=subprocess.STDOUT)
-    except OSError as e:
+    except OSError:
         # If pigz is not installed fall back to gzip
         gzipbin = "gzip"
 
@@ -39,11 +35,8 @@ def gzip_file(path, print_timing=False):
         print("")
         print("Compressing %s" % path)
 
-    try:
-        output = subprocess.check_output([gzipbin, "-f", path],
-                                         stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        raise errors.SimpleCalledProcessError(e.output)
+    subprocess.check_call([gzipbin, "-f", path],
+                          stderr=subprocess.STDOUT)
 
     if print_timing:
         t1 = time.time()

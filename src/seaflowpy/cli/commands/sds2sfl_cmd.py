@@ -1,8 +1,7 @@
-import click
 import datetime
 from builtins import str
+import click
 from seaflowpy import errors
-from seaflowpy import geo
 
 
 FILE_COLUMNS = [
@@ -15,7 +14,7 @@ def parse_header(line):
     """Create a dict of column indexes by field name"""
     fields = line.rstrip().split('\t')
     fields = [f.replace('.', ' ') for f in fields]
-    d = dict([(x, i) for i, x in enumerate(fields)])
+    d = {x:i for i, x in enumerate(fields)}
     return d
 
 def create_file_field(line, header):

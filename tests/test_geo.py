@@ -1,5 +1,3 @@
-import numpy.testing as npt
-import os
 import pytest
 import seaflowpy as sfp
 

@@ -1,5 +1,4 @@
 import configparser
-import errno
 import os
 from . import util
 

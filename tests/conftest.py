@@ -16,7 +16,7 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "s3" in item.keywords:
                 item.add_marker(skip_s3)
-    
+
     if config.getoption("--popcycle"):
         # --popcycle given in cli: do not skip popcycle tests
         pass

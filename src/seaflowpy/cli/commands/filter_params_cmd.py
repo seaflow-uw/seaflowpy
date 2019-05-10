@@ -1,9 +1,7 @@
 """Import filter parameters to database."""
 import click
 import pandas as pd
-import uuid
 from seaflowpy import db
-from seaflowpy import seaflowfile
 from seaflowpy.errors import SeaFlowpyError
 
 
@@ -27,7 +25,7 @@ def filter_params_cmd(dbpath, infile, cruise):
     if cruise is None:
         try:
             cruise = db.get_cruise(dbpath)
-        except SeaFlowpyError as e:
+        except SeaFlowpyError:
             pass
 
     if cruise is None:
@@ -43,5 +41,4 @@ def filter_params_cmd(dbpath, infile, cruise):
     params = df[df.cruise == cruise]
     if len(params.index) == 0:
         raise click.ClickException('no filter parameters found for cruise %s' % cruise)
-    else:
-        db.save_filter_params(dbpath, params.to_dict('index').values())
+    db.save_filter_params(dbpath, params.to_dict('index').values())

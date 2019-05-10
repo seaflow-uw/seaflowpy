@@ -18,9 +18,9 @@ def test_new_style():
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
-    assert f.path_dayofyear is None
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("2014_185/2014-07-04T00-00-02+00-00")
     assert f.path == "2014_185/2014-07-04T00-00-02+00-00"
@@ -30,8 +30,8 @@ def test_new_style():
     assert f.path_file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
     assert f.path_dayofyear == "2014_185"
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014-07-04T00-00-02+00-00")
     assert f.path == "foo/2014-07-04T00-00-02+00-00"
@@ -40,9 +40,9 @@ def test_new_style():
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
-    assert f.path_dayofyear is None
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014_185/2014-07-04T00-00-02+00-00")
     assert f.path == "foo/2014_185/2014-07-04T00-00-02+00-00"
@@ -52,8 +52,8 @@ def test_new_style():
     assert f.path_file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
     assert f.path_dayofyear == "2014_185"
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00"
@@ -62,9 +62,9 @@ def test_new_style():
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
-    assert f.path_dayofyear is None
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.gz")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00.gz"
@@ -73,9 +73,9 @@ def test_new_style():
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
-    assert f.path_dayofyear is None
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.vct.gz")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00.vct.gz"
@@ -84,9 +84,9 @@ def test_new_style():
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
-    assert f.path_dayofyear is None
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.opp.gz")
     assert f.path == "foo/bar/2014-07-04T00-00-02+00-00.opp.gz"
@@ -95,9 +95,9 @@ def test_new_style():
     assert f.file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.path_file_id == "2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
-    assert f.path_dayofyear is None
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/2014_185/2014-07-04T00-00-02+00-00.opp.gz")
     assert f.path == "foo/bar/2014_185/2014-07-04T00-00-02+00-00.opp.gz"
@@ -107,8 +107,8 @@ def test_new_style():
     assert f.path_file_id == "2014_185/2014-07-04T00-00-02+00-00"
     assert f.dayofyear == "2014_185"
     assert f.path_dayofyear == "2014_185"
-    assert f.is_old_style == False
-    assert f.is_new_style == True
+    assert f.is_old_style is False
+    assert f.is_new_style is True
 
 
 def test_old_style():
@@ -118,10 +118,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
-    assert f.path_dayofyear is None
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.dayofyear == ''
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("2014_185/42.evt")
     assert f.path == "2014_185/42.evt"
@@ -129,10 +129,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "2014_185/42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
+    assert f.dayofyear == ''
     assert f.path_dayofyear == "2014_185"
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/42.evt")
     assert f.path == "foo/42.evt"
@@ -140,10 +140,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.path_file_id == f.file_id
     assert f.file_id == "42.evt"
-    assert f.dayofyear is None
-    assert f.path_dayofyear is None
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.dayofyear == ''
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014_185/42.evt")
     assert f.path == "foo/2014_185/42.evt"
@@ -151,10 +151,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "2014_185/42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
+    assert f.dayofyear == ''
     assert f.path_dayofyear == "2014_185"
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt")
     assert f.path == "foo/bar/42.evt"
@@ -162,10 +162,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
-    assert f.path_dayofyear is None
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.dayofyear == ''
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt.gz")
     assert f.path == "foo/bar/42.evt.gz"
@@ -173,10 +173,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
-    assert f.path_dayofyear is None
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.dayofyear == ''
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt.vct.gz")
     assert f.path == "foo/bar/42.evt.vct.gz"
@@ -184,10 +184,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
-    assert f.path_dayofyear is None
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.dayofyear == ''
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/bar/42.evt.opp.gz")
     assert f.path == "foo/bar/42.evt.opp.gz"
@@ -195,10 +195,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
-    assert f.path_dayofyear is None
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.dayofyear == ''
+    assert f.path_dayofyear == ''
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
     f = sfp.seaflowfile.SeaFlowFile("foo/2014_185/42.evt.opp.gz")
     assert f.path == "foo/2014_185/42.evt.opp.gz"
@@ -206,10 +206,10 @@ def test_old_style():
     assert f.filename_noext == "42.evt"
     assert f.file_id == "2014_185/42.evt"
     assert f.path_file_id == f.file_id
-    assert f.dayofyear is None
+    assert f.dayofyear == ''
     assert f.path_dayofyear == "2014_185"
-    assert f.is_old_style == True
-    assert f.is_new_style == False
+    assert f.is_old_style is True
+    assert f.is_new_style is False
 
 
 def test_sort_new_chronologically():
@@ -299,7 +299,7 @@ def test_dayofyear_from_filename():
     for f in files[0:4]:
         s = sfp.seaflowfile.SeaFlowFile(f)
         assert s.dayofyear == dayofyear_answer
-        assert s.path_dayofyear == None
+        assert s.path_dayofyear == ''
 
     for f in files[4:]:
         s = sfp.seaflowfile.SeaFlowFile(f)
@@ -315,10 +315,10 @@ def test_parse_path():
     ]
 
     answers = [
-        { "file": "2014-07-06T00-00-05-00-00", "dayofyear": "2014_187"},
-        { "file": "2014-07-06T00-00-05-00-00", "dayofyear": None},
-        { "file": "2014-07-06T00-00-05-00-00.gz", "dayofyear": "2014_187"},
-        { "file": "2014-07-06T00-00-05-00-00.gz", "dayofyear": None}
+        {"file": "2014-07-06T00-00-05-00-00", "dayofyear": "2014_187"},
+        {"file": "2014-07-06T00-00-05-00-00", "dayofyear": ''},
+        {"file": "2014-07-06T00-00-05-00-00.gz", "dayofyear": "2014_187"},
+        {"file": "2014-07-06T00-00-05-00-00.gz", "dayofyear": ''}
     ]
 
     for i, f in enumerate(files):

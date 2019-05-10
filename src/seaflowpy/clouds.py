@@ -10,11 +10,11 @@ download_file_memory() - Download a file from cloud storage to memory
 These methods are intended to be independent of any specific cloud provider,
 making it simple to replace one provider for another.
 """
-import boto3
-import botocore
 import io
 import random
 import time
+import boto3
+import botocore
 
 
 class AWS:
@@ -99,21 +99,24 @@ class AWS:
                 resp = obj.get()
                 data = io.BytesIO(resp["Body"].read())
                 return data
-            except:
+            except Exception:
                 tries += 1
                 if tries == retries:
                     raise
                 sleep = (2**(tries-1)) + random.random()
                 time.sleep(sleep)
-
-    def _get_instances(self, resp):
+    
+    @staticmethod
+    def _get_instances(resp):
         try:
             return resp["Instances"]
         except KeyError:
             return resp["Reservations"][0]["Instances"]
 
-    def _get_instance_ids(self, instances):
+    @staticmethod
+    def _get_instance_ids(instances):
         return [x["InstanceId"] for x in instances]
 
-    def _get_publicips(self, instances):
+    @staticmethod
+    def _get_publicips(instances):
         return [x["NetworkInterfaces"][0]["Association"]["PublicIp"] for x in instances]

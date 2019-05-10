@@ -1,15 +1,12 @@
 from builtins import str
+import datetime
+import pkgutil
+import sqlite3
+import uuid
+import pandas as pd
 from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
-from shutil import copyfile
-import datetime
-import pkgutil
-import pandas as pd
-import sqlite3
-import uuid
-
-from collections import OrderedDict
 
 
 def create_db(dbpath):
@@ -136,9 +133,9 @@ def save_outlier(file, flag, dbpath):
     dbpath: str
         Path to SQLite DB file.
     """
-    field_order = [ "file", "flag" ]
+    field_order = ["file", "flag"]
     vals = []
-    vals.append({ "file": SeaFlowFile(file).file_id, "flag": flag })
+    vals.append({"file": SeaFlowFile(file).file_id, "flag": flag})
     # Construct values string with named placeholders
     values_str = ", ".join([":" + f for f in field_order])
     sql_insert = "INSERT OR REPLACE INTO outlier VALUES ({})".format(values_str)
@@ -172,7 +169,7 @@ def save_sfl(dbpath, vals):
 def get_cruise(dbpath):
     sql = "SELECT cruise FROM metadata"
     with sqlite3.connect(dbpath) as dbcon:
-        df = pd.read_sql(sql, dbcon)
+        df = safe_read_sql(sql, dbcon)
     if len(df.index) > 1:
         cruises = ", ".join([str(c) for c in df.cruise.tolist()])
         raise errors.SeaFlowpyError("More than one cruise found in database {}: {}".format(dbpath, cruises))
@@ -184,14 +181,14 @@ def get_cruise(dbpath):
 def get_filter_table(dbpath):
     sql = "SELECT * FROM filter ORDER BY date ASC, quantile ASC"
     with sqlite3.connect(dbpath) as dbcon:
-        filterdf = pd.read_sql(sql, dbcon)
+        filterdf = safe_read_sql(sql, dbcon)
     return filterdf
 
 
 def get_serial(dbpath):
     sql = "SELECT inst FROM metadata"
     with sqlite3.connect(dbpath) as dbcon:
-        df = pd.read_sql(sql, dbcon)
+        df = safe_read_sql(sql, dbcon)
     if len(df.index) > 1:
         insts = ", ".join([str(c) for c in df.inst.tolist()])
         raise errors.SeaFlowpyError("More than one instrument serial found in database {}: {}".format(dbpath, insts))
@@ -202,7 +199,7 @@ def get_serial(dbpath):
 
 def get_latest_filter(dbpath):
     with sqlite3.connect(dbpath) as dbcon:
-        df = pd.read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
+        df = safe_read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
     if len(df.index) == 0:
         raise errors.SeaFlowpyError("No filter parameters found in database {}\n".format(dbpath))
     _id = df.iloc[0]["id"]
@@ -212,21 +209,21 @@ def get_latest_filter(dbpath):
 def get_opp_table(dbpath, filter_id):
     sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
     with sqlite3.connect(dbpath) as dbcon:
-        oppdf = pd.read_sql(sql, dbcon)
+        oppdf = safe_read_sql(sql, dbcon)
     return oppdf
 
 
 def get_outlier_table(dbpath):
     sql = "SELECT * FROM outlier ORDER BY file ASC"
     with sqlite3.connect(dbpath) as dbcon:
-        outlierdf = pd.read_sql(sql, dbcon)
+        outlierdf = safe_read_sql(sql, dbcon)
     return outlierdf
 
 
 def get_sfl_table(dbpath):
     sql = "SELECT * FROM sfl ORDER BY date ASC"
     with sqlite3.connect(dbpath) as dbcon:
-        df = pd.read_sql(sql, dbcon)
+        df = safe_read_sql(sql, dbcon)
     return df
 
 
@@ -234,9 +231,9 @@ def merge_dbs(db1, db2):
     """Merge two SQLite databases into a new database."""
     with sqlite3.connect(db1) as con1:
         with sqlite3.connect(db2) as con2:
-            gatingdf = pd.read_sql('select * from gating', con1)
-            polydf = pd.read_sql('select * from poly', con1)
-            filterdf = pd.read_sql('select * from filter', con1)
+            gatingdf = safe_read_sql('select * from gating', con1)
+            polydf = safe_read_sql('select * from poly', con1)
+            filterdf = safe_read_sql('select * from filter', con1)
             gatingdf.to_sql('gating', con2, if_exists='append', index=False)
             polydf.to_sql('poly', con2, if_exists='append', index=False)
             filterdf.to_sql('filter', con2, if_exists='append', index=False)
@@ -264,3 +261,15 @@ def executescript(dbpath, sql_script_text, timeout=120):
         raise errors.SeaFlowpyError("An error occurred when executing a SQL script: {!s}".format(e))
     finally:
         con.close()
+
+
+def safe_read_sql(sql, con):
+    """Catch and handle error if table not present during pandas.read_sql()"""
+    try:
+        df = pd.read_sql(sql, con)
+        errmsg = ''
+    except pd.io.sql.DatabaseError as e:
+        errmsg = str(e)
+    if errmsg:
+        raise errors.SeaFlowpyError(errmsg)
+    return df

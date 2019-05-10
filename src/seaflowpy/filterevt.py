@@ -1,3 +1,8 @@
+import copy
+import sys
+import time
+import multiprocessing as mp
+import queue
 from . import clouds
 from .conf import get_aws_config
 from . import db
@@ -5,13 +10,6 @@ from . import errors
 from . import fileio
 from . import particleops
 from . import util
-import copy
-import json
-import os
-import sys
-import time
-import multiprocessing as mp
-import queue
 
 try:
     import mkl
@@ -74,7 +72,7 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
 
     # Create worker processes
     workers = []
-    for i in range(worker_count):
+    for _ in range(worker_count):
         p = mp.Process(target=do_filter, args=(work_q, opps_q))
         p.start()
         workers.append(p)
@@ -99,7 +97,7 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         work_copy["file"] = f
         work_q.put(work_copy)
     # Put sentinel stop values on the input queue, one for each consumer process
-    for i in range(worker_count):
+    for _ in range(worker_count):
         work_q.put(stop)
 
     try:
@@ -108,14 +106,6 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         if done is not None:
             # Something went wrong, shut child processes down
             print(done, file=sys.stderr)
-            for w in workers:
-                w.terminate()
-                w.join()
-            saver.terminate()
-            saver.join()
-
-        # All child processes should be finished by now
-        reporter.join()
     finally:
         for w in workers:
             w.terminate()
@@ -150,12 +140,13 @@ def do_filter(work_q, opps_q):
             work["error"] = f"Unexpected error when parsing file {evt_file}: {e}"
             evt_df = particleops.empty_df()
 
-
-        evt_df = particleops.mark_focused(evt_df, work["filter_params"])
-        work["all_count"] = len(evt_df.index)
-        work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
-        work["opp"] = particleops.select_focused(evt_df)
-
+        try:
+            evt_df = particleops.mark_focused(evt_df, work["filter_params"])
+            work["all_count"] = len(evt_df.index)
+            work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
+            work["opp"] = particleops.select_focused(evt_df)
+        except Exception as e:
+            work["error"] = f"Unexpected error when selecting focused partiles in file {evt_file}: {e}"
         # Write to OPP file if all quantiles have focused data. Would like to
         # write in a different process (do_save) but this quickly becomes a
         # significant bottleneck.
@@ -191,7 +182,7 @@ def do_save(opps_q, stats_q, files_left):
                     work["evt_count"], filter_id, work["dbpath"])
                 db.save_outlier(work["file"], 0, work["dbpath"])
         except Exception as e:
-            work["error"] = f"Unexpected error when saving file {evt_file} to db: {e}"
+            work["error"] = "Unexpected error when saving file {} to db: {}".format(work["file"], e)
 
         stats_q.put(work)
 
@@ -218,9 +209,9 @@ def do_reporting(stats_q, done_q, file_count, every):
     for i in range(file_count):
         work = stats_q.get()  # get next result
 
-        if work == "EMPTY QUEUE" or work == "QUEUE ERROR":
+        if work in ("EMPTY QUEUE", "QUEUE ERROR"):
             # Something went wrong upstream, exit with an error message
-            done_q.put(f"A fatal error occurred after filtering {files_seen}/{file_count} files")
+            done_q.put(f"A fatal error occurred after filtering {files_seen}/{file_count} files: {work}")
             sys.exit(1)
 
         files_seen += 1

@@ -1,14 +1,8 @@
 import datetime
-import gzip
-import io
-import json
 import os
-import pprint
 import re
 from . import errors
 from . import util
-from collections import OrderedDict
-from operator import itemgetter
 
 
 dayofyear_re = r'^\d{1,4}_\d{1,3}$'
@@ -107,6 +101,7 @@ class SeaFlowFile:
         """Return RFC 3339 YYYY-MM-DDThh:mm:ss[+-]hh:mm parsed from filename"""
         if self.date:
             return self.date.isoformat(timespec='seconds')
+        return ''
 
     @property
     def sort_key(self):
@@ -131,6 +126,7 @@ def create_dayofyear_directory(dt):
     """Create SeaFlow day of year directory from a datetime object"""
     if dt:
         return "{}_{}".format(dt.year, dt.strftime('%j'))
+    return ''
 
 
 def date_from_filename(filename):
@@ -156,7 +152,7 @@ def date_from_filename(filename):
 
 def parse_path(file_path):
     """Return a dict with entries for 'dayofyear' dir and 'file' name"""
-    d = { "dayofyear": None, "file": None }
+    d = {"dayofyear": '', "file": ''}
     parts = util.splitpath(file_path)
     d["file"] = parts[-1]
     if len(parts) > 1:
@@ -190,7 +186,7 @@ def filtered_file_list(total_list, filter_list):
 
     Match by file_id, but return original path in total_list.
     """
-    filter_set = set([SeaFlowFile(f).file_id for f in filter_list])
+    filter_set = {SeaFlowFile(f).file_id for f in filter_list}
     files = []
     for f in total_list:
         if SeaFlowFile(f).file_id in filter_set:
@@ -212,7 +208,7 @@ def keep_evt_files(files, opp=False):
     for f in files:
         try:
             sfile = SeaFlowFile(f)
-        except errors.FileError as e:
+        except errors.FileError:
             pass
         else:
             if (opp and sfile.is_opp) | (not opp and sfile.is_evt):

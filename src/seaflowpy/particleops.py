@@ -1,14 +1,15 @@
 import math
+import numpy as np
 import pandas as pd
 from . import util
 
 
 # Data columns in raw SeaFlow particle DataFrame
-columns = [
+COLUMNS = [
     "time", "pulse_width", "D1", "D2", "fsc_small", "fsc_perp", "fsc_big",
     "pe", "chl_small", "chl_big"
 ]
-channel_columns = columns[2:]  # flow cytometer channel data columns
+CHANNEL_COLUMNS = COLUMNS[2:]  # flow cytometer channel data columns
 
 # Focused particle masks by quantile column. These get combined into bit flags
 # when storing OPP data in a binary file. e.g. 0b110 (6) means a particle is
@@ -53,7 +54,7 @@ def empty_df():
     -------
     pandas.DataFrame
     """
-    return pd.DataFrame(dtype=float, columns=columns)
+    return pd.DataFrame(dtype=float, columns=COLUMNS)
 
 
 def encode_bit_flags(df):
@@ -79,9 +80,9 @@ def encode_bit_flags(df):
     bitflags = None
     for col, f in flags.items():
         if bitflags is None:
-            bitflags = pd.np.left_shift(df[col], int(math.log(f, 2)))
+            bitflags = np.left_shift(df[col], int(math.log(f, 2)))
         else:
-            bitflags = bitflags | pd.np.left_shift(df[col], int(math.log(f, 2)))
+            bitflags = bitflags | np.left_shift(df[col], int(math.log(f, 2)))
     df["bitflags"] = bitflags  # new column
     return df
 
@@ -123,26 +124,29 @@ def mark_focused(df, params):
     df = mark_noise(df)
 
     # Filter for aligned/focused particles
+    #
+    # Filter aligned particles (D1 = D2), with correction for D1 D2
+    # sensitivity difference. Assume width is same for all quantiles so just
+    # grab first width value and calculate aligned particles once
+    assert len(params["width"].unique()) == 1  # may as well check
+    width = params.loc[0, "width"]
+    alignedD1 = ~df["noise"].values & (df["D1"].values < (df["D2"].values + width))
+    alignedD2 = ~df["noise"].values & (df["D2"].values < (df["D1"].values + width))
+    aligned = alignedD1 & alignedD2
+
     for q in params["quantile"].sort_values():
         p = params[params["quantile"] == q].iloc[0]  # get first row of dataframe as series
+        # Filter focused particles
+        # Using underlying numpy arrays (values) to construct boolean
+        # selector is about 10% faster than using pandas Series
+        small_D1 = df["D1"].values <= ((df["fsc_small"].values * p["notch_small_D1"]) + p["offset_small_D1"])
+        small_D2 = df["D2"].values <= ((df["fsc_small"].values * p["notch_small_D2"]) + p["offset_small_D2"])
+        large_D1 = df["D1"].values <= ((df["fsc_small"].values * p["notch_large_D1"]) + p["offset_large_D1"])
+        large_D2 = df["D2"].values <= ((df["fsc_small"].values * p["notch_large_D2"]) + p["offset_large_D2"])
+        opp_selector = aligned & ((small_D1 & small_D2) | (large_D1 & large_D2))
+        # Mark focused particles
         colname = f"q{util.quantile_str(q)}"
-        df[colname] = False  # new column, all particles are out of focus to start
-        if len(df[~df["noise"]].index) > 0:
-            # Filter aligned particles (D1 = D2), with correction for D1 D2
-            # sensitivity difference
-            alignedD1 = ~df["noise"] & (df["D1"] < (df["D2"] + p["width"]))
-            alignedD2 = ~df["noise"] & (df["D2"] < (df["D1"] + p["width"]))
-            aligned = df[alignedD1 & alignedD2]
-
-            # Filter focused particles
-            opp_small_D1 = aligned["D1"] <= ((aligned["fsc_small"] * p["notch_small_D1"]) + p["offset_small_D1"])
-            opp_small_D2 = aligned["D2"] <= ((aligned["fsc_small"] * p["notch_small_D2"]) + p["offset_small_D2"])
-            opp_large_D1 = aligned["D1"] <= ((aligned["fsc_small"] * p["notch_large_D1"]) + p["offset_large_D1"])
-            opp_large_D2 = aligned["D2"] <= ((aligned["fsc_small"] * p["notch_large_D2"]) + p["offset_large_D2"])
-            opp_df = aligned[(opp_small_D1 & opp_small_D2) | (opp_large_D1 & opp_large_D2)]
-
-            # Mark focused particles
-            df.loc[opp_df.index, colname] = True
+        df[colname] = opp_selector
     return df
 
 
@@ -157,17 +161,12 @@ def mark_noise(df):
     ----------
     df: pandas.DataFrame
         SeaFlow raw event data.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Reference to input DataFrame with boolean column for noise.
     """
     if len(set(list(df)).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
         raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
 
     # Mark noise events in new column "noise"
-    signal_selector = (df["fsc_small"] > 1) | (df["D1"] > 1) | (df["D2"] > 1)
+    signal_selector = (df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1)
     df["noise"] = ~signal_selector  # new column
     return df
 
@@ -188,11 +187,11 @@ def select_focused(df):
     """
     selector = False
     for qcolumn in [c for c in df.columns if c.startswith("q")]:
-        selector = selector | df[qcolumn]
+        selector = selector | df[qcolumn].values
     return df[selector].copy()
 
 
-def transform_particles(df, columns=channel_columns):
+def transform_particles(df, columns=None):
     """
     Exponentiate logged SeaFlow data.
 
@@ -214,6 +213,8 @@ def transform_particles(df, columns=channel_columns):
     pandas.DataFrame
         Copy of df with transformed values.
     """
+    if not columns:
+        columns = CHANNEL_COLUMNS
     events = df.copy()
     if len(events.index) > 0:
         events[columns] = 10**((events[columns] / 2**16) * 3.5)

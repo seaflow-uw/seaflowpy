@@ -1,6 +1,6 @@
-import click
 import os
 import sys
+import click
 from seaflowpy import clouds
 from seaflowpy import conf
 from seaflowpy import db

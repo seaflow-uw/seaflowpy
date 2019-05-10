@@ -1,7 +1,6 @@
 """Import SFl file into sqlite3 database."""
 import click
 from seaflowpy import db
-from seaflowpy import errors
 
 
 @click.command()

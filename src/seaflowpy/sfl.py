@@ -1,17 +1,16 @@
 """Do things to SFL data DataFrames"""
+from collections import OrderedDict
 import csv
 import datetime
 import json
 import os
-import pandas as pd
 import re
-import sys
+import pandas as pd
 from . import db
 from . import errors as sfperrors
 from . import geo
 from . import util
 from . import seaflowfile
-from collections import OrderedDict
 
 
 sfl_delim = '\t'
@@ -35,7 +34,7 @@ colname_mapping = {
     }
 }
 # Reverse mappings from SQL table to file column headers
-colname_mapping["file_to_table"] = dict([kv[::-1] for kv in colname_mapping["table_to_file"].items()])
+colname_mapping["file_to_table"] = {v:k for k, v in colname_mapping["table_to_file"].items()}
 
 # Numeric columns using SQL table column names
 numeric_columns = [
@@ -98,7 +97,7 @@ def check_date(df):
         errors.append(create_error(df, "date", msg="date column is missing"))
     else:
         # All dates must match RFC 3339 with no fractional seconds
-        date_flags = df["date"].map(lambda d: check_date_string(d))
+        date_flags = df["date"].map(check_date_string)
         if len(date_flags) > 0:
             # select rows that failed date check
             for i, v in df[~date_flags]["date"].iteritems():
@@ -135,7 +134,8 @@ def check_file(df):
                 return False
             if s.path_dayofyear:
                 return True
-        
+            return False
+
         good_files_selector = df["file"].map(parse_filename)
         for i, v in df[~good_files_selector]["file"].iteritems():
             errors.append(create_error(df, "file", msg="Invalid file name", row=i, val=v))
@@ -173,8 +173,8 @@ def check_numerics(df):
 def convert_gga2dd(df):
     """Return a copy of df with coordinates converted from GGA to decimal degrees."""
     newdf = df.copy(deep=True)
-    newdf["lat"] = df["lat"].map(lambda x: geo.ggalat2dd(x), na_action="ignore")
-    newdf["lon"] = df["lon"].map(lambda x: geo.ggalon2dd(x), na_action="ignore")
+    newdf["lat"] = df["lat"].map(geo.ggalat2dd, na_action="ignore")
+    newdf["lon"] = df["lon"].map(geo.ggalon2dd, na_action="ignore")
     return newdf
 
 
@@ -184,7 +184,7 @@ def create_error(df, col, msg, row=None, val=None, level='error'):
     Error levels can be 'error' (fatal) or 'warning'.
     """
     level_values = ['error', 'warning']
-    if not level in level_values:
+    if level not in level_values:
         raise ValueError(f"valid values for 'level' are {level_values}")
 
     e = {
@@ -279,8 +279,8 @@ def fix(df):
 
 def has_gga(df):
     """Do any coordinates Series in this DataFrame contain GGA values?"""
-    gga_lats = df["lat"].map(lambda x: geo.is_gga_lat(x), na_action="ignore")
-    gga_lons = df["lon"].map(lambda x: geo.is_gga_lon(x), na_action="ignore")
+    gga_lats = df["lat"].map(geo.is_gga_lat, na_action="ignore")
+    gga_lons = df["lon"].map(geo.is_gga_lon, na_action="ignore")
     return (gga_lats | gga_lons).any()
 
 
@@ -296,6 +296,7 @@ def parse_sfl_filename(fn):
     m = re.match(r"^(?P<cruise>.+)_(?P<inst>[^_]+).sfl$", fn)
     if m:
         return (m.group('cruise'), m.group('inst'))
+    return ()
 
 
 @util.suppress_sigpipe
@@ -307,7 +308,7 @@ def print_json_errors(errors, fh, print_all=True):
             continue
         errors_seen.add(e["message"])
         errors_output.append(e)
-    fh.write(json.dumps(errors_output, sort_keys=True, indent=2, separators=(',',':')))
+    fh.write(json.dumps(errors_output, sort_keys=True, indent=2, separators=(',', ':')))
     fh.write("\n")
 
 

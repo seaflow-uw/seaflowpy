@@ -1,10 +1,10 @@
-import gzip
-import io
-import numpy as np
-import os
-import pandas as pd
 from contextlib import contextmanager
 from subprocess import Popen, PIPE
+import gzip
+import io
+import os
+import numpy as np
+import pandas as pd
 from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
@@ -138,7 +138,7 @@ def read_labview(path, columns, fileobj=None):
             extra_bytes += new_bytes
             if new_bytes == 0:  # end of file
                 break
-    
+
     # Check that file has the expected number of data bytes.
     found_bytes = len(buff) + extra_bytes
     if found_bytes != expected_bytes:
@@ -182,7 +182,7 @@ def read_evt_labview(path, fileobj=None):
     pandas.DataFrame
         SeaFlow event DataFrame as numpy.float64 values.
     """
-    return read_labview(path, particleops.columns, fileobj).astype(np.float64)
+    return read_labview(path, particleops.COLUMNS, fileobj).astype(np.float64)
 
 
 def read_opp_labview(path, fileobj=None):
@@ -206,8 +206,8 @@ def read_opp_labview(path, fileobj=None):
         SeaFlow OPP DataFrame as numpy.float64 values with quantile flag
         columns.
     """
-    df = read_labview(path, particleops.columns + ["bitflags"], fileobj)
-    df[particleops.columns] = df[particleops.columns].astype(np.float64)
+    df = read_labview(path, particleops.COLUMNS + ["bitflags"], fileobj)
+    df[particleops.COLUMNS] = df[particleops.COLUMNS].astype(np.float64)
     df["noise"] = False  # we know there's no noise in an OPP data
     df = particleops.decode_bit_flags(df)
     return df
@@ -273,7 +273,7 @@ def write_evt_labview(df, path, outdir, gz=True):
     if gz:
         outpath = outpath + ".gz"
     # Only keep columns we intend to write to file
-    write_labview(df[particleops.columns], outpath)
+    write_labview(df[particleops.COLUMNS], outpath)
 
 
 def write_opp_labview(df, path, outdir, gz=True, require_all=True):
@@ -307,7 +307,7 @@ def write_opp_labview(df, path, outdir, gz=True, require_all=True):
     # Return early if any quantiles got completely filtered out
     write_flag = True
     if require_all:
-        for q_col, q, q_str, q_df in particleops.quantiles_in_df(df):
+        for q_col, _q, _q_str, q_df in particleops.quantiles_in_df(df):
             write_flag = write_flag & q_df[q_col].any()
 
     if write_flag:
@@ -320,4 +320,4 @@ def write_opp_labview(df, path, outdir, gz=True, require_all=True):
         if gz:
             outpath = outpath + ".gz"
         # Only keep columns we intend to write to file
-        write_labview(df[particleops.columns + ["bitflags"]], outpath)
+        write_labview(df[particleops.COLUMNS + ["bitflags"]], outpath)

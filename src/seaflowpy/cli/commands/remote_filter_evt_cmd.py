@@ -1,14 +1,13 @@
-import argparse
-import botocore
-import click
+from builtins import range
+from builtins import zip
 import datetime
 import json
 import os
-import pkg_resources
 import sys
-from builtins import range
-from builtins import zip
-from fabric.api import (cd, env, execute, get, hide, local, parallel, puts,
+import botocore
+import click
+import pkg_resources
+from fabric.api import (cd, env, execute, hide, local, parallel, puts,
     quiet, run, settings, show, task)
 from fabric.network import disconnect_all
 from seaflowpy import clouds
@@ -33,7 +32,7 @@ def validate_source_dir(ctx, param, value):
         if not value.endswith('/'):
             value = value + '/'
         if not os.path.isdir(value):
-            raise click.BadParameter(f'{source_dir} does not exist or is not a directory')
+            raise click.BadParameter(f'{value} does not exist or is not a directory')
     return value
 
 @click.command()
@@ -104,19 +103,19 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
             for dbfile in dbs:
                 # Make sure file exists
                 if not os.path.exists(dbfile):
-                    raise click.Exception('DB file {} does not exist'.format(dbfile))
+                    raise click.ClickException('DB file {} does not exist'.format(dbfile))
                 # Make sure db has filter parameters filled in
                 try:
                     filter_table = db.get_latest_filter(dbfile)
                 except errors.SeaFlowpyError as e:
-                    raise click.Exception('No filter parameters found in database file {}'.format(dbfile))
+                    raise click.ClickException('No filter parameters found in database file {}'.format(dbfile))
                 if len(filter_table) != 3:
-                    raise click.Exception('Unusual filter parameters found in database file {}'.format(dbfile))
+                    raise click.ClickException('Unusual filter parameters found in database file {}'.format(dbfile))
                 # Get cruise name DB
                 try:
                     c = db.get_cruise(dbfile)
                 except errors.SeaFlowpyError as e:
-                    raise click.Exception('Could not retrieve cruise name from DB. {}'.format(e))
+                    raise click.ClickException('Could not retrieve cruise name from DB. {}'.format(e))
                 try:
                     evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(cloud.get_files(c)))
                 except botocore.exceptions.NoCredentialsError as e:
@@ -129,7 +128,7 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
                     raise click.Abort()
 
                 # Check for duplicates, exit with message if any exist
-                uniques = set([seaflowfile.SeaFlowFile(f).file_id for f in evt_files])
+                uniques = {seaflowfile.SeaFlowFile(f).file_id for f in evt_files}
                 if len(uniques) < len(evt_files):
                     raise click.ClickException('Duplicate EVT file(s) detected')
 
@@ -175,7 +174,7 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
             if dryrun:
                 print('Dry run complete')
                 print('')
-                return
+                return 0
 
             print('Waiting for hosts to come up with SSH')
             execute(wait_for_up)
@@ -206,7 +205,7 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
                 execute(rsync_put, [source_dir], REMOTE_SOURCE_DIR)
             else:
                 print('Pull seaflowpy source code')
-                execute(pull_seaflowpy, branch, REMOTE_SOURCE_DIR)
+                execute(pull_seaflowpy, branch)
 
             print('Install seaflowpy')
             execute(install_seaflowpy)
@@ -220,6 +219,8 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
         if not no_cleanup:
             cloud.cleanup()  # clean up in case of any unhandled exceptions
         print('Finished at {}'.format(datetime.datetime.utcnow().isoformat()))
+
+    return 0
 
 
 def check_db_filter_params(dbfile):
@@ -325,7 +326,7 @@ def install_miniconda3():
 
 @task
 @parallel
-def pull_seaflowpy(branch, source_dir):
+def pull_seaflowpy(branch):
     with quiet():
         with show('running', 'warnings', 'stderr'):
             run('git clone https://github.com/armbrustlab/seaflowpy {}'.format(REMOTE_SOURCE_DIR))

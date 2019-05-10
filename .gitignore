@@ -13,3 +13,4 @@ build
 .pytest_cache
 /.tox
 .Rapp.history
+E2E_tests
