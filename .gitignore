@@ -4,7 +4,7 @@
 /.cache
 /.ipynb_checkpoints
 .Rhistory
-build
+/build
 /.eggs
 /.coverage
 /htmlcov
