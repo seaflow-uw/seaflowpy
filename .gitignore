@@ -1,8 +1,6 @@
 *.pyc
-/dist
 */*.egg-info
 /.cache
-/build
 /.eggs
 /.coverage
 /htmlcov
