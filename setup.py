@@ -5,6 +5,7 @@ setup(
     name='seaflowpy',
     description='A Python library for SeaFlow data.',
     long_description=open('README.md', 'r').read(),
+    long_description_content_type='text/markdown',
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     url='https://github.com/armbrustlab/seaflowpy',

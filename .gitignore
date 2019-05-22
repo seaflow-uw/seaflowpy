@@ -8,9 +8,6 @@
 /.tox
 .Rapp.history
 .Rhistory
-pyinstaller/**/build
-pyinstaller/**/dist
-pyinstaller/**/seaflowpy.spec
 *.ipynb
 /.ipynb_checkpoints
 .vscode

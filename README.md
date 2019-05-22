@@ -2,25 +2,42 @@
 
 A Python package for SeaFlow flow cytometer data.
 
-## Requirements
-
-See `environment.yaml` for requirements
-
 ## Install
 
-This will clone the repo and create a new conda environment `seaflowpy`.
+### From source
+
+This will clone the repo and create a new virtual environment `seaflowpy`.
+`venv` can be replaced with `virtualenv`, `conda`, etc.
 
 ```sh
 git clone https://github.com/armbrustlab/seaflowpy
 cd seaflowpy
-# Edit this file to create an environment with a different name
-conda env create -f environment.yml
-conda activate seaflowpy
+python -m venv seaflowpy
+source seaflowpy/bin/activate
+pip install -r requirements.txt
+pip install .
 # Confirm the seaflowpy command-line tool is accessible
 seaflowpy version
+deactivate
 ```
 
-### Integration with R
+### From docker
+
+Docker image are available from Docker Hub at `ctberthiaume/seaflowpy`.
+
+```
+docker run -it ctberthiaume/seaflowpy seaflowpy version
+```
+
+The Docker build file is in this repo at `/Dockerfile`.
+
+### Single file executables
+
+Single file executables of the `seaflowpy` command-line tool
+for MacOS and Linux can be downloaded from the project's github
+[release page](https://github.com/armbrustlab/seaflowpy/releases).
+
+## Integration with R
 
 To call `seaflowpy` from R, update the PATH environment variable in
 `~/.Renviron`. For example:
