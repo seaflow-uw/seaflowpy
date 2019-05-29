@@ -33,7 +33,7 @@ deactivate
 if [ $pytestrc -ne 0 ]; then
     exit $pytestrc
 fi
-exit
+
 # --------------------------------------------------------------------------- #
 # Step 3
 # Build a docker image with wheel, tagged with current version string
