@@ -4,7 +4,29 @@ A Python package for SeaFlow flow cytometer data.
 
 ## Install
 
-### From source
+### Command-line tool as single-file download
+
+Single file executables of the `seaflowpy` command-line tool
+for MacOS and Linux can be downloaded from the project's github
+[release page](https://github.com/armbrustlab/seaflowpy/releases).
+
+### Docker
+
+Docker image are available from Docker Hub at `ctberthiaume/seaflowpy`.
+
+```
+docker run -it ctberthiaume/seaflowpy seaflowpy version
+```
+
+The Docker build file is in this repo at `/Dockerfile`.
+
+### PyPI
+
+```
+pip install seaflowpy
+```
+
+### Source
 
 This will clone the repo and create a new virtual environment `seaflowpy`.
 `venv` can be replaced with `virtualenv`, `conda`, etc.
@@ -20,22 +42,6 @@ pip install .
 seaflowpy version
 deactivate
 ```
-
-### From docker
-
-Docker image are available from Docker Hub at `ctberthiaume/seaflowpy`.
-
-```
-docker run -it ctberthiaume/seaflowpy seaflowpy version
-```
-
-The Docker build file is in this repo at `/Dockerfile`.
-
-### Single file executables
-
-Single file executables of the `seaflowpy` command-line tool
-for MacOS and Linux can be downloaded from the project's github
-[release page](https://github.com/armbrustlab/seaflowpy/releases).
 
 ## Integration with R
 
@@ -66,13 +72,6 @@ The usage details for each command can be accessed as `seaflowpy sfl <cmd> -h`.
 
 Converts GGA coordinate values to decimal degree. Otherwise the file is
 unchanged.
-
-#### `seaflowpy sfl db`
-
-Import an SFL file into a popcycle database file.
-The database file will be created if needed.
-Various checks are run before import (the same as `seaflowpy sfl validate`).
-If errors are encountered a summary is printed and import is aborted.
 
 #### `seaflowpy sfl dedup`
 
