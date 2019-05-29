@@ -34,10 +34,10 @@ This will clone the repo and create a new virtual environment `seaflowpy`.
 ```sh
 git clone https://github.com/armbrustlab/seaflowpy
 cd seaflowpy
-python -m venv seaflowpy
+python3 -m venv seaflowpy
 source seaflowpy/bin/activate
-pip install -r requirements.txt
-pip install .
+pip3 install -r requirements.txt
+pip3 install .
 # Confirm the seaflowpy command-line tool is accessible
 seaflowpy version
 deactivate
@@ -49,7 +49,7 @@ To call `seaflowpy` from R, update the PATH environment variable in
 `~/.Renviron`. For example:
 
 ```sh
-PATH=${PATH}:${HOME}/miniconda3/envs/seaflowpy/bin
+PATH=${PATH}:${HOME}/venvs/seaflowpy/bin
 ```
 
 ## Testing

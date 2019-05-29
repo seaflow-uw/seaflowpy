@@ -5,8 +5,8 @@
 # Step 1
 # Create pure python wheel and source tarball. Will be saved in ./dist
 # --------------------------------------------------------------------------- #
-python setup.py -q sdist
-python setup.py -q bdist_wheel
+python3 setup.py -q sdist
+python3 setup.py -q bdist_wheel
 [[ -d build ]] && rm -rf build
 
 # --------------------------------------------------------------------------- #
@@ -19,12 +19,13 @@ if [ -z "$venvdir" ]; then
     exit 1
 fi
 echo "Creating virtualenv $venvdir" >&2
-python -m venv "$venvdir"
+python3 -m venv "$venvdir"
+# shellcheck source=/dev/null
 source "$venvdir/bin/activate"
 echo "Installing requirements.txt, pytest, seaflowpy from wheel" >&2
-pip install -q -r requirements.txt
-pip install -q pytest pyinstaller
-pip install -q -f ./dist seaflowpy
+pip3 install -q -r requirements.txt
+pip3 install -q pytest
+pip3 install -q -f ./dist seaflowpy
 git clean -fdx tests  # clean up test caches
 pytest
 pytestrc=$?
@@ -50,7 +51,7 @@ fi
 # Test the new docker image
 # --------------------------------------------------------------------------- #
 git clean -fdx tests  # remove test cache
-docker run --rm -v $(pwd):/mnt seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest && pytest --cache-clear'
+docker run --rm -v "$(pwd):/mnt" seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest && pytest --cache-clear'
 if [ $? -ne 0 ]; then
     echo "Docker image failed tests" >&2
     exit $?
@@ -62,7 +63,9 @@ fi
 # container using wheel from step 1. MacOS target will be built in the temp
 # virtual environment created in step 2.
 # --------------------------------------------------------------------------- #
+# shellcheck source=/dev/null
 source "$venvdir/bin/activate"
+pip3 install pyinstaller
 cd pyinstaller || exit 1
 ./build_all.sh
 deactivate
