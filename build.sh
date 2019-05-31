@@ -2,6 +2,17 @@
 # Build PyPI pure Python wheel, Docker image, pyinstaller execs
 
 # --------------------------------------------------------------------------- #
+# Pre-build checks
+# --------------------------------------------------------------------------- #
+# Make sure we're not in a Python virtual environment
+if python3 -c 'import sys; sys.exit((hasattr(sys, "real_prefix") and sys.prefix != sys.real_prefix) or (hasattr(sys, "base_prefix") and sys.prefix != sys.base_prefix))'; then
+    echo "Not in Python 3 virtual environment, continuing..." >&2
+else
+    echo "Please exit Python 3 virtual environment before building" >&2
+    exit
+fi
+
+# --------------------------------------------------------------------------- #
 # Step 1
 # Create pure python wheel and source tarball. Will be saved in ./dist
 # --------------------------------------------------------------------------- #
