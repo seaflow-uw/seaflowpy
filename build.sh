@@ -63,7 +63,9 @@ fi
 # --------------------------------------------------------------------------- #
 git clean -fdx tests  # remove test cache
 docker run --rm -v "$(pwd):/mnt" seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest && pytest --cache-clear'
-if [ $? -ne 0 ]; then
+git clean -fdx tests  # remove test cache from linux
+dockertestrc=$?
+if [ $dockertestrc -ne 0 ]; then
     echo "Docker image failed tests" >&2
     exit $?
 fi

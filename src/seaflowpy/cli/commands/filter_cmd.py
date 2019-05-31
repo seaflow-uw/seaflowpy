@@ -225,7 +225,9 @@ def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
     cloud = clouds.AWS(config.items('aws'))
 
     # If local executable is not given download latest from github
+    remove_executable = False
     if not executable:
+        remove_executable = True  # mark this file for deletion at exit
         executable = download_latest_linux()
 
     # Configure fabric
@@ -348,6 +350,13 @@ def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
         disconnect_all()  # always disconnect SSH connections
         if not no_cleanup:
             cloud.cleanup()  # clean up in case of any unhandled exceptions
+        # Clean up seaflowpy executable we downloaded
+        if remove_executable:
+            try:
+                os.remove(executable)
+            except OSError as e:
+                print('Error: could not delete temporary seaflowpy executable: {} - {}'.format(executable, e.strerror), file=sys.stderr)
+
         print('Finished at {}'.format(datetime.datetime.utcnow().isoformat()))
 
     return 0
