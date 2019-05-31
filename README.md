@@ -4,6 +4,8 @@ A Python package for SeaFlow flow cytometer data.
 
 ## Install
 
+This package is compatible with Python 3.7.
+
 ### Command-line tool as single-file download
 
 Single file executables of the `seaflowpy` command-line tool
@@ -23,7 +25,7 @@ The Docker build file is in this repo at `/Dockerfile`.
 ### PyPI
 
 ```
-pip install seaflowpy
+pip3 install seaflowpy
 ```
 
 ### Source
@@ -111,3 +113,54 @@ and are UTC
 Because some of these errors can affect every row of the file
 (e.g. out of order files), only the first error of each type is printed.
 To get a full printout of all errors run the command with `--verbose`.
+
+## Development
+
+### Build
+
+To build source tarball, wheel, PyInstaller files, and Docker image, run `./build.sh`.
+This will
+
+* create `dist` with source tarball and wheel file
+
+* executable files in `./pyinstaller/macos/dist/seaflowpy` and `./pyinstaller/linux64/dist/seaflowpy`
+
+* Docker image named `seaflowpy:<version>`
+
+To remove all build files, run `git clean -fd`.
+
+PyInstaller files and Docker image create depend on the wheel file located in `dist`.
+
+### Updating requirements files
+
+Create a new virtual environment
+
+```sh
+python3 -m venv newenv
+source newenv/bin/actviate
+```
+
+And install `seaflowpy`
+
+```sh
+pip3 install .
+```
+
+Then freeze the requirements
+
+```sh
+pip3 freeze | grep -v seaflowpy >requirements.txt
+```
+
+Then install dev dependencies and freeze
+
+```sh
+pip3 install pylint pytest tox twine
+pip3 freeze | grep -v seaflowpy >requirements-dev.txt
+```
+
+Do some testing, then leave this temporary virtual environment
+
+```sh
+deactivate
+```

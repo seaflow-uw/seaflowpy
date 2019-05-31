@@ -1,10 +1,10 @@
 asn1crypto==0.24.0
 bcrypt==3.1.6
-boto3==1.9.158
-botocore==1.12.158
+boto3==1.9.159
+botocore==1.12.159
 cffi==1.12.3
 Click==7.0
-cryptography==2.6.1
+cryptography==2.7
 docutils==0.14
 Fabric3==1.14.post1
 jmespath==0.9.4
