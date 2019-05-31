@@ -3,7 +3,10 @@ from builtins import zip
 import datetime
 import json
 import os
+import random
 import sys
+import time
+import urllib
 import botocore
 import click
 import pkg_resources
@@ -156,6 +159,7 @@ def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count
 
 REMOTE_WORK_DIR = "/mnt/ramdisk"
 REMOTE_DB_DIR = "{}/dbs".format(REMOTE_WORK_DIR)
+LATEST_EXE_URL = "https://github.com/armbrustlab/seaflowpy/releases/latest/download/seaflowpy-linux64"
 
 def validate_executable_file(ctx, param, value):
     if value and len(value):
@@ -171,8 +175,8 @@ def validate_positive_int(ctx, param, value):
 @filter_cmd.command('remote')
 @click.option('-D', '--dryrun', is_flag=True,
     help='Show cruise to host assignments without starting instances.')
-@click.option('-e', '--executable', metavar='EXE', callback=validate_executable_file, required=True,
-    help='Seaflowpy single-file executable to run on the remote machine.')
+@click.option('-e', '--executable', metavar='EXE', callback=validate_executable_file,
+    help='Seaflowpy single-file executable to run on the remote linux machine. [default: github latest release]')
 @click.option('-i', '--instance-count', default=1, show_default=True, metavar='N', callback=validate_positive_int,
     help='Number of cloud instances to use.')
 @click.option('-n', '--no-cleanup', is_flag=True, default=False, show_default=True,
@@ -219,6 +223,10 @@ def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
     config = conf.get_aws_config()
     conf.get_ssh_config(config)
     cloud = clouds.AWS(config.items('aws'))
+
+    # If local executable is not given download latest from github
+    if not executable:
+        executable = download_latest_linux()
 
     # Configure fabric
     env.connection_attempts = 6
@@ -518,3 +526,19 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
 def norm(text):
     """Normalize line-endings in a text string."""
     return text.replace('\r\n', os.linesep).replace('\r', os.linesep)
+
+def download_latest_linux():
+    """Download latest linux executable and return file path"""
+    retry_limit = 3
+    retries = 0
+    while True:
+        try:
+            filename, _ = urllib.request.urlretrieve(LATEST_EXE_URL)
+        except (urllib.error.ContentTooShortError, urllib.error.URLError, urllib.error.HTTPError):
+            if retries == retry_limit:
+                raise click.ClickException("couldn't download linux exe")
+            retries += 1
+            time.sleep(2**retries + random.random())
+        else:
+            break
+    return filename
