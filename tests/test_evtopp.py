@@ -66,6 +66,14 @@ class TestOpen:
         assert len(df.index) == 40000
         assert list(df) == sfp.particleops.COLUMNS
 
+    def test_read_evt_truncated_gz(self, tmpout):
+        truncpath = os.path.join(tmpout["tmpdir"], "2014-07-04T00-03-02+00-00.gz")
+        with open("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", "rb") as infh:
+            with open(truncpath, "wb") as outfh:
+                outfh.write(infh.read(400000))
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview(truncpath)
+
     def test_read_evt_empty(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")

@@ -2,3 +2,5 @@ include README.md
 include LICENSE
 include src/seaflowpy/data/popcycle.sql
 recursive-include tests *.py *.gz *.sfl *.db *.R
+include versioneer.py
+include src/seaflowpy/_version.py

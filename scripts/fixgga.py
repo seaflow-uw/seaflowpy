@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Convert GGA lat/lon columns to decimal degree
 #
 # This script is not polished and most likely needs to be edited to be useful.

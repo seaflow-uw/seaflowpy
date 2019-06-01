@@ -8,3 +8,7 @@ from . import geo
 from . import particleops
 from . import sfl
 from . import util
+
+from ._version import get_versions
+__version__ = get_versions()['version']
+del get_versions

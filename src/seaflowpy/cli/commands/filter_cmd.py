@@ -3,43 +3,180 @@ from builtins import zip
 import datetime
 import json
 import os
+import random
 import sys
+import time
+import urllib
 import botocore
 import click
 import pkg_resources
-from fabric.api import (cd, env, execute, hide, local, parallel, puts,
-    quiet, run, settings, show, task)
+from fabric.api import (cd, env, execute, hide, local, parallel, put, puts,
+    quiet, run, settings, show, sudo, task)
 from fabric.network import disconnect_all
 from seaflowpy import clouds
 from seaflowpy import conf
 from seaflowpy import db
 from seaflowpy import errors
+from seaflowpy import filterevt
 from seaflowpy import util
 from seaflowpy import seaflowfile
 
-REMOTE_SOURCE_DIR = '/home/ubuntu/src/seaflowpy'
+
+@click.group()
+def filter_cmd():
+    """EVT filtering subcommand."""
+    pass
+
+
+def validate_limit(ctx, param, value):
+    if value is not None and value < 1:
+        raise click.BadParameter('if limit is set, it must be >= 1')
+    return value
+
+
+def validate_process_count(ctx, param, value):
+    if value < 1:
+        raise click.BadParameter('process_count must be >= 1')
+    return value
+
+
+def validate_resolution(ctx, param, value):
+    if value <= 0 or value > 100:
+        raise click.BadParameter('resolution must be a number between 1 and 100 inclusive.')
+    return value
+
+
+@filter_cmd.command('local')
+@click.option('-e', '--evt-dir', metavar='DIR', type=click.Path(exists=True),
+    help='EVT directory path (required unless --s3)')
+@click.option('-s', '--s3', 's3_flag', is_flag=True,
+    help='Read EVT files from s3://S3_BUCKET/CRUISE where CRUISE is detected in the sqlite db metadata table (required unless --evt_dir).')
+@click.option('-d', '--db', 'dbpath', required=True, metavar='FILE', type=click.Path(exists=True),
+    help='Popcycle SQLite3 db file with filter parameters and cruise name.')
+@click.option('-l', '--limit', type=int, metavar='N', callback=validate_limit,
+    help='Limit number of files to process.')
+@click.option('-o', '--opp-dir', metavar='DIR',
+    help='Directory in which to save OPP files. Will be created if does not exist.')
+@click.option('-p', '--process-count', default=1, show_default=True, metavar="N", callback=validate_process_count,
+    help='Number of processes to use in filtering.')
+@click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
+    help='Progress update resolution by %%.')
+@util.quiet_keyboardinterrupt
+def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
+    """Filter EVT data locally."""
+    # Validate args
+    if not evt_dir and not s3_flag:
+        raise click.UsageError('One of --evt_dir or --s3 must be provided')
+
+    # Find cruise in db
+    try:
+        cruise = db.get_cruise(dbpath)
+    except errors.SeaFlowpyError as e:
+        raise click.ClickException(str(e))
+
+    # Find filter parameters in db. Won't use them yet but better to check
+    # upfront
+    try:
+        _filter_params = db.get_latest_filter(dbpath)
+    except errors.SeaFlowpyError as e:
+        raise click.ClickException(str(e))
+
+    # Capture run parameters and information
+    v = {
+        'evt_dir': evt_dir,
+        's3': s3_flag,
+        'limit': limit,
+        'db': dbpath,
+        'opp_dir': opp_dir,
+        'process_count': process_count,
+        'resolution': resolution,
+        'version': pkg_resources.get_distribution("seaflowpy").version,
+        'cruise': cruise
+    }
+    to_delete = [k for k in v if v[k] is None]
+    for k in to_delete:
+        v.pop(k, None)  # Remove undefined parameters
+
+    # Print run parameters
+    print('Run parameters and information:')
+    print(json.dumps(v, indent=2))
+    print('')
+
+    # Get list of files in sfl table.
+    try:
+        sfl_df = db.get_sfl_table(dbpath)
+    except errors.SeaFlowpyError as e:
+        raise click.ClickException(str(e))
+    sfl_files = sfl_df["file"].tolist()
+
+    # Find EVT files
+    print('Getting lists of files to filter')
+    if evt_dir:
+        evt_files = seaflowfile.sorted_files(seaflowfile.find_evt_files(evt_dir))
+    elif s3_flag:
+        # Make sure configuration for s3 is ready to go
+        config = conf.get_aws_config(s3_only=True)
+        cloud = clouds.AWS(config.items("aws"))
+        # Make sure try to access S3 up front to setup AWS credentials before
+        # launching child processes.
+        try:
+            evt_files = cloud.get_files(cruise)
+            evt_files = seaflowfile.keep_evt_files(evt_files)  # Only keep EVT files
+        except botocore.exceptions.NoCredentialsError as e:
+            print('Please configure aws first:', file=sys.stderr)
+            print('  $ conda install aws', file=sys.stderr)
+            print('  or', file=sys.stderr)
+            print('  $ pip install aws', file=sys.stderr)
+            print('  then', file=sys.stderr)
+            print('  $ aws configure', file=sys.stderr)
+            raise click.Abort()
+
+    # Check for duplicates, exit with message if any exist
+    uniques = {seaflowfile.SeaFlowFile(f).file_id for f in evt_files}
+    if len(uniques) < len(evt_files):
+        raise click.ClickException('Duplicate EVT file(s) detected')
+
+    # Find intersection of SFL files and EVT files
+    files = seaflowfile.filtered_file_list(evt_files, sfl_files)
+    print('sfl={} evt={} intersection={}'.format(len(sfl_files), len(evt_files), len(files)))
+
+    # Restrict length of file list with --limit
+    if (limit is not None) and (limit > 0):
+        files = files[:limit]
+
+    # Filter
+    try:
+        filterevt.filter_evt_files(files, dbpath, opp_dir, s3=s3_flag,
+                                   worker_count=process_count,
+                                   every=resolution)
+    except errors.SeaFlowpyError as e:
+        raise click.ClickException(str(e))
+
+
+# ---------------------------------------------------------------------------- #
+# Remote filter command section
+# ---------------------------------------------------------------------------- #
+
 REMOTE_WORK_DIR = "/mnt/ramdisk"
 REMOTE_DB_DIR = "{}/dbs".format(REMOTE_WORK_DIR)
+LATEST_EXE_URL = "https://github.com/armbrustlab/seaflowpy/releases/latest/download/seaflowpy-linux64"
 
+def validate_executable_file(ctx, param, value):
+    if value and len(value):
+        if not os.path.isfile(value):
+            raise click.BadParameter(f'{value} does not exist or is not a file')
+    return value
 
 def validate_positive_int(ctx, param, value):
     if value <= 0:
         raise click.BadParameter('%s must be > 0' % param)
     return value
 
-def validate_source_dir(ctx, param, value):
-    if value and len(value):
-        if not value.endswith('/'):
-            value = value + '/'
-        if not os.path.isdir(value):
-            raise click.BadParameter(f'{value} does not exist or is not a directory')
-    return value
-
-@click.command()
-@click.option('-b', '--branch', metavar='NAME', default='master', show_default=True,
-    help='Which branch of seaflowpy github repo to use on remote servers.')
+@filter_cmd.command('remote')
 @click.option('-D', '--dryrun', is_flag=True,
     help='Show cruise to host assignments without starting instances.')
+@click.option('-e', '--executable', metavar='EXE', callback=validate_executable_file,
+    help='Seaflowpy single-file executable to run on the remote linux machine. [default: github latest release]')
 @click.option('-i', '--instance-count', default=1, show_default=True, metavar='N', callback=validate_positive_int,
     help='Number of cloud instances to use.')
 @click.option('-n', '--no-cleanup', is_flag=True, default=False, show_default=True,
@@ -50,13 +187,11 @@ def validate_source_dir(ctx, param, value):
     help='Number of processes to use in filtering.')
 @click.option('-r', '--ramdisk-size', default=60, show_default=True, metavar='GiB', callback=validate_positive_int,
     help='Size of ramdisk in GiB, limited by instance RAM.')
-@click.option('-s', '--source-dir', metavar='DIR', callback=validate_source_dir,
-    help='Local seaflowpy source directory to use on remote servers. This overrides source code pulls from github.')
 @click.option('-t', '--instance-type', default='c5.9xlarge', show_default=True, metavar='EC2_TYPE',
     help='EC2 instance type to use. Change with caution. The instance type must have be able to attach 2 instance store devices.')
 @click.argument('dbs', nargs=-1, type=click.Path(exists=True))
-def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
-                          output_dir, process_count, ramdisk_size, source_dir,
+def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
+                          output_dir, process_count, ramdisk_size,
                           instance_type, dbs):
     """Filter EVT data on remote servers.
 
@@ -66,15 +201,14 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
 
     # Print defined parameters and information
     v = {
-        'branch': branch,
         'dbs': dbs,
+        'executable': executable,
         'output_dir': output_dir,
         'dryrun': dryrun,
         'instance_count': instance_count,
         'no_cleanup': no_cleanup,
         'process_count': process_count,
         'instance_type': instance_type,
-        'source_dir': source_dir,
         'ramdisk_size': ramdisk_size,
         'version': pkg_resources.get_distribution("seaflowpy").version
     }
@@ -89,6 +223,12 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
     config = conf.get_aws_config()
     conf.get_ssh_config(config)
     cloud = clouds.AWS(config.items('aws'))
+
+    # If local executable is not given download latest from github
+    remove_executable = False
+    if not executable:
+        remove_executable = True  # mark this file for deletion at exit
+        executable = download_latest_linux()
 
     # Configure fabric
     env.connection_attempts = 6
@@ -196,19 +336,11 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
             with hide('output'):
                 execute(rsync_put, dbs, REMOTE_DB_DIR)
 
-            print('Install miniconda 3')
-            execute(install_miniconda3)
+            print('Install system dependencies')
+            execute(install_system_dependencies)
 
-            execute(mkdir, REMOTE_SOURCE_DIR)  # create source dir on each host
-            if source_dir:
-                print('Transfer local seaflowpy source code')
-                execute(rsync_put, [source_dir], REMOTE_SOURCE_DIR)
-            else:
-                print('Pull seaflowpy source code')
-                execute(pull_seaflowpy, branch)
-
-            print('Install seaflowpy')
-            execute(install_seaflowpy)
+            print('Upload seaflowpy executable')
+            execute(upload_seaflowpy, executable)
 
             # Host list in env.hosts should be populated now and all machines up
             print('Filter data')
@@ -218,6 +350,13 @@ def remote_filter_evt_cmd(branch, dryrun, instance_count, no_cleanup,
         disconnect_all()  # always disconnect SSH connections
         if not no_cleanup:
             cloud.cleanup()  # clean up in case of any unhandled exceptions
+        # Clean up seaflowpy executable we downloaded
+        if remove_executable:
+            try:
+                os.remove(executable)
+            except OSError as e:
+                print('Error: could not delete temporary seaflowpy executable: {} - {}'.format(executable, e.strerror), file=sys.stderr)
+
         print('Finished at {}'.format(datetime.datetime.utcnow().isoformat()))
 
     return 0
@@ -270,8 +409,8 @@ def create_ramdisk(gigabytes):
     # Make ramdisk at REMOTE_WORK_DIR
     with hide('everything'):
         # don't wait longer than 10 minutes
-        run('sudo mkdir -p {}'.format(REMOTE_WORK_DIR), timeout=600)
-        run('sudo mount -t tmpfs -o size={}G tmpfs {}'.format(gigabytes, REMOTE_WORK_DIR), timeout=600)
+        sudo('mkdir -p {}'.format(REMOTE_WORK_DIR), timeout=600)
+        sudo('mount -t tmpfs -o size={}G tmpfs {}'.format(gigabytes, REMOTE_WORK_DIR), timeout=600)
 
 
 @task
@@ -310,41 +449,18 @@ def mkdir(d):
 
 @task
 @parallel
-def install_miniconda3():
-    install_url = 'https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh'
-    install_script = '$HOME/miniconda3.sh'
-    install_dir = '$HOME/miniconda3'
-    with hide('stdout'):
-        run(f'wget {install_url} -O {install_script}')
-        run(f'sh {install_script} -b -p {install_dir}')
-        run(f'echo ". {install_dir}/etc/profile.d/conda.sh" >> $HOME/.profile')
-        run(f'echo "conda activate" >> $HOME/.profile')
-        with show('stdout'):
-            run('which python')
-            run('python -V')
-            run('echo $PATH')
-
-@task
-@parallel
-def pull_seaflowpy(branch):
+def install_system_dependencies():
     with quiet():
-        with show('running', 'warnings', 'stderr'):
-            run('git clone https://github.com/armbrustlab/seaflowpy {}'.format(REMOTE_SOURCE_DIR))
-    with cd(REMOTE_SOURCE_DIR), hide('stdout'):
-        run(f'git checkout {branch}')
+        sudo('apt-get update -q')
+        sudo('apt-get install -qy zip')
 
 @task
 @parallel
-def install_seaflowpy():
-    with cd(REMOTE_SOURCE_DIR), hide('stdout'):
-        # If this is a git repo, clean it first.
-        run('git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git clean -fdx')
-        run('conda env create -f environment.yml')
-        run(f'echo "conda activate seaflowpy" >> $HOME/.profile')
-        run('pip install .')
-        run('pytest')
-        with show('stdout'):
-            run('seaflowpy version')
+def upload_seaflowpy(executable):
+    put(executable, '/usr/local/bin/seaflowpy', use_sudo=True)
+    sudo('chmod +x /usr/local/bin/seaflowpy')
+    with show('stdout'):
+        run('seaflowpy version')
 
 @task
 @parallel
@@ -367,7 +483,7 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 }
                 with settings(warn_only=True), hide('output'):
                     result = run(
-                        'seaflowpy filter --s3 -d {cruise}.db -p {process_count} -o {cruise}_opp'.format(**text),
+                        'seaflowpy filter local --s3 -d {cruise}.db -p {process_count} -o {cruise}_opp'.format(**text),
                         timeout=10800
                     )
                     cruise_results[c] = result
@@ -404,14 +520,6 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
             else:
                 sys.stderr.write('Filtering failed for cruise {}\n'.format(c))
 
-            # Capture conda environment information
-            with settings(warn_only=True), hide('output'):
-                result = run('conda list')
-            if result.succeeded:
-                conda_env_text = result
-            else:
-                conda_env_text = ""
-
             # Always write log output
             logpath = os.path.join(output_dir, '{}.seaflowpy_filter.log'.format(c))
 
@@ -419,8 +527,6 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
                 logfh.write('command={}\n'.format(cruise_results[c].command))
                 logfh.write('real_command={}\n'.format(cruise_results[c].real_command))
                 logfh.write(norm(cruise_results[c].stdout) + '\n')
-                logfh.write('\nconda env list' + '\n')
-                logfh.write(norm(conda_env_text.stdout) + '\n')
 
     return cruise_results
 
@@ -429,3 +535,19 @@ def filter_cruise(host_assignments, output_dir, process_count=16):
 def norm(text):
     """Normalize line-endings in a text string."""
     return text.replace('\r\n', os.linesep).replace('\r', os.linesep)
+
+def download_latest_linux():
+    """Download latest linux executable and return file path"""
+    retry_limit = 3
+    retries = 0
+    while True:
+        try:
+            filename, _ = urllib.request.urlretrieve(LATEST_EXE_URL)
+        except (urllib.error.ContentTooShortError, urllib.error.URLError, urllib.error.HTTPError):
+            if retries == retry_limit:
+                raise click.ClickException("couldn't download linux exe")
+            retries += 1
+            time.sleep(2**retries + random.random())
+        else:
+            break
+    return filename

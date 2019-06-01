@@ -2,31 +2,56 @@
 
 A Python package for SeaFlow flow cytometer data.
 
-## Requirements
-
-See `environment.yaml` for requirements
-
 ## Install
 
-This will clone the repo and create a new conda environment `seaflowpy`.
+This package is compatible with Python 3.7.
+
+### Command-line tool as single-file download
+
+Single file executables of the `seaflowpy` command-line tool
+for MacOS and Linux can be downloaded from the project's github
+[release page](https://github.com/armbrustlab/seaflowpy/releases).
+
+### Docker
+
+Docker image are available from Docker Hub at `ctberthiaume/seaflowpy`.
+
+```
+docker run -it ctberthiaume/seaflowpy seaflowpy version
+```
+
+The Docker build file is in this repo at `/Dockerfile`.
+
+### PyPI
+
+```
+pip3 install seaflowpy
+```
+
+### Source
+
+This will clone the repo and create a new virtual environment `seaflowpy`.
+`venv` can be replaced with `virtualenv`, `conda`, etc.
 
 ```sh
 git clone https://github.com/armbrustlab/seaflowpy
 cd seaflowpy
-# Edit this file to create an environment with a different name
-conda env create -f environment.yml
-conda activate seaflowpy
+python3 -m venv seaflowpy
+source seaflowpy/bin/activate
+pip3 install -r requirements.txt
+pip3 install .
 # Confirm the seaflowpy command-line tool is accessible
 seaflowpy version
+deactivate
 ```
 
-### Integration with R
+## Integration with R
 
 To call `seaflowpy` from R, update the PATH environment variable in
 `~/.Renviron`. For example:
 
 ```sh
-PATH=${PATH}:${HOME}/miniconda3/envs/seaflowpy/bin
+PATH=${PATH}:${HOME}/venvs/seaflowpy/bin
 ```
 
 ## Testing
@@ -49,13 +74,6 @@ The usage details for each command can be accessed as `seaflowpy sfl <cmd> -h`.
 
 Converts GGA coordinate values to decimal degree. Otherwise the file is
 unchanged.
-
-#### `seaflowpy sfl db`
-
-Import an SFL file into a popcycle database file.
-The database file will be created if needed.
-Various checks are run before import (the same as `seaflowpy sfl validate`).
-If errors are encountered a summary is printed and import is aborted.
 
 #### `seaflowpy sfl dedup`
 
@@ -95,3 +113,54 @@ and are UTC
 Because some of these errors can affect every row of the file
 (e.g. out of order files), only the first error of each type is printed.
 To get a full printout of all errors run the command with `--verbose`.
+
+## Development
+
+### Build
+
+To build source tarball, wheel, PyInstaller files, and Docker image, run `./build.sh`.
+This will
+
+* create `dist` with source tarball and wheel file
+
+* executable files in `./pyinstaller/macos/dist/seaflowpy` and `./pyinstaller/linux64/dist/seaflowpy`
+
+* Docker image named `seaflowpy:<version>`
+
+To remove all build files, run `git clean -fd`.
+
+PyInstaller files and Docker image create depend on the wheel file located in `dist`.
+
+### Updating requirements files
+
+Create a new virtual environment
+
+```sh
+python3 -m venv newenv
+source newenv/bin/actviate
+```
+
+And install `seaflowpy`
+
+```sh
+pip3 install .
+```
+
+Then freeze the requirements
+
+```sh
+pip3 freeze | grep -v seaflowpy >requirements.txt
+```
+
+Then install dev dependencies and freeze
+
+```sh
+pip3 install pylint pytest tox twine
+pip3 freeze | grep -v seaflowpy >requirements-dev.txt
+```
+
+Do some testing, then leave this temporary virtual environment
+
+```sh
+deactivate
+```
