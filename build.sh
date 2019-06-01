@@ -106,7 +106,7 @@ deactivate
 # Optional, upload wheel and source tarball to PyPI
 # --------------------------------------------------------------------------- #
 # Test against test PyPI repo
-# twine upload -r https://test.pypi.org/legacy/ dist/seaflowpy-x.x.x*
+# twine upload --repository-url https://test.pypi.org/legacy/ dist/seaflowpy-*
 
 # Create a virtualenv and test install from test.pypi.org
 # python -m venv pypi-test
@@ -115,4 +115,4 @@ deactivate
 # pypi-test/bin/seaflowpy version
 
 # Then upload to the real PyPI
-# twine upload dist/seaflowpy-x.x.x*
+# twine upload dist/seaflowpy-*
