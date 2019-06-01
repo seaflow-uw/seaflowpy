@@ -112,7 +112,10 @@ def read_labview(path, columns, fileobj=None):
     with file_open_r(path, fileobj) as fh:
         # Particle count (rows of data) is stored in an initial 32-bit
         # unsigned int
-        buff = fh.read(4)
+        try:
+            buff = fh.read(4)
+        except (IOError, EOFError) as e:
+            raise errors.FileError("File could not be read: {}".format(str(e)))
         if len(buff) == 0:
             raise errors.FileError("File is empty")
         if len(buff) != 4:
@@ -128,13 +131,19 @@ def read_labview(path, columns, fileobj=None):
         # returned from io.open(path, "rb") will accept a numpy.int64 type,
         # io.BytesIO objects will not accept this type and will only accept
         # vanilla int types. This is true for Python 3, not for Python 2.
-        buff = fh.read(int(expected_bytes))
+        try:
+            buff = fh.read(int(expected_bytes))
+        except (IOError, EOFError) as e:
+            raise errors.FileError("File could not be read: {}".format(str(e)))
 
         # Read any extra data at the end of the file for error checking. There
         # shouldn't be any extra data, btw.
         extra_bytes = 0
         while True:
-            new_bytes = len(fh.read(8192))
+            try:
+                new_bytes = len(fh.read(8192))
+            except (IOError, EOFError) as e:
+                raise errors.FileError("File could not be read: {}".format(str(e)))
             extra_bytes += new_bytes
             if new_bytes == 0:  # end of file
                 break
