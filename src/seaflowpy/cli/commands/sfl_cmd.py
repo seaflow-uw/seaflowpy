@@ -62,6 +62,22 @@ def sfl_dedup_cmd(infile, outfile):
     sfl.save_to_file(df, outfile, all_columns=True)
 
 
+@sfl_cmd.command('fix-event-rate')
+@click.option('-i', '--infile', required=True, type=click.File(),
+    help='Input SFL file. - for stdin.')
+@click.option('-e', '--event-count-file', required=True, type=click.File(),
+    help='TSV file with path/file_id in first column, event count in last column.')
+@click.option('-o', '--outfile', required=True, type=click.File(mode='w', atomic=True),
+    help='Output SFL file. - for stdout.')
+def sfl_fix_event_rate_cmd(infile, event_count_file, outfile):
+    """Calculate true event rate."""
+    df = sfl.read_file(infile, convert_numerics=False)
+    lines = [x.rstrip().split('\t') for x in event_count_file.readlines()]
+    event_counts = {seaflowfile.SeaFlowFile(x[0]).file_id: int(x[-1]) for x in lines}
+    df = sfl.fix_event_rate(df, event_counts)
+    sfl.save_to_file(df, outfile, all_columns=True)
+
+
 @sfl_cmd.command('manifest')
 @click.option('-i', '--infile', required=True, type=click.File(),
     help='Input SFL file. - for stdin.')

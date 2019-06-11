@@ -277,6 +277,39 @@ def fix(df):
     return newdf
 
 
+def fix_event_rate(df, event_counts):
+    """
+    Update event_rate field based on event counts in event_counts.
+
+    Parameters
+    -----------
+    df: pandas DataFrame
+        SFL DataFrame, based on a "fixed" file
+    event_counts: dict of {str: int}
+        Dictionary with file_id: event count
+
+    Returns
+    -------
+    df: pandas DataFrame
+        Copy of df with updated event_rate fields where possible.
+    """
+    newdf = df.copy(deep=True)
+    for i, row in newdf.iterrows():
+        try:
+            file_duration = float(row["file_duration"])
+        except ValueError:
+            continue
+        try:
+            event_count = int(event_counts[row["file"]])
+        except (ValueError, KeyError):
+            continue
+        try:
+            newdf.loc[i, "event_rate"] = event_count / file_duration
+        except ZeroDivisionError:
+            newdf.iloc[i, "event_rate"] = 0.0
+    return newdf
+
+
 def has_gga(df):
     """Do any coordinates Series in this DataFrame contain GGA values?"""
     gga_lats = df["lat"].map(geo.is_gga_lat, na_action="ignore")
