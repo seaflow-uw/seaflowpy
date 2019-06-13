@@ -8,11 +8,12 @@ from seaflowpy import errors
     help='Print 3 columns: input path, file name, day of year dir.')
 @click.argument('files', nargs=-1, type=click.Path())
 def dayofyear_cmd(verbose, files):
-    """Get calculated day of year dir from filename timestamp.
+    """
+    Gets calculated day of year dir from filename timestamp.
 
     File paths must be new-style datestamped paths. Any part of the file
     path except for the filename will be ignored. The filename may include a
-    '.gz' extension.
+    '.gz' extension. Outputs to STDOUT.
     """
     output = []
     for file in files:

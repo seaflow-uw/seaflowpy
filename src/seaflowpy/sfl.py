@@ -97,6 +97,7 @@ def check_date(df):
         errors.append(create_error(df, "date", msg="date column is missing"))
     else:
         # All dates must match RFC 3339 with no fractional seconds
+        # only integer seconds.
         date_flags = df["date"].map(check_date_string)
         if len(date_flags) > 0:
             # select rows that failed date check
@@ -242,6 +243,7 @@ def fix(df):
     - Adds or replaces day of year directory component of "file" values
     - Set any stream pressure values <= 0 to 1e-4 (small positive number)
     - Adds any missing db columns
+    - Sets any file duration values < 0 to NaN
     """
     newdf = df.copy(deep=True)
 
@@ -274,6 +276,42 @@ def fix(df):
         if k not in newdf.columns:
             newdf[k] = None
 
+    # Make sure all file duration values are > 0
+    newdf.loc[newdf["file_duration"] < 0, "file_duration"] = None
+
+    return newdf
+
+
+def fix_event_rate(df, event_counts):
+    """
+    Update event_rate field based on event counts in event_counts.
+
+    Parameters
+    -----------
+    df: pandas DataFrame
+        SFL DataFrame, based on a "fixed" file
+    event_counts: dict of {str: int}
+        Dictionary with file_id: event count
+
+    Returns
+    -------
+    df: pandas DataFrame
+        Copy of df with updated event_rate fields where possible.
+    """
+    newdf = df.copy(deep=True)
+    for i, row in newdf.iterrows():
+        try:
+            file_duration = float(row["file_duration"])
+        except ValueError:
+            continue
+        try:
+            event_count = int(event_counts[row["file"]])
+        except (ValueError, KeyError):
+            continue
+        try:
+            newdf.loc[i, "event_rate"] = event_count / file_duration
+        except ZeroDivisionError:
+            newdf.iloc[i, "event_rate"] = 0.0
     return newdf
 
 
