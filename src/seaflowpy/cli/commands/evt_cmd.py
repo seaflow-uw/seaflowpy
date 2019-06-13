@@ -20,10 +20,11 @@ def evt_cmd():
     help='Show information for all files. If not specified then only files errors are printed.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def validate_evt_cmd(no_header, no_summary, verbose, files):
-    """Examine EVT/OPP files.
+    """
+    Examines EVT/OPP files.
 
-    If any of the file arguments are directories all EVT/OPP files within that
-    directory will be recursively found and examined.
+    If any of the file arguments are directories all EVT/OPP files within those
+    directories will be recursively found and examined. Prints to STDOUT.
     """
     if not files:
         return
@@ -83,26 +84,28 @@ def validate_evt_cmd(no_header, no_summary, verbose, files):
 @evt_cmd.command('count')
 @click.option('-H', '--no-header', is_flag=True, default=False,
     help="Don't print column headers.")
-@click.argument('files', nargs=-1, type=click.Path(exists=True))
-def count_evt_cmd(no_header, files):
+@click.argument('evt-files', nargs=-1, type=click.Path(exists=True))
+def count_evt_cmd(no_header, evt_files):
     """
-    Report event counts in EVT/OPP files.
+    Reports event counts in EVT files.
 
     For speed, only a portion at the beginning of the file is read to get the
-    event count. If any of the file arguments are directories all EVT/OPP files
-    within that directory will be recursively found and examined. Files which
-    can't be read with a valid EVT/OPP file name and file header will be
-    reported with a count of 0.
+    event count. If any of EVT-FILES are directories all EVT/OPP files within
+    those directories will be recursively found and examined. Files which can't
+    be read with a valid EVT/OPP file name and file header will be reported
+    with a count of 0.
 
     Unlike the "evt validate" command, this command does not attempt validation
-    of the EVT/OPP file beyond being able to read the first 4 byte row count
-    header. Because of this, there may be files where "evt validate" reports 0
-    rows while this tool reports > 0 rows.
+    of the EVT/OPP file beyond reading the first 4 byte row count header.
+    Because of this, there may be files where "evt validate" reports 0 rows
+    while this tool reports > 0 rows.
+
+    Outputs tab-delimited text to STDOUT.
     """
-    if not files:
+    if not evt_files:
         return
 
-    files = expand_file_list(files)  # dirs to file paths
+    files = expand_file_list(evt_files)  # dirs to file paths
     evt_files = seaflowfile.keep_evt_files(files)
     opp_files = seaflowfile.keep_evt_files(files, opp=True)
     evtopp_files = {*(evt_files + opp_files)}

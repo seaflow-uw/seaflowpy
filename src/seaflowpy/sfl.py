@@ -97,6 +97,7 @@ def check_date(df):
         errors.append(create_error(df, "date", msg="date column is missing"))
     else:
         # All dates must match RFC 3339 with no fractional seconds
+        # only integer seconds.
         date_flags = df["date"].map(check_date_string)
         if len(date_flags) > 0:
             # select rows that failed date check
@@ -242,6 +243,7 @@ def fix(df):
     - Adds or replaces day of year directory component of "file" values
     - Set any stream pressure values <= 0 to 1e-4 (small positive number)
     - Adds any missing db columns
+    - Sets any file duration values < 0 to NaN
     """
     newdf = df.copy(deep=True)
 
@@ -273,6 +275,9 @@ def fix(df):
     for k in colname_mapping["table_to_file"]:
         if k not in newdf.columns:
             newdf[k] = None
+
+    # Make sure all file duration values are > 0
+    newdf.loc[newdf["file_duration"] < 0, "file_duration"] = None
 
     return newdf
 

@@ -70,49 +70,38 @@ Run `seaflowpy --help` to begin exploring the CLI usage documentation.
 SFL validation sub-commands are available under the `seaflowpy sfl` command.
 The usage details for each command can be accessed as `seaflowpy sfl <cmd> -h`.
 
-#### `seaflowpy sfl convert-gga`
+The basic worfkflow should be
 
-Converts GGA coordinate values to decimal degree. Otherwise the file is
-unchanged.
+1) If starting with an SDS file, first convert to SFL with `seaflowpy sds2sfl`
 
-#### `seaflowpy sfl dedup`
+2) If the SFL file is output from `sds2sfl` or is a raw SeaFlow SFL file,
+convert it to a normalized format with `seaflowpy sfl print`.
+This command can be used to concatenate multiple SFL files,
+e.g. merge all SFL files in day-of-year directories.
 
-Remove lines in an SFL file with duplicate "FILE" values.
-Because it's impossible to know which of the duplicated SFL entries
-corresponds to which EVT file, all duplicate rows are removed.
-A unique list of removed files is printed to STDERR.
+3) Check for potential errors or warnings with `seaflowpy sfl validate`.
 
-#### `seaflowpy sfl manifest`
+4) Fix errors and warnings. Duplicate file errors can be fixed with `seaflowpy sfl dedup`.
+Bad lat/lon errors may be fixed with`seaflowpy sfl convert-gga`,
+assuming the bad coordinates are GGA to begin with.
+This can be checked with with `seaflowpy sfl detect-gga`.
+Other errors or missing values may need to be fixed manually.
 
-Compare EVT files listed in an SFL file with EVT files on-disk
-or in cloud object storage.
-This can serve as a quick sanity check for the internal consistency of a
-SeaFlow cruise data folder.
-NB, it's normal for one file to be missing from the SFL file
-or EVT day of year folder around midnight.
+5) (Optional) Update event rates based on true event counts and file duration
+with `seaflowpy sfl fix-event-rate`.
+True event counts for raw EVT files can be determined with `seaflowpy evt count`.
+If filtering has already been performed then event counts can be pulled from
+the `all_count` field of the SQLITE3 database.
+e.g. `sqlite3 -separator $'\t' SCOPE_14.db 'SELECT file, all_count ORDER BY file'`
 
-#### `seaflowpy sfl print`
+6) (Optional) As a check for dataset completeness,
+the list of files in an SFL file can be compared to the actual EVT files present
+with `seaflowpy sfl manifest`. It's normal for a few files to differ, especially near midnight.
+But if a large number of files are missing it may be a sign that the data transfer
+was incomplete or the SFL file is missing some days.
 
-Print a standard version of an SFL file with only the necessary columns.
-The correct day of year folder will be added to "FILE" column values if not
-present. "DATE" column will be created if not present from "FILE" column values
-(only applies to new-style datestamped file names).
-Any other required columns which are missing will be created with "NA" values.
-
-#### `seaflowpy sfl validate`
-
-Validate key values in an SFL file. The following checks are performed:
-
-* all required columns are present
-* "FILE" column values have day of year folders, are in the proper format,
-in chronological order, and are unique
-* "DATE" column values are in the proper format, represent valid date and times,
-and are UTC
-* "LAT" and "LON" coordinate column values are valid decimal degree values
-
-Because some of these errors can affect every row of the file
-(e.g. out of order files), only the first error of each type is printed.
-To get a full printout of all errors run the command with `--verbose`.
+7) Once all errors or warnings have been fixed, do a final `seaflowpy validate`
+before adding the SFL file to the appropriate repository.
 
 ## Development
 
