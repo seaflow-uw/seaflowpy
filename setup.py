@@ -11,7 +11,6 @@ setup(
     url='https://github.com/armbrustlab/seaflowpy',
     author='Chris T. Berthiaume',
     author_email='chrisbee@uw.edu',
-    license='GPL3',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     include_package_data=True,
@@ -26,5 +25,8 @@ setup(
             'seaflowpy=seaflowpy.cli.cli:cli'
         ]
     },
+    classifiers=[
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)'
+    ],
     zip_safe=True
 )

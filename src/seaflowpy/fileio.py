@@ -43,7 +43,7 @@ def file_open_r(path, fileobj=None):
                 finally:
                     # Closing fh will be done by enclosing context manager,
                     # but it doesn't know about fileobj so we have to do that
-                    # here
+                    # here.
                     fileobj.close()
         else:
             try:
@@ -82,6 +82,8 @@ def file_open_w(path):
     with io.open(path, 'wb') as fh:
         if path.endswith('.gz'):
             with Popen(["gzip", "-c"], stdin=PIPE, stdout=fh) as p1:
+                # Subprocess using system gzip benchmarked faster than using
+                # gzip module.
                 yield p1.stdin
         else:
             yield fh
@@ -99,6 +101,8 @@ def read_labview(path, columns, fileobj=None):
     -----------
     path: str
         File path.
+    columns: list of str
+        Names of columns. Also represents how many columns there are.
     fileobj: io.BytesIO, optional
         Open file object.
 
@@ -169,6 +173,44 @@ def read_labview(path, columns, fileobj=None):
     # header.
     df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
     return df
+
+
+def read_labview_row_count(path, fileobj=None):
+    """
+    Get the row count of a labview binary SeaFlow data file.
+
+    Only a small amount of data from the beginning of the file will be read to
+    get the reported row count from the file header. This should be a much
+    faster method of getting row count than reading the whole file. Data will
+    be read from the file at the provided path or preferentially from fileobj
+    if provided. If path is provided and ends with '.gz' data will be
+    considered gzip compressed even if read from fileobj.
+
+    Parameters
+    -----------
+    path: str
+        File path.
+    fileobj: io.BytesIO, optional
+        Open file object.
+
+    Returns
+    -------
+    int
+        Number of rows reported in the labview file header (first uint32).
+    """
+    with file_open_r(path, fileobj) as fh:
+        # Particle count (rows of data) is stored in an initial 32-bit
+        # unsigned int
+        try:
+            buff = fh.read(4)
+        except (IOError, EOFError) as e:
+            raise errors.FileError("File could not be read: {}".format(str(e)))
+        if len(buff) == 0:
+            raise errors.FileError("File is empty")
+        if len(buff) != 4:
+            raise errors.FileError("File has invalid particle count header")
+        rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
+    return rowcnt
 
 
 def read_evt_labview(path, fileobj=None):

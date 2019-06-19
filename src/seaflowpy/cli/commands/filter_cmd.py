@@ -233,8 +233,8 @@ def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
     # Configure fabric
     env.connection_attempts = 6
     # Tell fabric the SSH user name and key file location
-    env.user = config.get('ssh', 'user')
-    env.key_filename = os.path.expanduser(config.get('ssh', 'ssh-key-file'))
+    env.user = config.get('ssh', 'ssh-user')
+    env.key_filename = os.path.expanduser(config.get('ssh', 'ssh-private-key-file'))
 
     try:
         if len(dbs) > 0:
@@ -260,9 +260,7 @@ def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
                     evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(cloud.get_files(c)))
                 except botocore.exceptions.NoCredentialsError as e:
                     print('Please configure aws first:', file=sys.stderr)
-                    print('  $ conda install aws', file=sys.stderr)
-                    print('  or', file=sys.stderr)
-                    print('  $ pip install aws', file=sys.stderr)
+                    print('  $ pip install awscli', file=sys.stderr)
                     print('  then', file=sys.stderr)
                     print('  $ aws configure', file=sys.stderr)
                     raise click.Abort()
@@ -346,6 +344,8 @@ def remote_filter_evt_cmd(dryrun, executable, instance_count, no_cleanup,
             print('Filter data')
             execute(filter_cruise, host_assignments, output_dir,
                     process_count)
+    except Exception as e:
+        print(f'Error: {e}')
     finally:
         disconnect_all()  # always disconnect SSH connections
         if not no_cleanup:

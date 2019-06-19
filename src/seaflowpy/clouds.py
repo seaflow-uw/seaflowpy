@@ -49,7 +49,7 @@ class AWS:
             MaxCount=count,
             SecurityGroups=[getattr(self, "security-group")],
             InstanceType=instance_type,
-            KeyName=getattr(self, "key-name")
+            KeyName=getattr(self, "ssh-private-key-name")
         )
         ids = self._get_instance_ids(self._get_instances(resp))
         self.state["InstanceIds"] = ids
@@ -105,7 +105,7 @@ class AWS:
                     raise
                 sleep = (2**(tries-1)) + random.random()
                 time.sleep(sleep)
-    
+
     @staticmethod
     def _get_instances(resp):
         try:

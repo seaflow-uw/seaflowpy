@@ -13,10 +13,6 @@ def db_cmd():
 
 
 @db_cmd.command('create')
-@click.option('-i', '--infile', required=True, type=click.File(),
-    help='Input SFL file. - for stdin.')
-@click.option('-d', '--db', 'dbpath', required=True,
-    help='SQLite3 database file.')
 @click.option('-c', '--cruise',
     help='Supply a cruise name here to override any found in the filename.')
 @click.option('-f', '--force', is_flag=True,
@@ -27,16 +23,22 @@ def db_cmd():
     help='Supply a instrument serial number here to override any found in the filename.')
 @click.option('-v', '--verbose', is_flag=True,
     help='Report all errors.')
-def db_create_cmd(infile, dbpath, cruise, force, json, serial, verbose):
-    """Create database from SFL file.
-
-    Write processed SFL file data to SQLite3 database files. Data will be
-    checked before inserting. If any errors are found the first of each type
-    will be reported and no data will be written.
+@click.argument('sfl-file', nargs=1, type=click.File())
+@click.argument('db-file', nargs=1, type=click.Path(writable=True))
+def db_create_cmd(cruise, force, json, serial, verbose, sfl_file, db_file):
     """
-    if infile is not sys.stdin:
+    Creates database from SFL file.
+
+    Writes processed SFL-FILE data to SQLite3 database file. Data will be
+    checked before inserting. If any errors are found the first of each type
+    will be reported and no data will be written. To read from STDIN use '-'
+    for SFL-FILE. SFL-FILE should have the <cruise name> and <instrument serial>
+    embedded in the filename as '<cruise name>_<instrument serial>.sfl'. If not,
+    specify as options. Errors or warnings are output to STDOUT.
+    """
+    if sfl_file is not sys.stdin:
         # Try to read cruise and serial from filename
-        results = sfl.parse_sfl_filename(infile.name)
+        results = sfl.parse_sfl_filename(sfl_file.name)
         if results:
             if cruise is None:
                 cruise = results[0]
@@ -46,12 +48,12 @@ def db_create_cmd(infile, dbpath, cruise, force, json, serial, verbose):
     # Try to read cruise and serial from database if not already defined
     if cruise is None:
         try:
-            cruise = db.get_cruise(dbpath)
+            cruise = db.get_cruise(db_file)
         except SeaFlowpyError as e:
             pass
     if serial is None:
         try:
-            serial = db.get_serial(dbpath)
+            serial = db.get_serial(db_file)
         except SeaFlowpyError as e:
             pass
 
@@ -59,7 +61,7 @@ def db_create_cmd(infile, dbpath, cruise, force, json, serial, verbose):
     if cruise is None or serial is None:
         raise click.ClickException('instrument serial and cruise must both be specified either in filename as <cruise>_<instrument-serial>.sfl, as command-line options, or in database metadata table.')
 
-    df = sfl.read_file(infile)
+    df = sfl.read_file(sfl_file)
 
     df = sfl.fix(df)
     errors = sfl.check(df)
@@ -71,18 +73,17 @@ def db_create_cmd(infile, dbpath, cruise, force, json, serial, verbose):
             sfl.print_tsv_errors(errors, sys.stdout, print_all=verbose)
         if not force and len([e for e in errors if e["level"] == "error"]) > 0:
             sys.exit(1)
-    sfl.save_to_db(df, dbpath, cruise, serial)
+    sfl.save_to_db(df, db_file, cruise, serial)
 
 
 @db_cmd.command('import-filter-params')
-@click.option('-d', '--db', 'dbpath', required=True,
-    help='SQLite3 database file.')
-@click.option('-i', '--infile', required=True, type=click.File(),
-    help='Input filter parameters CSV. - for stdin.')
 @click.option('-c', '--cruise',
     help='Supply a cruise name for parameter selection. If not provided cruise in database will be used.')
-def db_import_filter_params_cmd(dbpath, infile, cruise):
-    """Import filter parameters to database.
+@click.argument('filter-file', nargs=1, type=click.File())
+@click.argument('db-file', nargs=1, type=click.Path(exists=True, writable=True))
+def db_import_filter_params_cmd(cruise, filter_file, db_file):
+    """
+    Imports filter parameters to database.
 
     File paths must be new-style datestamped paths. Any part of the file
     path except for the filename will be ignored. The filename may include a
@@ -92,7 +93,7 @@ def db_import_filter_params_cmd(dbpath, infile, cruise):
     # If cruise not supplied, try to get from db
     if cruise is None:
         try:
-            cruise = db.get_cruise(dbpath)
+            cruise = db.get_cruise(db_file)
         except SeaFlowpyError:
             pass
 
@@ -104,19 +105,19 @@ def db_import_filter_params_cmd(dbpath, infile, cruise):
         "na_filter": True,
         "encoding": "utf-8"
     }
-    df = pd.read_csv(infile, **defaults)
+    df = pd.read_csv(filter_file, **defaults)
     df.columns = [c.replace('.', '_') for c in df.columns]
     params = df[df.cruise == cruise]
     if len(params.index) == 0:
         raise click.ClickException('no filter parameters found for cruise %s' % cruise)
-    db.save_filter_params(dbpath, params.to_dict('index').values())
+    db.save_filter_params(db_file, params.to_dict('index').values())
 
 
 @db_cmd.command('merge')
 @click.argument('db1', type=click.Path(exists=True))
-@click.argument('db2', type=click.Path(exists=True))
+@click.argument('db2', type=click.Path(exists=True, writable=True))
 def db_merge_cmd(db1, db2):
-    """Merge SQLite3 db1 into db2.
+    """Merges SQLite3 DB1 into DB2.
 
     Only merges gating, poly, filter tables.
     """

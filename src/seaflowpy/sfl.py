@@ -1,6 +1,5 @@
 """Do things to SFL data DataFrames"""
 from collections import OrderedDict
-import csv
 import datetime
 import json
 import os
@@ -48,6 +47,12 @@ output_columns = [
     "event_rate"
 ]
 
+# numeric min/max values
+min_file_duration = 0
+min_lat, max_lat = -90, 90
+min_lon, max_lon = -180, 180
+min_stream_pressure = 1e-4
+min_event_rate = 0
 
 def check(df):
     """Perform checks on SFL dataframe
@@ -55,39 +60,18 @@ def check(df):
     Returns a list of errors.
     """
     errors = []
-    errors.extend(check_numerics(df))
+    errors.extend(check_numeric(df, "file_duration", minval=min_file_duration, require_all=True))
+    errors.extend(check_numeric(df, "lat", minval=min_lat, maxval=max_lat, require_all=True))
+    errors.extend(check_numeric(df, "lon", minval=min_lon, maxval=max_lon, require_all=True))
+    errors.extend(check_numeric(df, "conductivity", require_all=False))
+    errors.extend(check_numeric(df, "salinity", require_all=False))
+    errors.extend(check_numeric(df, "ocean_tmp", require_all=False))
+    errors.extend(check_numeric(df, "par", require_all=False))
+    errors.extend(check_numeric(df, "bulk_red", require_all=False))
+    errors.extend(check_numeric(df, "stream_pressure", minval=min_stream_pressure, require_all=True))
+    errors.extend(check_numeric(df, "event_rate", minval=min_event_rate, require_all=True))
     errors.extend(check_file(df))
     errors.extend(check_date(df))
-    errors.extend(check_coords(df))
-    return errors
-
-
-def check_coords(df):
-    errors = []
-    if "lat" not in df.columns:
-        errors.append(create_error(df, "lat", msg="lat column is missing"))
-    else:
-        notnas = df[df["lat"].notna()]
-        lat_numbers = pd.to_numeric(notnas["lat"], errors="coerce")
-        bad_lats = notnas.loc[~((lat_numbers <= 90) & (lat_numbers >= -90)), "lat"]
-        for i, v in bad_lats.iteritems():
-            errors.append(create_error(df, "lat", msg="Invalid latitude", row=i, val=v))
-        na_lats = df.loc[df["lat"].isna(), "lat"]
-        if len(na_lats) > 0:
-            for i, v in na_lats.iteritems():
-                errors.append(create_error(df, "lat", msg="Missing required data", row=i, val=v, level="error"))
-    if "lon" not in df.columns:
-        errors.append(create_error(df, "lon", msg="lon column is missing"))
-    else:
-        notnas = df[df["lon"].notna()]
-        lon_numbers = pd.to_numeric(notnas["lon"], errors="coerce")
-        bad_lons = notnas.loc[~((lon_numbers <= 180) & (lon_numbers >= -180)), "lon"]
-        for i, v in bad_lons.iteritems():
-            errors.append(create_error(df, "lon", msg="Invalid longitude", row=i, val=v))
-        na_lons = df.loc[df["lon"].isna(), "lon"]
-        if len(na_lons) > 0:
-            for i, v in na_lons.iteritems():
-                errors.append(create_error(df, "lon", msg="Missing required data", row=i, val=v, level="error"))
     return errors
 
 
@@ -97,6 +81,7 @@ def check_date(df):
         errors.append(create_error(df, "date", msg="date column is missing"))
     else:
         # All dates must match RFC 3339 with no fractional seconds
+        # only integer seconds.
         date_flags = df["date"].map(check_date_string)
         if len(date_flags) > 0:
             # select rows that failed date check
@@ -137,36 +122,91 @@ def check_file(df):
             return False
 
         good_files_selector = df["file"].map(parse_filename)
-        for i, v in df[~good_files_selector]["file"].iteritems():
-            errors.append(create_error(df, "file", msg="Invalid file name", row=i, val=v))
+        good_files = df[good_files_selector]
+        bad_files = df[~good_files_selector]
+        for i, v in bad_files["file"].iteritems():
+            errors.append(create_error(bad_files, "file", msg="Invalid file name", row=i, val=v))
 
         # Files must be unique
-        dup_files = df[df.duplicated("file", keep=False)]["file"]
+        dup_files = df.loc[df["file"].duplicated(keep=False), "file"]
         for i, v in dup_files.iteritems():
-            errors.append(create_error(df, "file", msg="Duplicate file", row=i, val=v))
+            errors.append(create_error(dup_files, "file", msg="Duplicate file", row=i, val=v))
 
         # Files should be in order
         # Only consider files that are parseable by seaflowfile.SeaFlowFile
-        inorder = seaflowfile.sorted_files(df[good_files_selector]["file"])
-        files_equal = df[good_files_selector]["file"] == inorder
-        if not (files_equal).all():
-            i = int(df[~files_equal].index[0])
-            v = "First out of order file. Saw {}, expected {}.".format(df.loc[i, "file"], inorder[i])
-            errors.append(create_error(df, "file", msg="Files out of order", row=i, val=v))
+        inorder = seaflowfile.sorted_files(good_files["file"])
+        files_equal = good_files["file"] == inorder
+        if not files_equal.all():
+            i = int(good_files[~files_equal].index[0])
+            v = "First out of order file {}".format(good_files.loc[i, "file"])
+            errors.append(create_error(good_files, "file", msg="Files out of order", row=i, val=v))
+
+        # Files should match date in same row
+        if "date" in df.columns:
+            for i, v in good_files["file"].iteritems():
+                s = seaflowfile.SeaFlowFile(v)
+                d = good_files.loc[i, "date"]
+                if s.is_new_style and s.rfc3339 != d:
+                    errors.append(create_error(good_files, "file/date", msg="File and date don't match", row=i, val=f"{v} {d}"))
 
     return errors
 
 
-def check_numerics(df):
+def check_numeric(df, colname, require_all=False, minval=None, maxval=None):
+    """
+    Check a numeric column.
+
+    Checks that the column is present and has valid numeric values. Optionally
+    checks if values are in acceptable range and if all rows have non-NA values.
+
+    Parameters
+    -----------
+    df: pandas.DataFrame
+        SFL DataFrame with column to check.
+    colname: str
+        Name of the column to check.
+    require_all: bool, default False
+        Require that all rows have non-NA value?
+    minval: int or float, optional
+        Minimum acceptable value.
+    maxval: int or float, optional
+        Maximum acceptable value.
+
+    Returns
+    -------
+    list of error dicts
+        Errors created with create_error()
+    """
     errors = []
-    # Numeric columns should be present
-    present = df.columns.tolist()
-    required = set(numeric_columns)
-    for column in required.difference(present):
-        errors.append(create_error(df, column, msg="{} column is missing".format(column)))
-    for column in required.intersection(present):
-        if df[column].isna().all():
-            errors.append(create_error(df, column, msg="{} column has no data".format(column), level="warning"))
+    if colname not in df.columns:
+        # column must be present
+        errors.append(create_error(df, colname, msg=f"{colname} column is missing", level="error"))
+    else:
+        notnas = df[df[colname].notna()]
+        numbers = pd.to_numeric(notnas[colname], errors="coerce")
+        # Create boolean index for values in acceptable range
+        # Start by selecting everything, then select by minval/maxval
+        good_selector = pd.np.ones(len(numbers), dtype=bool)
+        if minval is not None:
+            good_selector = good_selector & (numbers >= minval)
+        if maxval is not None:
+            good_selector = good_selector & (numbers <= maxval)
+        # Catch values outside correct range
+        # Catch non-numeric values (NAs created during to_numeric())
+        bad_numbers = notnas.loc[~good_selector, colname]
+        for i, v in bad_numbers.iteritems():
+            errors.append(create_error(df, colname, msg=f"Invalid {colname}", row=i, val=v, level="error"))
+
+        nas = df.loc[df[colname].isna(), colname]
+        if require_all:
+            if len(nas) > 0:
+                # Can't have NAs with require_all
+                for i, v in nas.iteritems():
+                    errors.append(create_error(df, colname, msg="Missing required data", row=i, val=v, level="error"))
+        elif len(nas) == len(df):
+            # Warn if no data in column and not require_all
+            errors.append(create_error(df, colname, msg=f"{colname} column has no data", level="warning"))
+
     return errors
 
 
@@ -267,13 +307,46 @@ def fix(df):
     newdf["file"] = newdf["file"].map(dayofyear_from_file)
 
     # Convert stream pressure <= 0 to small positive number
-    newdf.loc[newdf["stream_pressure"] <= 0, "stream_pressure"] = 1e-4
+    newdf.loc[newdf["stream_pressure"] <= 0, "stream_pressure"] = min_stream_pressure
 
     # Make sure all DB columns are present
     for k in colname_mapping["table_to_file"]:
         if k not in newdf.columns:
             newdf[k] = None
 
+    return newdf
+
+
+def fix_event_rate(df, event_counts):
+    """
+    Update event_rate field based on event counts in event_counts.
+
+    Parameters
+    -----------
+    df: pandas DataFrame
+        SFL DataFrame, based on a "fixed" file
+    event_counts: dict of {str: int}
+        Dictionary with file_id: event count
+
+    Returns
+    -------
+    df: pandas DataFrame
+        Copy of df with updated event_rate fields where possible.
+    """
+    newdf = df.copy(deep=True)
+    for i, row in newdf.iterrows():
+        try:
+            file_duration = float(row["file_duration"])
+        except ValueError:
+            continue
+        try:
+            event_count = int(event_counts[row["file"]])
+        except (ValueError, KeyError):
+            continue
+        try:
+            newdf.loc[i, "event_rate"] = event_count / file_duration
+        except ZeroDivisionError:
+            newdf.iloc[i, "event_rate"] = 0.0
     return newdf
 
 
@@ -321,10 +394,29 @@ def print_tsv_errors(errors, fh, print_all=True):
             continue
         errors_seen.add(e["message"])
         errors_output.append(e)
-    writer = csv.DictWriter(fh, sorted(errors_output[0].keys()), delimiter='\t', lineterminator=os.linesep)
-    writer.writeheader()
+
+    # Find longest string in each column
+    longest = {}
     for e in errors_output:
-        writer.writerow(e)
+        for k, v in e.items():
+            if k not in longest or longest[k] < len(k):
+                longest[k] = len(k)
+            if longest[k] < len(str(v)):
+                longest[k] = len(str(v))
+
+    # Write left-alignd space-spadded TSV output
+    header_written = False
+    for e in errors_output:
+        if not header_written:
+            texts = []
+            for k in sorted(e.keys()):
+                texts.append(k + (" " * (longest[k] - len(k))))
+            print("\t".join(texts), file=fh)
+            header_written = True
+        texts = []
+        for k in sorted(e.keys()):
+            texts.append(str(e[k]) + (" " * (longest[k] - len(str(e[k])))))
+        print("\t".join(texts), file=fh)
 
 
 def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs):
