@@ -122,9 +122,11 @@ before adding the SFL file to the appropriate repository.
 
 ### Source code structure
 
-Active development happens on the `develop` branch and on feature branches
-which are eventually merged into `develop`. Commits on the `master` branch
-represent stable release snapshots with version tags and build products.
+This project follows the [Git feature branch workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow).
+Active development happens on the `develop` branch and on feature branches which are eventually merged into `develop`.
+Commits on the `master` branch represent stable release snapshots with version tags and build products,
+merged from `develop` with `--no-ff` to create a single commit in `master`
+while keeping the complete commit history in develop.
 
 ### Build
 
