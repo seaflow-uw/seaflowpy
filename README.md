@@ -10,7 +10,8 @@ This package is compatible with Python 3.7.
 
 Single file executables of the `seaflowpy` command-line tool
 for MacOS and Linux can be downloaded from the project's github
-[release page](https://github.com/armbrustlab/seaflowpy/releases).
+[releases page](https://github.com/armbrustlab/seaflowpy/releases).
+This is the recommended method if only the command-line tool is required.
 
 ### Docker
 
@@ -44,6 +45,20 @@ pip3 install .
 seaflowpy version
 deactivate
 ```
+
+## Configuration
+
+To use `seaflowpy sfl manifest` AWS credentials need to be configured.
+The easiest way to do this is to install the `awscli` Python package
+and go through configuration.
+
+```sh
+pip3 install awscli
+aws configure
+```
+
+This will store AWS configuration in `~/.aws` which `seaflowpy` will use to
+access Seaflow data in S3 storage.
 
 ## Integration with R
 
@@ -91,19 +106,25 @@ Other errors or missing values may need to be fixed manually.
 with `seaflowpy sfl fix-event-rate`.
 True event counts for raw EVT files can be determined with `seaflowpy evt count`.
 If filtering has already been performed then event counts can be pulled from
-the `all_count` field of the SQLITE3 database.
+the `all_count` column of the opp table in the SQLITE3 database.
 e.g. `sqlite3 -separator $'\t' SCOPE_14.db 'SELECT file, all_count ORDER BY file'`
 
 6) (Optional) As a check for dataset completeness,
 the list of files in an SFL file can be compared to the actual EVT files present
-with `seaflowpy sfl manifest`. It's normal for a few files to differ, especially near midnight.
-But if a large number of files are missing it may be a sign that the data transfer
-was incomplete or the SFL file is missing some days.
+with `seaflowpy sfl manifest`. It's normal for a few files to differ,
+especially near midnight. If a large number of files are missing it may be a
+sign that the data transfer was incomplete or the SFL file is missing some days.
 
 7) Once all errors or warnings have been fixed, do a final `seaflowpy validate`
 before adding the SFL file to the appropriate repository.
 
 ## Development
+
+### Source code structure
+
+Active development happens on the `develop` branch and on feature branches
+which are eventually merged into `develop`. Commits on the `master` branch
+represent stable release snapshots with version tags and build products.
 
 ### Build
 

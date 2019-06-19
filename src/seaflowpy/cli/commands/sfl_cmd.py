@@ -1,8 +1,8 @@
 import os
 import sys
+import botocore
 import click
 from seaflowpy import clouds
-from seaflowpy import conf
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
 
@@ -21,7 +21,7 @@ def sfl_convert_gga_cmd(sfl_file):
 
     To read from STDIN use '-' for SFL_FILE. Prints modified SFL file to STDOUT.
     """
-    df = sfl.read_file(sfl_file)
+    df = sfl.read_file(sfl_file, convert_numerics=False)
     try:
         df = sfl.convert_gga2dd(df)
     except ValueError as e:
@@ -31,14 +31,14 @@ def sfl_convert_gga_cmd(sfl_file):
 
 @sfl_cmd.command('detect-gga')
 @click.argument('sfl-file', nargs=1, type=click.File())
-def sfl_detect_gga_cmd(infile):
+def sfl_detect_gga_cmd(sfl_file):
     """
     Detects GGA coordinates in SFL_FILE.
 
     To read from STDIN use '-' for SFL_FILE. Prints 'True' to STDOUT if any GGA
     coordinates are found, else 'False'.
     """
-    df = sfl.read_file(infile)
+    df = sfl.read_file(sfl_file, convert_numerics=False)
     # Has any GGA coordinates?
     if sfl.has_gga(df):
         click.echo('True')
@@ -88,28 +88,38 @@ def sfl_fix_event_rate_cmd(sfl_file, events_file):
 
 
 @sfl_cmd.command('manifest')
-@click.option('-s', '--s3', is_flag=True,
-    help='If set, EVT files are searched for in the configured S3 bucket under the prefix set in --evt_dir.')
 @click.option('-v', '--verbose', is_flag=True,
     help='Print a list of all file ids not in common between SFL and directory.')
 @click.argument('sfl-file', nargs=1, type=click.File())
 @click.argument('evt-dir', nargs=1, type=str)
-def manifest_cmd(s3, verbose, sfl_file, evt_dir):
+def manifest_cmd(verbose, sfl_file, evt_dir):
     """
     Compares files in SFL-FILE with files in EVT-DIR.
 
-    If --s3 is set then EVT-DIR should be an S3 prefix without a bucket name.
-    The bucket name will be filled in based on seaflowpy config. Iit's normal
-    for one file to be missing from the SFL file or EVT day of year folder
-    around midnight. To read from STDIN use '-' for SFL_FILE. Prints a file list
-    diff to STDOUT.
+    If EVT-DIR begins with 's3://s3-bucket-name' then files will located in S3.
+    To configure credentials for S3 access use the 'aws' command-line tool from
+    the 'awscli' Python package.
+
+    It's normal for about one file per day to be missing from the SFL file or
+    EVT day of year folder, especially around midnight.
+
+    To read from STDIN use '-' for SFL_FILE. Prints a file list diff to STDOUT.
     """
     found_evt_ids = []
-    if s3:
-        # Make sure configuration for aws is ready to go
-        config = conf.get_aws_config()
-        cloud = clouds.AWS(config.items('aws'))
-        files = cloud.get_files(evt_dir)
+    if evt_dir.startswith("s3://"):
+        try:
+            _, _, bucket, evt_dir = evt_dir.split("/", 3)
+        except ValueError:
+            raise click.ClickException("could not parse bucket and folder from S3 EVT-DIR")
+        cloud = clouds.AWS({"s3-bucket": bucket})
+        try:
+            files = cloud.get_files(evt_dir)
+        except botocore.exceptions.NoCredentialsError:
+            print('Please configure aws first:', file=sys.stderr)
+            print('  $ pip install awscli', file=sys.stderr)
+            print('  then', file=sys.stderr)
+            print('  $ aws configure', file=sys.stderr)
+            raise click.Abort()
         found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files))
     else:
         found_evt_files = seaflowfile.find_evt_files(evt_dir)
@@ -141,12 +151,23 @@ def sfl_print_cmd(sfl_files):
     """
     Concatenates raw SFL files, prints a standardized SFL file.
 
-    Outputs only columns for database import. The correct day of year folder
-    will be added to "FILE" column values if not present. "DATE" column will be
-    created if not present based on "FILE" column values (only applies to
-    new-style datestamped file names). Any other required columns which are
-    missing will be created with "NA" values. Input files will be concatenated
-    in the order they're listed on the command-line. Outputs to STDOUT.
+    Makes the following changes to create a standardized SFL file:
+
+    - Outputs only columns for database import.
+
+    - The correct day of year folder will be added to FILE column values if not
+    present
+
+    - DATE column will be created if not present based on "FILE" column values
+    (only applies to new-style datestamped file names)
+
+    - STREAM PRESSURE values <= 0 will be changed to 1e-4
+
+    - Any other required columns which are missing will be created with NA
+    values.
+
+    Input files will be concatenated in the order they're listed on the
+    command-line. Outputs to STDOUT.
     """
     df = None
     for f in sfl_files:
@@ -170,11 +191,31 @@ def sfl_validate_cmd(json, verbose, sfl_file):
     Validates an SFL file.
 
     Checks that:
-    all required columns are present;
-    there are no missing values in columns that don't allow NULLs (FILE, DATE, LAT, LON);
-    "FILE" column values have day of year folders, are in the proper format, in chronological order, and are unique;
-    "DATE" column values are in the proper format, represent valid date and times, and are UTC;
-    "LAT" and "LON" coordinate column values are valid decimal degree values.
+
+    - Required columns are present: FILE, DATE, FILE DURATION, LAT, LON,
+    CONDUCTIVITY, SALINITY, OCEAN TEMP, PAR, BULK RED, STREAM PRESSURE,
+    EVENT RATE
+
+    - No missing values in following columns: FILE, DATE, FILE DURATION, LAT,
+    LON, STREAM PRESSURE, EVENT RATE
+
+    - FILE column values have day of year folders, are in the proper format, in
+    chronological order, are unique, and matches DATE column
+
+    - DATE column values are in the proper format, represent valid dates and
+    times, and are UTC
+
+    - FILE DURATION is a positive number
+
+    - LAT and LON column values are valid decimal degree values in the correct
+    ranges
+
+    - CONDUCTIVITY, SALINITY, OCEAN TEMP, PAR, BULK_RED column values are
+    numbers
+
+    - STREAM PRESSURE is a positive number >= 1e-4
+
+    - EVENT RATE is a positive number
 
     Because some of these errors can affect every row of the file (e.g. out of
     order files), only the first error of each type is printed. To get a full

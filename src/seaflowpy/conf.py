@@ -8,7 +8,7 @@ CONFIG_FILE = os.path.expanduser("~/.seaflowpy/config")
 
 def get_config(config_path=CONFIG_FILE):
     config = configparser.ConfigParser()
-    config.read(config_path)
+    _ = config.read(config_path)
     return config
 
 
@@ -23,13 +23,13 @@ def get_ssh_config(config=None, config_path=CONFIG_FILE):
     if not config.has_section(section):
         config.add_section(section)
         dirty = True
-    if not config.has_option(section, "ssh-key-file"):
+    if not config.has_option(section, "ssh-private-key-file"):
         response = input("SSH private key location: ")
-        config.set(section, "ssh-key-file", response)
+        config.set(section, "ssh-private-key-file", response)
         dirty = True
-    if not config.has_option(section, "user"):
+    if not config.has_option(section, "ssh-user"):
         response = input("Remote Linux user: ")
-        config.set(section, "user", response)
+        config.set(section, "ssh-user", response)
         dirty = True
 
     if dirty:
@@ -50,7 +50,7 @@ def get_aws_config(config=None, config_path=CONFIG_FILE, s3_only=False):
 
     options = ["s3-bucket"]
     if not s3_only:
-        options.extend(["key-name", "security-group", "image-id"])
+        options.extend(["ssh-private-key-name", "security-group", "image-id"])
 
     for o in options:
         if not config.has_option(section, o):
@@ -67,5 +67,5 @@ def get_aws_config(config=None, config_path=CONFIG_FILE, s3_only=False):
 def save_config(config, config_path=CONFIG_FILE):
     # Write config data to disk
     util.mkdir_p(os.path.dirname(config_path))
-    with open(config_path, "w") as fh:
+    with open(config_path, mode="w", encoding="utf=8") as fh:
         config.write(fh)
