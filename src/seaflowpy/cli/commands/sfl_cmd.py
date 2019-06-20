@@ -3,6 +3,7 @@ import sys
 import botocore
 import click
 from seaflowpy import clouds
+from seaflowpy import db
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
 
@@ -67,22 +68,28 @@ def sfl_dedup_cmd(sfl_file):
 
 
 @sfl_cmd.command('fix-event-rate')
-@click.argument('sfl-file', nargs=1, type=click.File())
-@click.argument('events-file', nargs=1, type=click.File())
+@click.argument('sfl-file', nargs=1, type=click.Path(exists=True, readable=True))
+@click.argument('events-file', nargs=1, type=click.Path(exists=True, readable=True))
 def sfl_fix_event_rate_cmd(sfl_file, events_file):
     """
     Calculates true event rates.
 
-    To read SFL_FILE or EVENTS_FILE from STDIN use '-', but obviously not for
-    both. EVENTS-FILE should be a TSV file with EVT path/file ID in first
-    column and event count in last column. A version of SFL_FILE with updated
-    event rates will be printed to STDOUT. In cases where the file duration
-    value is < 0 or NA the event rate will be NA.
+    EVENTS-FILE should be a TSV file with EVT path/file ID in first
+    column and event count in last column, or a popcycle SQLite3 database file
+    with a '.db' extension. A version of SFL_FILE with updated event rates will
+    be printed to STDOUT. In cases where the file duration value is < 0 or NA
+    the event rate will be NA.
     """
     df = sfl.read_file(sfl_file)
     df = sfl.fix(df)
-    lines = [x.rstrip().split('\t') for x in events_file.readlines()]
-    event_counts = {seaflowfile.SeaFlowFile(x[0]).file_id: int(x[-1]) for x in lines}
+
+    # Event counts should be a dict of { file: event_count }
+    if events_file.endswith(".db"):
+        event_counts = db.get_event_counts(events_file)
+    else:
+        lines = [x.rstrip().split('\t') for x in events_file.readlines()]
+        event_counts = {seaflowfile.SeaFlowFile(x[0]).file_id: int(x[-1]) for x in lines}
+
     df = sfl.fix_event_rate(df, event_counts)
     sfl.save_to_file(df, sys.stdout)
 
@@ -111,7 +118,7 @@ def manifest_cmd(verbose, sfl_file, evt_dir):
             _, _, bucket, evt_dir = evt_dir.split("/", 3)
         except ValueError:
             raise click.ClickException("could not parse bucket and folder from S3 EVT-DIR")
-        cloud = clouds.AWS({"s3-bucket": bucket})
+        cloud = clouds.AWS([("s3-bucket", bucket)])
         try:
             files = cloud.get_files(evt_dir)
         except botocore.exceptions.NoCredentialsError:
@@ -185,10 +192,10 @@ def sfl_print_cmd(sfl_files):
     help='Report errors as JSON.')
 @click.option('-v', '--verbose', is_flag=True,
     help='Report all errors.')
-@click.argument('sfl-file', nargs=1, type=click.File())
+@click.argument('sfl-file', nargs=-1, type=click.Path(exists=True, readable=True))
 def sfl_validate_cmd(json, verbose, sfl_file):
     """
-    Validates an SFL file.
+    Validates SFL files.
 
     Checks that:
 
@@ -221,12 +228,15 @@ def sfl_validate_cmd(json, verbose, sfl_file):
     order files), only the first error of each type is printed. To get a full
     printout of all errors use --verbose.
 
-    To read from STDIN use '-' for SFL_FILE. Prints to STDOUT.
+    Prints to STDOUT.
     """
-    df = sfl.read_file(sfl_file)
-    errors = sfl.check(df)
-    if len(errors) > 0:
-        if json:
-            sfl.print_json_errors(errors, sys.stdout, print_all=verbose)
-        else:
-            sfl.print_tsv_errors(errors, sys.stdout, print_all=verbose)
+    for f in sfl_file:
+        print(os.path.basename(f))
+        df = sfl.read_file(f)
+        errors = sfl.check(df)
+        if len(errors) > 0:
+            if json:
+                sfl.print_json_errors(errors, sys.stdout, print_all=verbose)
+            else:
+                sfl.print_tsv_errors(errors, sys.stdout, print_all=verbose)
+        print("")  # blank line spacer

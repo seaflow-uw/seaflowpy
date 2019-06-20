@@ -227,6 +227,13 @@ def get_sfl_table(dbpath):
     return df
 
 
+def get_event_counts(dbpath):
+    filterid = get_latest_filter(dbpath).loc[0, "id"]
+    opp = get_opp_table(dbpath, filterid)
+    grouped = opp[["file", "all_count"]].groupby(["file"])
+    return {name: group["all_count"].head(1).values[0] for name, group in grouped}
+
+
 def merge_dbs(db1, db2):
     """Merge two SQLite databases into a new database."""
     with sqlite3.connect(db1) as con1:
