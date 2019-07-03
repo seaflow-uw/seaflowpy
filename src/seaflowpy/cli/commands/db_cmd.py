@@ -12,7 +12,7 @@ def db_cmd():
     pass
 
 
-@db_cmd.command('create')
+@db_cmd.command('import-sfl')
 @click.option('-c', '--cruise',
     help='Supply a cruise name here to override any found in the filename.')
 @click.option('-f', '--force', is_flag=True,
@@ -25,16 +25,17 @@ def db_cmd():
     help='Report all errors.')
 @click.argument('sfl-file', nargs=1, type=click.File())
 @click.argument('db-file', nargs=1, type=click.Path(writable=True))
-def db_create_cmd(cruise, force, json, serial, verbose, sfl_file, db_file):
+def db_import_sfl_cmd(cruise, force, json, serial, verbose, sfl_file, db_file):
     """
-    Creates database from SFL file.
+    Imports SFL metadata to database.
 
     Writes processed SFL-FILE data to SQLite3 database file. Data will be
     checked before inserting. If any errors are found the first of each type
     will be reported and no data will be written. To read from STDIN use '-'
     for SFL-FILE. SFL-FILE should have the <cruise name> and <instrument serial>
     embedded in the filename as '<cruise name>_<instrument serial>.sfl'. If not,
-    specify as options. Errors or warnings are output to STDOUT.
+    specify as options. If a database file does not exist a new one will be
+    created. Errors or warnings are output to STDOUT.
     """
     if sfl_file is not sys.stdin:
         # Try to read cruise and serial from filename
@@ -80,15 +81,12 @@ def db_create_cmd(cruise, force, json, serial, verbose, sfl_file, db_file):
 @click.option('-c', '--cruise',
     help='Supply a cruise name for parameter selection. If not provided cruise in database will be used.')
 @click.argument('filter-file', nargs=1, type=click.File())
-@click.argument('db-file', nargs=1, type=click.Path(exists=True, writable=True))
+@click.argument('db-file', nargs=1, type=click.Path(writable=True))
 def db_import_filter_params_cmd(cruise, filter_file, db_file):
     """
     Imports filter parameters to database.
 
-    File paths must be new-style datestamped paths. Any part of the file
-    path except for the filename will be ignored. The filename may include a
-    '.gz' extension. If an entry can't be found for the specified cruise this
-    command will exit with a non-zero exit status.
+    A new database will be created if it doesn't exist.
     """
     # If cruise not supplied, try to get from db
     if cruise is None:
