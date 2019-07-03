@@ -5,8 +5,24 @@ from seaflowpy import db
 from seaflowpy.errors import SeaFlowpyError
 from seaflowpy import sfl
 
+# Subcommand aliases for backwards compatibility
+aliases = {'create': 'import-sfl'}
 
-@click.group()
+
+class AliasedGroup(click.Group):
+
+    def get_command(self, ctx, cmd_name):
+        rv = click.Group.get_command(self, ctx, cmd_name)
+        if rv is not None:
+            return rv
+        try:
+            real_cmd = aliases[cmd_name]
+            return click.Group.get_command(self, ctx, real_cmd)
+        except KeyError:
+            return None
+
+
+@click.command(cls=AliasedGroup)
 def db_cmd():
     """Database file operations subcommand."""
     pass
