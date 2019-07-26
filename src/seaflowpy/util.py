@@ -45,6 +45,8 @@ def gzip_file(path, print_timing=False):
 
 def mkdir_p(path):
     """Create directory tree for path."""
+    if path == '':
+        return
     try:
         os.makedirs(path)
     except OSError as e:

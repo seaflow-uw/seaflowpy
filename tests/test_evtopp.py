@@ -152,6 +152,20 @@ class TestTransform:
             npt.assert_array_equal(orig_df, t_df)
 
 
+class TestSample:
+     def test_sample_evts(self):
+        files = [
+             "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+             "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
+        ]
+        df = sfp.sample.sample(files, 20000, 1, False, 12345, 0)
+        assert len(df.index) == 20000
+        df = sfp.sample.sample(files, 20000, .5, False, 12345, 0)
+        assert len(df.index) == 20000
+        df = sfp.sample.sample(files, 20000, .5, True, 12345, 0)
+        assert (len(df.index) < 20000 and len(df.index) > 0)
+
+
 class TestOutput:
     def test_sqlite3_opp_counts_and_params(self, tmpout, params):
         sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
