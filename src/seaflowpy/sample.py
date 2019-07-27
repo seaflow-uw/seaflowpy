@@ -6,7 +6,8 @@ from . import fileio
 from . import particleops
 
 
-def sample(files, n, file_fraction, filter_noise=True, seed=None, verbose=0):
+def sample(files, n, file_fraction, filter_noise=True, min_chl=0, min_fsc=0,
+           min_pe=0, seed=None, verbose=0):
     """
     Randomly sample rows from EVT files.
 
@@ -21,6 +22,12 @@ def sample(files, n, file_fraction, filter_noise=True, seed=None, verbose=0):
         chosen. At least 1 file will always be chosen.
     filter_noise: bool, default True
         Remove noise particles after sampling.
+    min_chl: int
+        Minimum chl_small value.
+    min_fsc: int
+        Minimum fsc_small value.
+    min_pe: int
+        Minimum pe value.
     seed: int
         Integer seed for PRNG, used in sampling files and rows. If None, a
         source of random seed will be used.
@@ -56,31 +63,29 @@ def sample(files, n, file_fraction, filter_noise=True, seed=None, verbose=0):
             for f in files:
                 print(f)
 
-    # Count all events in selected files
+    rows_per_file = n / len(files)
     total_rows = 0
-    for f in files:
-        try:
-            total_rows += fileio.read_labview_row_count(f)
-        except errors.FileError:
-            pass
-    if total_rows == 0:
-        raise IOError("No data could be read from chosen files")
-
-    if total_rows < n:
-        frac = 1.0
-    else:
-        frac = n / total_rows
-
-    if verbose:
-        print("{} total events".format(total_rows))
-
+    total_rows_postfilter = 0
     subdf = None
     for f in files:
         try:
-            if seed is None:
-                df = fileio.read_evt_labview(f).sample(frac=frac)
+            df = fileio.read_evt_labview(f)
+            total_rows += len(df.index)
+            chl = df["chl_small"].values >= min_chl
+            fsc = df["fsc_small"].values >= min_fsc
+            pe = df["pe"].values >= min_pe
+            if filter_noise:
+                df = particleops.mark_noise(df)
+                df = df[(~df["noise"]) & chl & fsc & pe].drop(columns=["noise"])
             else:
-                df = fileio.read_evt_labview(f).sample(frac=frac, random_state=seed)
+                df = df[chl & fsc & pe]
+            rows = len(df.index)
+            total_rows_postfilter += rows
+            frac = min(rows_per_file / rows, 1)
+            if seed is None:
+                df = df.sample(frac=frac)
+            else:
+                df = df.sample(frac=frac, random_state=seed)
         except errors.FileError as e:
             print("Error reading {}: {}".format(f, str(e)), file=sys.stderr)
         else:
@@ -94,12 +99,8 @@ def sample(files, n, file_fraction, filter_noise=True, seed=None, verbose=0):
     subdf.reset_index(drop=True, inplace=True)  # in case downstream depends on unique row labels
 
     if verbose:
+        print("{} total events".format(total_rows))
+        print("{} events after noise/min filtering".format(total_rows_postfilter))
         print("{} events sampled".format(len(subdf.index)))
-
-    if filter_noise:
-        subdf = particleops.mark_noise(subdf)
-        subdf = subdf[~subdf["noise"]].drop(columns=["noise"])
-        if verbose:
-            print("{} events after noise filtering".format(len(subdf.index)))
 
     return subdf

@@ -76,7 +76,7 @@ def validate_count(ctx, param, value):
 
 
 def validate_seed(ctx, param, value):
-    if value < 0 or value > (2**32 - 1):
+    if value is not None and (value < 0 or value > (2**32 - 1)):
         raise click.BadParameter(f'must be between 0 and 2**32 - 1.')
     return value
 
@@ -86,8 +86,14 @@ def validate_seed(ctx, param, value):
     help='Output file path. ".gz" extension will gzip output.')
 @click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_count,
     help='Number of events to keep, before noise filtering.')
-@click.option('-f', '--file_fraction', type=float, default=0.1, show_default=True, callback=validate_file_fraction,
+@click.option('-f', '--file-fraction', type=float, default=0.1, show_default=True, callback=validate_file_fraction,
     help='Fraction of files to sample from.')
+@click.option('--min-chl', type=int, default=0, show_default=True,
+    help='Mininum chlorophyll (small) value.')
+@click.option('--min-fsc', type=int, default=0, show_default=True,
+    help='Mininum forward scatter (small) value.')
+@click.option('--min-pe', type=int, default=0, show_default=True,
+    help='Mininum phycoerythrin value.')
 @click.option('-n', '--noise-filter', 'filter_noise', is_flag=True, default=False, show_default=True,
     help='Apply noise filter after subsampling.')
 @click.option('-s', '--seed', type=int, callback=validate_seed,
@@ -95,7 +101,8 @@ def validate_seed(ctx, param, value):
 @click.option('-v', '--verbose', count=True,
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
-def sample_evt_cmd(outfile, count, file_fraction, filter_noise, seed, verbose, files):
+def sample_evt_cmd(outfile, count, file_fraction, min_chl, min_fsc, min_pe,
+                   filter_noise, seed, verbose, files):
     """
     Sample a subset of rows in EVT files.
 
@@ -112,7 +119,11 @@ def sample_evt_cmd(outfile, count, file_fraction, filter_noise, seed, verbose, f
     # dirs to file paths, only keep EVT/OPP files
     files = seaflowfile.keep_evt_files(expand_file_list(files))
     try:
-        df = sample.sample(files, count, file_fraction, filter_noise, seed, verbose)
+        df = sample.sample(
+            files, count, file_fraction, filter_noise=filter_noise,
+            min_chl=min_chl, min_fsc=min_fsc, min_pe=min_pe, seed=seed,
+            verbose=verbose
+        )
     except (ValueError, IOError) as e:
         raise click.ClickException(str(e))
     try:
