@@ -36,7 +36,8 @@ source "$venvdir/bin/activate"
 echo "Installing requirements.txt, pytest, seaflowpy from wheel" >&2
 pip3 install -q -r requirements.txt
 pip3 install -q pytest
-pip3 install -q -f ./dist seaflowpy
+# --no-index to prevent pulling from pypi in case pypi version is higher
+pip3 install -q --no-index -f ./dist seaflowpy
 git clean -fdx tests  # clean up test caches
 pytest
 pytestrc=$?
