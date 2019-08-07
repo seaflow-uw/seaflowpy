@@ -95,7 +95,7 @@ def validate_seed(ctx, param, value):
 @click.option('--min-pe', type=int, default=0, show_default=True,
     help='Mininum phycoerythrin value.')
 @click.option('-n', '--noise-filter', 'filter_noise', is_flag=True, default=False, show_default=True,
-    help='Apply noise filter after subsampling.')
+    help='Apply noise filter before subsampling.')
 @click.option('-s', '--seed', type=int, callback=validate_seed,
     help='Integer seed for PRNG, otherwise system-dependent source of randomness is used to seed the PRNG.')
 @click.option('-v', '--verbose', count=True,

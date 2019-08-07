@@ -70,6 +70,9 @@ def sample(files, n, file_fraction, filter_noise=True, min_chl=0, min_fsc=0,
     for f in files:
         try:
             df = fileio.read_evt_labview(f)
+        except errors.FileError as e:
+            print("Error reading {}: {}".format(f, str(e)), file=sys.stderr)
+        else:
             total_rows += len(df.index)
             chl = df["chl_small"].values >= min_chl
             fsc = df["fsc_small"].values >= min_fsc
@@ -80,21 +83,21 @@ def sample(files, n, file_fraction, filter_noise=True, min_chl=0, min_fsc=0,
             else:
                 df = df[chl & fsc & pe]
             rows = len(df.index)
+            if not rows:
+                print("No data after noise/min filtering {}".format(f), file=sys.stderr)
+                continue
             total_rows_postfilter += rows
             frac = min(rows_per_file / rows, 1)
             if seed is None:
                 df = df.sample(frac=frac)
             else:
                 df = df.sample(frac=frac, random_state=seed)
-        except errors.FileError as e:
-            print("Error reading {}: {}".format(f, str(e)), file=sys.stderr)
-        else:
             if subdf is None:
                 subdf = df
             else:
                 subdf = pd.concat([subdf, df])
     if subdf is None:
-        raise IOError("No data could be read from chosen files")
+        raise IOError("No data sampled from chosen files")
 
     subdf.reset_index(drop=True, inplace=True)  # in case downstream depends on unique row labels
 

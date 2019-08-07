@@ -153,24 +153,33 @@ class TestTransform:
 
 
 class TestSample:
-     def test_sample_evts(self):
+    def test_sample_evts(self):
         files = [
              "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
              "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
         ]
         df = sfp.sample.sample(files, 20000, 1, filter_noise=False, seed=12345)
         assert len(df.index) == 20000
+        assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) > 0
+
         df = sfp.sample.sample(files, 20000, .5, filter_noise=False, seed=12345)
         assert len(df.index) == 20000
+        assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) > 0
+
         df = sfp.sample.sample(files, 20000, .5, filter_noise=True, seed=12345)
         assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) == 0
-        df = sfp.sample.sample(files, 20000, .5, filter_noise=True, min_chl=1000, seed=12345)
-        assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) == 0
-        assert len(df[df["chl_small"] < 1000]) == 0
-        df = sfp.sample.sample(files, 20000, .5, filter_noise=False, min_pe=1000, seed=12345)
-        assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) > 0
-        assert len(df[df["pe"] < 1000]) == 0
+        assert len(df.index) == 20000
 
+        df = sfp.sample.sample(files, 20000, .5, filter_noise=False, min_chl=1000, min_pe=1000, min_fsc=1000, seed=12345)
+        assert len(df[df["pe"] < 1000]) == 0
+        assert len(df[df["chl_small"] < 1000]) == 0
+        assert len(df[df["fsc_small"] < 1000]) == 0
+
+        df = sfp.sample.sample(files, 20000, .5, filter_noise=True, min_chl=1000, min_pe=1000, min_fsc=1000, seed=12345)
+        assert len(df[df["pe"] < 1000]) == 0
+        assert len(df[df["chl_small"] < 1000]) == 0
+        assert len(df[df["fsc_small"] < 1000]) == 0
+        assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) == 0
 
 class TestOutput:
     def test_sqlite3_opp_counts_and_params(self, tmpout, params):
