@@ -106,15 +106,11 @@ def sample_evt_cmd(outfile, count, file_fraction, min_chl, min_fsc, min_pe,
     """
     Sample a subset of rows in EVT files.
 
-    Sample a subset of rows EVT files.
-    The list of EVT files can should be file paths or directory paths
+    The list of EVT files can be file paths or directory paths
     which will be searched for EVT files.
     COUNT events will be randomly selected from all data.
-    For speed, only a random subset of files will be sampled from.
-    To reduce file size only the D1, D2, fsc_small, and chl_small columns are
-    saved.
-    The output of this command can be converted back to a normal EVT file
-    with zeros written in missing columns with the "evt rehydrate" command.
+    For speed, only a fraction of the files will be sampled from,
+    specified by FILE-FRACTION.
     """
     # dirs to file paths, only keep EVT/OPP files
     files = seaflowfile.keep_evt_files(expand_file_list(files))

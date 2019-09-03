@@ -56,13 +56,15 @@ def tmpout(tmpdir):
 
 
 class TestOpen:
-    def test_read_evt_valid(self):
-        df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid(self, benchmark):
+        df = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert len(df.index) == 40000
         assert list(df) == sfp.particleops.COLUMNS
 
-    def test_read_evt_valid_gz(self):
-        df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_gz(self, benchmark):
+        df = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert len(df.index) == 40000
         assert list(df) == sfp.particleops.COLUMNS
 
@@ -104,13 +106,14 @@ class TestFilter:
         with pytest.raises(ValueError):
             _df = sfp.particleops.mark_focused(evt_df, pd.DataFrame.from_dict({}))
 
-    def test_mark_focused_with_set_params(self, evt_df, params):
-        evt_df = sfp.particleops.mark_focused(evt_df, params)
+    @pytest.mark.benchmark(group="evt-filter")
+    def test_mark_focused_with_set_params(self, evt_df, params, benchmark):
+        evt_df = benchmark(sfp.particleops.mark_focused, evt_df, params)
         assert len(evt_df.index) == 40000
         assert len(evt_df[evt_df["q2.5"]].index) == 423
         assert len(evt_df[evt_df["q50"]].index) == 107
-        assert len(evt_df[evt_df["q97.5"]].index) == 86
-        assert len(sfp.particleops.select_focused(evt_df).index) == 427
+        assert len(evt_df[evt_df["q97.5"]].index) == 85
+        assert len(sfp.particleops.select_focused(evt_df).index) == 426
 
     def test_noise_filter(self, evt_df):
         """Events with zeroes in all of D1, D2, and fsc_small are noise"""
@@ -118,7 +121,7 @@ class TestFilter:
         # D1, D2, or fsc_small
         assert np.any((evt_df["D1"] == 0) & (evt_df["D2"] == 0) & (evt_df["fsc_small"] == 0)) == True
 
-        evt_df = sfp.particleops.mark_noise(evt_df)
+        sfp.particleops.mark_noise(evt_df)
         signal_df = evt_df[~evt_df["noise"]]
 
         # Correct event count
@@ -126,6 +129,11 @@ class TestFilter:
 
         # No events are all zeroes D1, D2, and fsc_small
         assert np.any((signal_df["D1"] == 0) & (signal_df["D2"] == 0) & (signal_df["fsc_small"] == 0)) == False
+
+    def test_saturation_filter(self, evt_df):
+        """Events with max D1 or max D2"""
+        sfp.particleops.mark_saturated(evt_df)
+        assert sum(evt_df["saturated"]) == 211
 
 
 class TestTransform:
@@ -277,7 +285,7 @@ class TestOutput:
 
         df = tmpout["evt_df"]
         df = sfp.particleops.mark_focused(df, params)
-        # df should now have 4 new columns for noise and 3 quantiles
+        # df should now have 5 new columns for noise, saturated, and 3 quantiles
         # Write an opp file
         df = sfp.particleops.select_focused(df)
         sfp.fileio.write_opp_labview(df, sfile.file_id, tmpout["oppdir"], gz=False)
@@ -295,7 +303,7 @@ class TestOutput:
 
         df = tmpout["evt_df"]
         df = sfp.particleops.mark_focused(df, params)
-        # df should now have 4 new columns for noise and 3 quantiles
+        # df should now have 5 new columns for noise, saturated, and 3 quantiles
         # Write an opp file
         df = sfp.particleops.select_focused(df)
         sfp.fileio.write_opp_labview(df, sfile.file_id, tmpout["oppdir"])
@@ -382,8 +390,8 @@ class TestMultiFileFilter(object):
 def multi_file_asserts(tmpout):
     # Check MD5 checksums of uncompressed OPP files
     hashes = {
-        "2014_185/2014-07-04T00-00-02+00-00.opp.gz": "c2a7bd9ba30e181210ac30ef806715f9",
-        "2014_185/2014-07-04T00-03-02+00-00.opp.gz": "b0a2a016cf7e0e00f9eb9e993b5d4b4e"
+        "2014_185/2014-07-04T00-00-02+00-00.opp.gz": "31584d9d80284fcbc66fe9dc5ed83e03",
+        "2014_185/2014-07-04T00-03-02+00-00.opp.gz": "24677d10502a48f136098329d1f0da41"
     }
     for f in ["2014_185/2014-07-04T00-00-02+00-00.opp.gz", "2014_185/2014-07-04T00-03-02+00-00.opp.gz"]:
         f_path = os.path.join(tmpout["oppdir"], f)
@@ -421,13 +429,13 @@ def multi_file_asserts(tmpout):
     npt.assert_array_equal(
         opp_table["opp_count"],
         pd.Series([
-            423, 107, 86,
-            492, 182, 147,
+            423, 107, 85,
+            492, 178, 142,
             0, 0, 0,
             0, 0, 0,
             0, 0, 0,
             0, 0, 0,
-            0, 17, 19
+            0, 13, 14
         ], name="opp_count")
     )
     npt.assert_array_equal(
