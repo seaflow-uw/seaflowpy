@@ -143,7 +143,8 @@ def do_filter(work_q, opps_q):
         try:
             evt_df = particleops.mark_focused(evt_df, work["filter_params"])
             work["all_count"] = len(evt_df.index)
-            work["evt_count"] = len(evt_df[~evt_df["noise"]].index)
+            work["noise_count"] = len(evt_df[evt_df["noise"]].index)
+            work["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
             work["opp"] = particleops.select_focused(evt_df)
         except Exception as e:
             work["error"] = f"Unexpected error when selecting focused partiles in file {evt_file}: {e}"
@@ -179,7 +180,8 @@ def do_save(opps_q, stats_q, files_left):
             if work["dbpath"]:
                 filter_id = work["filter_params"]["id"].unique().tolist()[0]
                 db.save_opp_to_db(work["file"], work["opp"], work["all_count"],
-                    work["evt_count"], filter_id, work["dbpath"])
+                                  work["all_count"] - work["noise_count"],
+                                  filter_id, work["dbpath"])
                 db.save_outlier(work["file"], 0, work["dbpath"])
         except Exception as e:
             work["error"] = "Unexpected error when saving file {} to db: {}".format(work["file"], e)
@@ -189,8 +191,10 @@ def do_save(opps_q, stats_q, files_left):
 
 @util.quiet_keyboardinterrupt
 def do_reporting(stats_q, done_q, file_count, every):
-    evt_count = 0
-    evt_signal_count = 0
+    event_count = 0
+    noise_count = 0
+    signal_count = 0
+    saturated_count = 0
     opp_count = 0
     files_ok = 0
 
@@ -200,8 +204,10 @@ def do_reporting(stats_q, done_q, file_count, every):
     t0 = time.time()
 
     last = 0  # Last progress milestone in increments of every
-    evt_count_block = 0  # EVT particles in this block (between milestones)
-    evt_signal_count_block = 0  # EVT noise filtered particles in this block
+    event_count_block = 0  # EVT particles in this block (between milestones)
+    noise_count_block = 0  # EVT noise particles in this block
+    signal_count_block = 0  # EVT signal (not noise) particles in this block
+    saturated_count_block = 0  # particles saturating D1 or D2
     opp_count_block = 0  # OPP particles in this block
     files_seen = 0
 
@@ -224,8 +230,10 @@ def do_reporting(stats_q, done_q, file_count, every):
         opp = work["opp"]
         # only consider 50% quantile for reporting
         opp = opp[opp["q50"]]
-        evt_count_block += work["all_count"]
-        evt_signal_count_block += work["evt_count"]
+        event_count_block += work["all_count"]
+        noise_count_block += work["noise_count"]
+        signal_count_block = event_count_block - noise_count_block
+        saturated_count_block += work["saturated_count"]
         opp_count_block += len(opp.index)
 
         # Print progress periodically
@@ -233,43 +241,51 @@ def do_reporting(stats_q, done_q, file_count, every):
         # Round down to closest every%
         milestone = int(perc / every) * every
         if milestone > last:
-            now = time.time()
-            evt_count += evt_count_block
-            evt_signal_count += evt_signal_count_block
+            event_count += event_count_block
+            noise_count += noise_count_block
+            signal_count += signal_count_block
+            saturated_count += saturated_count_block
             opp_count += opp_count_block
-            ratio_signal_block = util.zerodiv(opp_count_block, evt_signal_count_block)
+            ratio_noise_block = util.zerodiv(noise_count_block, event_count_block)
+            ratio_saturated_block = util.zerodiv(saturated_count_block, event_count_block)
+            ratio_evtopp_block = util.zerodiv(opp_count_block, signal_count_block)
             msg = f"File: {i + 1}/{file_count} {perc:5.4}%"
-            msg += " OPP/EVT particles: %i / %i (%i total events) ratio: %.04f elapsed: %.2fs" % \
-                (opp_count_block, evt_signal_count_block, evt_count_block,
-                ratio_signal_block, now - t0)
+            msg += " events: %d noise: %d (%.04f) sat: %d (%.04f) opp: %d (%.04f) t: %.2fs" % \
+                (
+                    event_count_block,
+                    noise_count_block, ratio_noise_block,
+                    saturated_count_block, ratio_saturated_block,
+                    opp_count_block, ratio_evtopp_block,
+                    time.time() - t0
+                )
             print(msg)
             sys.stdout.flush()
             last = milestone
-            evt_count_block = 0
-            evt_signal_count_block = 0
+            event_count_block = 0
+            noise_count_block = 0
+            signal_count_block = 0
+            saturated_count_block = 0
             opp_count_block = 0
 
     # If any particle count data is left, add it to totals
-    if evt_count_block > 0:
-        evt_count += evt_count_block
-        evt_signal_count += evt_signal_count_block
-        opp_count += opp_count_block
+    event_count += event_count_block
+    noise_count += noise_count_block
+    signal_count += signal_count_block
+    saturated_count += saturated_count_block
+    opp_count += opp_count_block
 
-    opp_evt_signal_ratio = util.zerodiv(opp_count, evt_signal_count)
+    ratio_noise = util.zerodiv(noise_count, event_count)
+    ratio_saturated = util.zerodiv(saturated_count, event_count)
+    ratio_evtopp = util.zerodiv(opp_count, signal_count)
 
-    t1 = time.time()
-    delta = t1 - t0
-    evtrate = util.zerodiv(evt_count, delta)
-    evtsignalrate = util.zerodiv(evt_signal_count, delta)
-    opprate = util.zerodiv(opp_count, delta)
-
-    print("")
-    print(f"Input EVT files = {file_count}")
-    print(f"Parsed EVT files = {files_ok}")
-    print("EVT particles = %s (%.2f p/s)" % (evt_count, evtrate))
-    print("EVT noise filtered particles = %s (%.2f p/s)" % (evt_signal_count, evtsignalrate))
-    print("OPP particles = %s (%.2f p/s)" % (opp_count, opprate))
-    print("OPP/EVT ratio = %.04f" % opp_evt_signal_ratio)
-    print("Filtering completed in %.2f seconds" % (delta,))
-
+    summary_text = "Total events: %d noise:  %d (%.04f) sat: %d (%.04f) opp: %d (%.04f) t: %.2fs" % \
+        (
+            event_count,
+            noise_count, ratio_noise,
+            saturated_count, ratio_saturated,
+            opp_count, ratio_evtopp,
+            time.time() - t0
+        )
+    print(summary_text)
+    print(f"{files_ok} / {file_count} EVT files parsed successfully")
     done_q.put(None)
