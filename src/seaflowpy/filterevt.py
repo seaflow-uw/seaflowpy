@@ -278,7 +278,7 @@ def do_reporting(stats_q, done_q, file_count, every):
     ratio_saturated = util.zerodiv(saturated_count, event_count)
     ratio_evtopp = util.zerodiv(opp_count, signal_count)
 
-    summary_text = "Total events: %d noise:  %d (%.04f) sat: %d (%.04f) opp: %d (%.04f) t: %.2fs" % \
+    summary_text = "Total events: %d noise: %d (%.04f) sat: %d (%.04f) opp: %d (%.04f) t: %.2fs" % \
         (
             event_count,
             noise_count, ratio_noise,
