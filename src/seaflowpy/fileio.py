@@ -259,7 +259,8 @@ def read_opp_labview(path, fileobj=None):
     """
     df = read_labview(path, particleops.COLUMNS + ["bitflags"], fileobj)
     df[particleops.COLUMNS] = df[particleops.COLUMNS].astype(np.float64)
-    df["noise"] = False  # we know there's no noise in an OPP data
+    df["noise"] = False  # we know there are no noise events in OPP data
+    df["saturated"] = False  # we know there are no saturated events in OPP data
     df = particleops.decode_bit_flags(df)
     return df
 

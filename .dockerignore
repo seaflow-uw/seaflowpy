@@ -3,3 +3,4 @@
 /.pytest_cache/
 /.git/
 /__pycache__/
+/.benchmarks/

@@ -33,9 +33,8 @@ echo "Creating virtualenv $venvdir" >&2
 python3 -m venv "$venvdir"
 # shellcheck source=/dev/null
 source "$venvdir/bin/activate"
-echo "Installing requirements.txt, pytest, seaflowpy from wheel" >&2
-pip3 install -q -r requirements.txt
-pip3 install -q pytest
+echo "Installing requirements-dev.txt; seaflowpy from wheel" >&2
+pip3 install -q -r requirements-dev.txt
 # --no-index to prevent pulling from pypi in case pypi version is higher
 pip3 install -q --no-index -f ./dist seaflowpy
 git clean -fdx tests  # clean up test caches
@@ -63,7 +62,7 @@ fi
 # Test the new docker image
 # --------------------------------------------------------------------------- #
 git clean -fdx tests  # remove test cache
-docker run --rm -v "$(pwd):/mnt" seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest && pytest --cache-clear'
+docker run --rm -v "$(pwd):/mnt" seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest pytest-benchmark && pytest --cache-clear'
 git clean -fdx tests  # remove test cache from linux
 dockertestrc=$?
 if [ $dockertestrc -ne 0 ]; then

@@ -78,7 +78,7 @@ def sample(files, n, file_fraction, filter_noise=True, min_chl=0, min_fsc=0,
             fsc = df["fsc_small"].values >= min_fsc
             pe = df["pe"].values >= min_pe
             if filter_noise:
-                df = particleops.mark_noise(df)
+                particleops.mark_noise(df)
                 df = df[(~df["noise"]) & chl & fsc & pe].drop(columns=["noise"])
             else:
                 df = df[chl & fsc & pe]

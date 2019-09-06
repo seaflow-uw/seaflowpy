@@ -120,8 +120,9 @@ def mark_focused(df, params):
         if not k in params.columns:
             raise ValueError(f"Missing filter parameter {k} in mark_focused")
 
-    # Apply noise filter
-    df = mark_noise(df)
+    # Apply noise filter and saturation filter for D1 and D2
+    mark_noise(df)
+    mark_saturated(df)
 
     # Filter for aligned/focused particles
     #
@@ -130,9 +131,9 @@ def mark_focused(df, params):
     # grab first width value and calculate aligned particles once
     assert len(params["width"].unique()) == 1  # may as well check
     width = params.loc[0, "width"]
-    alignedD1 = ~df["noise"].values & (df["D1"].values < (df["D2"].values + width))
-    alignedD2 = ~df["noise"].values & (df["D2"].values < (df["D1"].values + width))
-    aligned = alignedD1 & alignedD2
+    alignedD1 = df["D1"].values < (df["D2"].values + width)
+    alignedD2 = df["D2"].values < (df["D1"].values + width)
+    aligned = ~df["noise"] & ~df["saturated"] & alignedD1 & alignedD2
 
     for q in params["quantile"].sort_values():
         p = params[params["quantile"] == q].iloc[0]  # get first row of dataframe as series
@@ -166,9 +167,27 @@ def mark_noise(df):
         raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
 
     # Mark noise events in new column "noise"
-    signal_selector = (df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1)
-    df["noise"] = ~signal_selector  # new column
-    return df
+    df["noise"] = ~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1))
+
+
+def mark_saturated(df):
+    """
+    Mark data that saturates D1 or D2.
+
+    This function adds a new boolean column "saturated" to the particle DataFrame,
+    marking events where none of D1 == max(D1) or D2 == max(D2).
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow raw event data.
+    """
+    if len(set(list(df)).intersection(set(["D1", "D2"]))) < 2:
+        raise ValueError("Can't apply saturation filter without D1 and D2")
+    if len(df.index) == 0:
+        df["saturated"] = False
+    else:
+        df["saturated"] = (df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max())
 
 
 def select_focused(df):

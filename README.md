@@ -149,7 +149,7 @@ Create a new virtual environment
 
 ```sh
 python3 -m venv newenv
-source newenv/bin/actviate
+source newenv/bin/activate
 ```
 
 And install `seaflowpy`
@@ -167,7 +167,7 @@ pip3 freeze | grep -v seaflowpy >requirements.txt
 Then install dev dependencies and freeze
 
 ```sh
-pip3 install pylint pytest tox twine
+pip3 install pylint pytest pytest-benchmark tox twine
 pip3 freeze | grep -v seaflowpy >requirements-dev.txt
 ```
 
