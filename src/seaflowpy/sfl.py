@@ -61,13 +61,13 @@ def check(df):
     """
     errors = []
     errors.extend(check_numeric(df, "file_duration", minval=min_file_duration, require_all=True))
-    errors.extend(check_numeric(df, "lat", minval=min_lat, maxval=max_lat, require_all=True))
-    errors.extend(check_numeric(df, "lon", minval=min_lon, maxval=max_lon, require_all=True))
-    errors.extend(check_numeric(df, "conductivity", require_all=False))
-    errors.extend(check_numeric(df, "salinity", require_all=False))
-    errors.extend(check_numeric(df, "ocean_tmp", require_all=False))
-    errors.extend(check_numeric(df, "par", require_all=False))
-    errors.extend(check_numeric(df, "bulk_red", require_all=False))
+    errors.extend(check_numeric(df, "lat", minval=min_lat, maxval=max_lat, require_all=False, require_some=True, warn_missing=True))
+    errors.extend(check_numeric(df, "lon", minval=min_lon, maxval=max_lon, require_all=False, require_some=True, warn_missing=True))
+    errors.extend(check_numeric(df, "conductivity", require_all=False, warn_missing=True))
+    errors.extend(check_numeric(df, "salinity", require_all=False, warn_missing=True))
+    errors.extend(check_numeric(df, "ocean_tmp", require_all=False, warn_missing=True))
+    errors.extend(check_numeric(df, "par", require_all=False, warn_missing=True))
+    errors.extend(check_numeric(df, "bulk_red", require_all=False, warn_missing=True))
     errors.extend(check_numeric(df, "stream_pressure", minval=min_stream_pressure, require_all=True))
     errors.extend(check_numeric(df, "event_rate", minval=min_event_rate, require_all=True))
     errors.extend(check_file(df))
@@ -152,7 +152,7 @@ def check_file(df):
     return errors
 
 
-def check_numeric(df, colname, require_all=False, minval=None, maxval=None):
+def check_numeric(df, colname, require_all=False, require_some=False, warn_missing=False, minval=None, maxval=None):
     """
     Check a numeric column.
 
@@ -167,6 +167,10 @@ def check_numeric(df, colname, require_all=False, minval=None, maxval=None):
         Name of the column to check.
     require_all: bool, default False
         Require that all rows have non-NA value?
+    require_some: bool, default False
+        Require that > 0 rows have non-NA value?
+    warning_missing: bool, default False
+        Warn when any rows have missing data?
     minval: int or float, optional
         Minimum acceptable value.
     maxval: int or float, optional
@@ -198,14 +202,20 @@ def check_numeric(df, colname, require_all=False, minval=None, maxval=None):
             errors.append(create_error(df, colname, msg=f"Invalid {colname}", row=i, val=v, level="error"))
 
         nas = df.loc[df[colname].isna(), colname]
-        if require_all:
-            if len(nas) > 0:
-                # Can't have NAs with require_all
+        if len(nas) == len(df):
+            # No data in column
+            if require_all or require_some:
+                errors.append(create_error(df, colname, msg=f"{colname} column has no data", level="error"))
+            else:
+                errors.append(create_error(df, colname, msg=f"{colname} column has no data", level="warning"))
+        elif len(nas) > 0:
+            # Some missing
+            if require_all:
                 for i, v in nas.iteritems():
                     errors.append(create_error(df, colname, msg="Missing required data", row=i, val=v, level="error"))
-        elif len(nas) == len(df):
-            # Warn if no data in column and not require_all
-            errors.append(create_error(df, colname, msg=f"{colname} column has no data", level="warning"))
+            elif warn_missing:
+                for i, v in nas.iteritems():
+                    errors.append(create_error(df, colname, msg="Missing data", row=i, val=v, level="warning"))
 
     return errors
 
