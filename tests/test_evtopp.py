@@ -76,6 +76,18 @@ class TestOpen:
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview(truncpath)
 
+    def test_read_evt_valid_memory(self):
+        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", "rb").read()
+        df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", io.BytesIO(data))
+        assert len(df.index) == 40000
+        assert list(df) == sfp.particleops.COLUMNS
+
+    def test_read_evt_valid_gz_memory(self):
+        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", "rb").read()
+        df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", io.BytesIO(data))
+        assert len(df.index) == 40000
+        assert list(df) == sfp.particleops.COLUMNS
+
     def test_read_evt_empty(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
@@ -95,6 +107,24 @@ class TestOpen:
     def test_read_evt_less_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
+    
+    def test_read_labview_row_count_valid(self):
+        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
+        assert n == 40000
+
+    def test_read_labview_row_count_valid_gz(self):
+        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
+        assert n == 40000
+
+    def test_read_labview_row_count_valid_memory(self):
+        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", "rb").read()
+        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", io.BytesIO(data))
+        assert n == 40000
+
+    def test_read_labview_row_count_valid_gz_memory(self):
+        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", "rb").read()
+        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", io.BytesIO(data))
+        assert n == 40000
 
 
 class TestFilter:
