@@ -91,9 +91,7 @@ def mark_focused(df, params):
     """
     Mark focused particle data.
 
-    Adds two boolean columns to the original DataFrame: "noise" identifies
-    events below the instrument noise floor, and "focused" identifies focused
-    particles.
+    Adds boolean cols for noise, saturation, and focused particles by quantile.
 
     Parameters
     ----------
@@ -101,12 +99,11 @@ def mark_focused(df, params):
         SeaFlow raw event DataFrame.
     params: pandas.DataFrame
         Filtering parameters as pandas DataFrame.
-
+    
     Returns
     -------
     pandas.DataFrame
-        Reference to input DataFrame with boolean columns for noise and
-        focused particles by quantile.
+        Reference to input DataFrame with new boolean columns.
     """
     # Check parameters
     param_keys = [
@@ -148,6 +145,7 @@ def mark_focused(df, params):
         # Mark focused particles
         colname = f"q{util.quantile_str(q)}"
         df[colname] = opp_selector
+
     return df
 
 
