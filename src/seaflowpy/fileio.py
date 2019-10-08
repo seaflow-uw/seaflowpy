@@ -1,8 +1,8 @@
 from contextlib import contextmanager
-from subprocess import Popen, PIPE
 import gzip
 import io
 import os
+import zlib
 import numpy as np
 import pandas as pd
 from . import errors
@@ -35,25 +35,23 @@ def file_open_r(path, fileobj=None):
     -------
     Context manager for file-like object of Bytes.
     """
+    # zlib is faster than gzip for decompression of EVT data on MacOS, and
+    # comparable on Linux.
     if fileobj:
         if path.endswith('.gz'):
-            with gzip.GzipFile(fileobj=fileobj) as fh:
-                try:
-                    yield fh
-                finally:
-                    # Closing fh will be done by enclosing context manager,
-                    # but it doesn't know about fileobj so we have to do that
-                    # here.
-                    fileobj.close()
+            gzdata = fileobj.read()
+            zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
+            data = zobj.decompress(gzdata)
+            yield io.BytesIO(data)
         else:
-            try:
-                yield fileobj
-            finally:
-                fileobj.close()
+            yield fileobj
     else:
         if path.endswith('.gz'):
-            with gzip.GzipFile(path) as fh:
-                yield fh
+            with io.open(path, 'rb') as fileobj:
+                gzdata = fileobj.read()
+                zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
+                data = zobj.decompress(gzdata)
+                yield io.BytesIO(data)
         else:
             with io.open(path, 'rb') as fh:
                 yield fh
@@ -79,13 +77,11 @@ def file_open_w(path):
     -------
     Context manager for writable file-like object.
     """
-    with io.open(path, 'wb') as fh:
-        if path.endswith('.gz'):
-            with Popen(["gzip", "-c"], stdin=PIPE, stdout=fh) as p1:
-                # Subprocess using system gzip benchmarked faster than using
-                # gzip module.
-                yield p1.stdin
-        else:
+    if path.endswith('.gz'):
+        with gzip.open(path, mode='wb', compresslevel=9) as fh:
+            yield fh
+    else:
+        with io.open(path, 'wb') as fh:
             yield fh
 
 
@@ -113,44 +109,38 @@ def read_labview(path, columns, fileobj=None):
     """
     colcnt = len(columns) + 2  # 2 leading column per row
 
-    with file_open_r(path, fileobj) as fh:
-        # Particle count (rows of data) is stored in an initial 32-bit
-        # unsigned int
-        try:
+    try:
+        with file_open_r(path, fileobj) as fh:
+            # Particle count (rows of data) is stored in an initial 32-bit
+            # unsigned int
             buff = fh.read(4)
-        except (IOError, EOFError) as e:
-            raise errors.FileError("File could not be read: {}".format(str(e)))
-        if len(buff) == 0:
-            raise errors.FileError("File is empty")
-        if len(buff) != 4:
-            raise errors.FileError("File has invalid particle count header")
-        rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
-        if rowcnt == 0:
-            raise errors.FileError("File has no particle data")
+            if len(buff) == 0:
+                raise errors.FileError("File is empty")
+            if len(buff) != 4:
+                raise errors.FileError("File has invalid particle count header")
+            rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
+            if rowcnt == 0:
+                raise errors.FileError("File has no particle data")
 
-        # Read the rest of the data. Each particle has colcnt unsigned
-        # 16-bit ints in a row.
-        expected_bytes = rowcnt * colcnt * 2  # rowcnt * colcnt columns * 2 bytes
-        # must cast to int here because while BufferedIOReader objects
-        # returned from io.open(path, "rb") will accept a numpy.int64 type,
-        # io.BytesIO objects will not accept this type and will only accept
-        # vanilla int types. This is true for Python 3, not for Python 2.
-        try:
+            # Read the rest of the data. Each particle has colcnt unsigned
+            # 16-bit ints in a row.
+            expected_bytes = rowcnt * colcnt * 2  # rowcnt * colcnt columns * 2 bytes
+            # must cast to int here because while BufferedIOReader objects
+            # returned from io.open(path, "rb") will accept a numpy.int64 type,
+            # io.BytesIO objects will not accept this type and will only accept
+            # vanilla int types. This is true for Python 3, not for Python 2.
             buff = fh.read(int(expected_bytes))
-        except (IOError, EOFError) as e:
-            raise errors.FileError("File could not be read: {}".format(str(e)))
 
-        # Read any extra data at the end of the file for error checking. There
-        # shouldn't be any extra data, btw.
-        extra_bytes = 0
-        while True:
-            try:
+            # Read any extra data at the end of the file for error checking. There
+            # shouldn't be any extra data, btw.
+            extra_bytes = 0
+            while True:
                 new_bytes = len(fh.read(8192))
-            except (IOError, EOFError) as e:
-                raise errors.FileError("File could not be read: {}".format(str(e)))
-            extra_bytes += new_bytes
-            if new_bytes == 0:  # end of file
-                break
+                extra_bytes += new_bytes
+                if new_bytes == 0:  # end of file
+                    break
+    except (IOError, EOFError, zlib.error) as e:
+        raise errors.FileError("File could not be read: {}".format(str(e)))
 
     # Check that file has the expected number of data bytes.
     found_bytes = len(buff) + extra_bytes
@@ -198,6 +188,9 @@ def read_labview_row_count(path, fileobj=None):
     int
         Number of rows reported in the labview file header (first uint32).
     """
+    if path.endswith('.gz'):
+        with io.open(path, 'rb') as fh:
+            fileobj = io.BytesIO(fh.read(512))  # read enough to get first 4 uncompressed bytes
     with file_open_r(path, fileobj) as fh:
         # Particle count (rows of data) is stored in an initial 32-bit
         # unsigned int
