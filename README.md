@@ -64,7 +64,7 @@ deactivate
 ## Read EVT/OPP/VCT Files
 
 All file reading functions will return a `pandas.DataFrame` of particle data.
-Gzipped EVT, OPP, or VCT file can be read if they end with a ".gz" extension.
+Gzipped EVT, OPP, or VCT files can be read if they end with a ".gz" extension.
 For these code examples assume `seaflowpy` has been imported as `sfp`
 and `pandas` has been imported as `pd`, e.g.
 
