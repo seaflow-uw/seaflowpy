@@ -2,6 +2,19 @@
 
 A Python package for SeaFlow flow cytometer data.
 
+## Table of Contents
+
+1. [Install](#install)
+1. [Read EVT/OPP/VCT Files](#evtoppvct)
+1. [Command-line Interface](#cli)
+1. [Configuration](#configuration)
+1. [Integration with R](#rintegration)
+1. [Testing](#testing)
+1. [Development](#development)
+
+
+<a name="install"></a>
+
 ## Install
 
 This package is compatible with Python 3.7.
@@ -46,34 +59,52 @@ seaflowpy version
 deactivate
 ```
 
-## Configuration
+<a name="evtoppvct"></a>
 
-To use `seaflowpy sfl manifest` AWS credentials need to be configured.
-The easiest way to do this is to install the `awscli` Python package
-and go through configuration.
+## Read EVT/OPP/VCT Files
 
-```sh
-pip3 install awscli
-aws configure
+All file reading functions will return a `pandas.DataFrame` of particle data.
+Gzipped EVT, OPP, or VCT file can be read if they end with a ".gz" extension.
+For these code examples assume `seaflowpy` has been imported as `sfp`
+and `pandas` has been imported as `pd`, e.g.
+
+```python
+import pandas as pd
+import seaflowpy as sfp
 ```
 
-This will store AWS configuration in `~/.aws` which `seaflowpy` will use to
-access Seaflow data in S3 storage.
+and `*_filepath` has been set to the correct data file.
 
-## Integration with R
+Read an EVT file
 
-To call `seaflowpy` from R, update the PATH environment variable in
-`~/.Renviron`. For example:
-
-```sh
-PATH=${PATH}:${HOME}/venvs/seaflowpy/bin
+```python
+df = sfp.fileio.read_evt_labview(evt_filepath)
 ```
 
-## Testing
+Read an OPP file,
+select the 50th quantile data using pandas.DataFrame boolean indexing,
+then keep only columns you're interested in.
 
-Seaflowpy uses `pytest` for testing. Tests can be run from this directory as
-`pytest` to test the installed version of the package, or run `tox` to install
-the source into a temporary virtual environment for testing.
+```python
+df = sfp.fileio.read_opp_labview(opp_filepath)
+df50 = df[df["q50"]]
+df50 = df50[['fsc_small', 'chl_small', 'pe']]
+```
+
+Read a VCT file and attach to an OPP DataFrame.
+
+```python
+vct_header = [
+    'diam_lwr', 'Qc_lwr',
+    'diam_mid', 'Qc_mid',
+    'diam_upr', 'Qc_upr',
+    'pop'
+]
+vct50 = pd.read_csv(vct_filepath, vct_header)
+df = pd.concat([opp50, vct50], axis=1)
+```
+
+<a name="cli"></a>
 
 ## Command-line interface
 
@@ -117,6 +148,44 @@ sign that the data transfer was incomplete or the SFL file is missing some days.
 
 7) Once all errors or warnings have been fixed, do a final `seaflowpy validate`
 before adding the SFL file to the appropriate repository.
+
+
+<a name="configuration"></a>
+
+## Configuration
+
+To use `seaflowpy sfl manifest` AWS credentials need to be configured.
+The easiest way to do this is to install the `awscli` Python package
+and go through configuration.
+
+```sh
+pip3 install awscli
+aws configure
+```
+
+This will store AWS configuration in `~/.aws` which `seaflowpy` will use to
+access Seaflow data in S3 storage.
+
+<a name="rintegration"></a>
+
+## Integration with R
+
+To call `seaflowpy` from R, update the PATH environment variable in
+`~/.Renviron`. For example:
+
+```sh
+PATH=${PATH}:${HOME}/venvs/seaflowpy/bin
+```
+
+<a name="testing"></a>
+
+## Testing
+
+Seaflowpy uses `pytest` for testing. Tests can be run from this directory as
+`pytest` to test the installed version of the package, or run `tox` to install
+the source into a temporary virtual environment for testing.
+
+<a name="development"></a>
 
 ## Development
 
