@@ -100,7 +100,8 @@ vct_header = [
     'diam_upr', 'Qc_upr',
     'pop'
 ]
-vct50 = pd.read_csv(vct_filepath, vct_header)
+vct50 = pd.read_csv(vct_filepath, names=vct_header, sep=" ")
+opp50 = opp[opp["q50"]].reset_index(drop=True)
 df = pd.concat([opp50, vct50], axis=1)
 ```
 
