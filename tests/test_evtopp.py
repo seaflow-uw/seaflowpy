@@ -127,6 +127,22 @@ class TestOpen:
         assert n == 40000
 
 
+class TestVCT:
+    def test_merge_vct(self):
+        # Normally OPP data used with VCT would be transformed, but for tests
+        # just leave it as is
+        opp = sfp.fileio.read_opp_labview("tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz")
+        vct = sfp.fileio.read_vct_csv("tests/testcruise_vct/50/2014_185/2014-07-04T00-00-02+00-00.vct.gz")
+        opp50 = opp[opp["q50"]]
+        df = sfp.particleops.merge_opp_vct(opp50, vct)
+        medians = df.groupby("pop").median()
+        vals = list(medians.loc[["beads", "prochloro", "synecho", "unknown"]]["fsc_small"])
+        assert vals == [33680.0, 8368.0, 18856.0, 37952.0]
+        npt.assert_array_almost_equal(
+            list(medians.loc[["beads", "prochloro", "synecho", "unknown"]]["diam_lwr"]),
+            [1.802998, 0.707794, 1.012014, 2.229999]
+        )
+
 class TestFilter:
     def test_mark_focused_no_params(self, evt_df):
         with pytest.raises(ValueError):

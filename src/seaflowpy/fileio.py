@@ -258,6 +258,32 @@ def read_opp_labview(path, fileobj=None):
     return df
 
 
+def read_vct_csv(path, fileobj=None):
+    """
+    Read a VCT space-separated CSV SeaFlow data file for one quantile.
+
+    Data will be read from the file at the provided path or preferentially from
+    fileobj if provided. If path is provided and ends with '.gz' data will be
+    considered gzip compressed even if read from fileobj.
+
+    Parameters
+    -----------
+    path: str
+        File path.
+    fileobj: io.BytesIO, optional
+        Open file object.
+
+    Returns
+    -------
+    pandas.DataFrame
+        SeaFlow VCT DataFrame for one quantile as numpy.float64 values plus
+        one text column for population labels.
+    """
+    with file_open_r(path, fileobj) as fh:
+        df = pd.read_csv(fh, sep=" ", names=["diam_lwr", "Qc_lwr", "diam_mid", "Qc_mid", "diam_upr", "Qc_upr", "pop"])
+        return df
+
+
 def write_labview(df, path):
     """
     Write SeaFlow event DataFrame as LabView binary file.

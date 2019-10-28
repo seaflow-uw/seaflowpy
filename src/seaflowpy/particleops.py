@@ -188,6 +188,27 @@ def mark_saturated(df):
         df["saturated"] = (df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max())
 
 
+def merge_opp_vct(oppdf, vctdf):
+    """
+    Return a new DataFrame that combines an OPP DataFrame with a VCT DataFrame
+    for one quantile.
+
+    Parameters
+    ----------
+    oppdf: pandas.DataFrame
+        SeaFlow OPP data for one quantile.
+    vctdf: pandas.DataFrame
+        SeaFlow VCT data for one quantile.
+    
+    Returns
+    -------
+    pandas.DataFrame
+        New merged DataFrame.
+    """
+    oppdf = oppdf.reset_index(drop=True)
+    return pd.concat([oppdf, vctdf], axis=1)
+
+
 def select_focused(df):
     """
     Return a DataFrame with particles that are focused at least one quantile.

@@ -78,7 +78,7 @@ and `*_filepath` has been set to the correct data file.
 Read an EVT file
 
 ```python
-df = sfp.fileio.read_evt_labview(evt_filepath)
+evt = sfp.fileio.read_evt_labview(evt_filepath)
 ```
 
 Read an OPP file,
@@ -86,23 +86,16 @@ select the 50th quantile data using pandas.DataFrame boolean indexing,
 then keep only columns you're interested in.
 
 ```python
-df = sfp.fileio.read_opp_labview(opp_filepath)
-df50 = df[df["q50"]]
-df50 = df50[['fsc_small', 'chl_small', 'pe']]
+opp = sfp.fileio.read_opp_labview(opp_filepath)
+opp50 = opp[opp["q50"]]
+opp50 = opp50[['fsc_small', 'chl_small', 'pe']]
 ```
 
 Read a VCT file and attach to an OPP DataFrame.
 
 ```python
-vct_header = [
-    'diam_lwr', 'Qc_lwr',
-    'diam_mid', 'Qc_mid',
-    'diam_upr', 'Qc_upr',
-    'pop'
-]
-vct50 = pd.read_csv(vct_filepath, names=vct_header, sep=" ")
-opp50 = opp[opp["q50"]].reset_index(drop=True)
-df = pd.concat([opp50, vct50], axis=1)
+vct50 = sfp.fileio.read_vct_csv(vct_filepath)  # <-- vct_filepath is for one quantile
+df = sfp.particleops.merge_opp_vct(opp50, vct50)
 ```
 
 <a name="cli"></a>
