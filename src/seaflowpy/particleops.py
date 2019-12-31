@@ -199,13 +199,18 @@ def merge_opp_vct(oppdf, vctdf):
         SeaFlow OPP data for one quantile.
     vctdf: pandas.DataFrame
         SeaFlow VCT data for one quantile.
-    
+
     Returns
     -------
     pandas.DataFrame
         New merged DataFrame.
     """
+    if len(oppdf) != len(vctdf):
+        raise ValueError("oppdf and vctdf must have the same number of rows")
+    # Concat will join data by row index, so make sure both dataframes have the
+    # same sequential indexes here first.
     oppdf = oppdf.reset_index(drop=True)
+    vctdf = vctdf.reset_index(drop=True)
     return pd.concat([oppdf, vctdf], axis=1)
 
 
