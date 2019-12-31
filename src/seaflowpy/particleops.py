@@ -99,7 +99,7 @@ def mark_focused(df, params):
         SeaFlow raw event DataFrame.
     params: pandas.DataFrame
         Filtering parameters as pandas DataFrame.
-    
+
     Returns
     -------
     pandas.DataFrame
@@ -214,6 +214,96 @@ def merge_opp_vct(oppdf, vctdf):
     return pd.concat([oppdf, vctdf], axis=1)
 
 
+def quantiles_in_df(df):
+    """
+    Generator to iterate through focused particles by quantile.
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow particle data with focused particles marked by mark_focused().
+        Focused particles should be marked with a boolean column for each
+        quantile, where column names are q<quantile>, e.g. q2.5 for 2.5%
+        quantile.
+
+    Yields
+    ------
+    q_col: str
+        Name of a single quantile focused boolean column.
+    q: float
+        Quantile number.
+    q_str: str
+        String representation of quantile suitable for constructing a filesystem
+        path.
+    q_df: pandas.DataFrame
+        Subset of input DataFrame with only particles marked for the quantile
+        defined by q_str.
+    """
+    for q_col in [c for c in df.columns if c.startswith("q")]:
+        q_str = util.quantile_str(float(q_col[1:]))  # after "q"
+        q = float(q_str)
+        q_df = df[df[q_col]]  # select only focused particles for one quantile
+        yield q_col, q, q_str, q_df
+
+
+def roughfilter(df, width=5000):
+    """
+    Filter EVT particle data without bead positions or instrument calibration.
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow event data.
+    width: int
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy of subset of df where each row is focused in at least on quantile.
+    """
+    if width is None:
+        raise ValueError("Must supply width to roughfilter")
+    # Prevent potential integer division bugs
+    width = float(width)
+
+    if len(df) == 0:
+        return empty_df()
+
+    # Mark noise and saturated particles
+    mark_noise(df)
+    mark_saturated(df)
+
+    if np.sum(~df["noise"] & ~df["saturated"]) == 0:
+        # All data is noise/saturation filtered
+        return empty_df()
+
+    # Correction for the difference in sensitivity between D1 and D2
+    origin = (df["D2"] - df["D1"]).median()
+
+    # Filter aligned particles (D1 = D2), with correction for D1 D2
+    # sensitivity difference.
+    alignedD1 = (df["D1"] + origin) < (df["D2"] + width)
+    alignedD2 = df["D2"] < (df["D1"] + origin + width)
+    aligned = df[~df["noise"] & ~df["saturated"] & alignedD1 & alignedD2]
+
+    # Find fsc/d ratio (slope) for best large fsc particle
+    fsc_small_max = aligned["fsc_small"].max()
+    # Smallest D1 with maximum fsc_small
+    min_d1 = aligned[aligned["fsc_small"] == fsc_small_max]["D1"].min()
+    slope_d1 = fsc_small_max / min_d1
+    # Smallest D2 with maximum fsc_small
+    min_d2 = aligned[aligned["fsc_small"] == fsc_small_max]["D2"].min()
+    slope_d2 = fsc_small_max / min_d2
+
+    # Filter focused particles
+    # Better fsc/d signal than best large fsc particle
+    oppD1 = (aligned["fsc_small"] / aligned["D1"]) >= slope_d1
+    oppD2 = (aligned["fsc_small"] / aligned["D2"]) >= slope_d2
+    oppdf = aligned[oppD1 & oppD2].copy()
+
+    return oppdf
+
+
 def select_focused(df):
     """
     Return a DataFrame with particles that are focused at least one quantile.
@@ -263,34 +353,3 @@ def transform_particles(df, columns=None):
         events[columns] = 10**((events[columns] / 2**16) * 3.5)
     return events
 
-
-def quantiles_in_df(df):
-    """
-    Generator to iterate through focused particles by quantile.
-
-    Parameters
-    ----------
-    df: pandas.DataFrame
-        SeaFlow particle data with focused particles marked by mark_focused().
-        Focused particles should be marked with a boolean column for each
-        quantile, where column names are q<quantile>, e.g. q2.5 for 2.5%
-        quantile.
-
-    Yields
-    ------
-    q_col: str
-        Name of a single quantile focused boolean column.
-    q: float
-        Quantile number.
-    q_str: str
-        String representation of quantile suitable for constructing a filesystem
-        path.
-    q_df: pandas.DataFrame
-        Subset of input DataFrame with only particles marked for the quantile
-        defined by q_str.
-    """
-    for q_col in [c for c in df.columns if c.startswith("q")]:
-        q_str = util.quantile_str(float(q_col[1:]))  # after "q"
-        q = float(q_str)
-        q_df = df[df[q_col]]  # select only focused particles for one quantile
-        yield q_col, q, q_str, q_df

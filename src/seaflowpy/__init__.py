@@ -1,3 +1,4 @@
+from . import beads
 from . import clouds
 from . import conf
 from . import db

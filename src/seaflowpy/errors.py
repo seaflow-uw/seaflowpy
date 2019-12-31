@@ -6,3 +6,8 @@ class SeaFlowpyError(Exception):
 class FileError(SeaFlowpyError):
     """Custom exception class for SeaFlow file format errors"""
     pass
+
+
+class TooManyClustersError(SeaFlowpyError):
+    """Custom exception class for when more than one bead cluster is found"""
+    pass

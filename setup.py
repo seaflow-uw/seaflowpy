@@ -17,6 +17,9 @@ setup(
     install_requires=[
         'boto3',
         'click',
+        'hdbscan',
+        'kern-smooth',
+        'matplotlib',
         'pandas',
         'fabric3'
     ],
