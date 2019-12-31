@@ -72,15 +72,15 @@ fi
 
 # --------------------------------------------------------------------------- #
 # Step 5
-# Build pyinstaller executables. Linux target will be built in a temp docker
-# container using wheel from step 1. MacOS target will be built in the temp
-# virtual environment created in step 2.
+# Build pyinstaller executables. Linux target will be built with docker image
+# from step 3. MacOS target will be built in the temp virtual environment
+# created in step 2.
 # --------------------------------------------------------------------------- #
 # shellcheck source=/dev/null
 source "$venvdir/bin/activate"
 pip3 install pyinstaller
 cd pyinstaller || exit 1
-./build_all.sh
+./build_all.sh seaflowpy:"$verstr" # pass name of docker image here
 deactivate
 
 # --------------------------------------------------------------------------- #

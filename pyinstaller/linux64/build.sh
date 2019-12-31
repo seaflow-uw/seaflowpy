@@ -3,7 +3,9 @@
 # based on the seaflowpy package installed in the current environment and
 # data files in this source tree. Executable will be at dist/seaflowpy.
 
-sitepackages=$(python -c 'import sys; print(sys.path[-1])')
+# Based on use of --user when installing packages in Docker image, manually
+# set site-packages location here.
+sitepackages=/root/.local/lib/python3.7/site-packages
 pyinstaller --onefile --additional-hooks-dir '../hooks' \
   --add-data "$sitepackages/seaflowpy/data/popcycle.sql:seaflowpy/data" \
   "$(which seaflowpy)"
