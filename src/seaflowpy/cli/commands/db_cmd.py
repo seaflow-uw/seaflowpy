@@ -1,6 +1,5 @@
 import sys
 import click
-import pandas as pd
 from seaflowpy import db
 from seaflowpy.errors import SeaFlowpyError
 from seaflowpy import sfl
@@ -28,30 +27,44 @@ def db_cmd():
     pass
 
 
+@db_cmd.command('create')
+@click.option('-d', '--db', 'db_file', required=True, type=click.Path(writable=True),
+    help='DB file to create or update.')
+@click.option('-c', '--cruise', required=True,
+    help='Supply a cruise name to be saved in the database.',)
+@click.option('-s', '--serial', required=True,
+    help='Supply an instrument serial number to be saved in the database.')
+def db_create_cmd(db_file, cruise, serial):
+    """
+    Create or updated a popcycle database with cruise and serial number.
+    """
+    try:
+        db.save_metadata(db_file, {"cruise": cruise, "inst": serial})
+    except SeaFlowpyError as e:
+        raise click.ClickException(str(e))
+
+
 @db_cmd.command('import-sfl')
-@click.option('-c', '--cruise',
-    help='Supply a cruise name here to override any found in the filename.')
 @click.option('-f', '--force', is_flag=True,
     help='Attempt DB import even if validation produces errors.')
 @click.option('-j', '--json', is_flag=True,
     help='Report errors as JSON.')
-@click.option('-s', '--serial',
-    help='Supply a instrument serial number here to override any found in the filename.')
 @click.option('-v', '--verbose', is_flag=True,
     help='Report all errors.')
 @click.argument('sfl-file', nargs=1, type=click.File())
 @click.argument('db-file', nargs=1, type=click.Path(writable=True))
-def db_import_sfl_cmd(cruise, force, json, serial, verbose, sfl_file, db_file):
+def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
     """
     Imports SFL metadata to database.
 
     Writes processed SFL-FILE data to SQLite3 database file. Data will be
     checked before inserting. If any errors are found the first of each type
     will be reported and no data will be written. To read from STDIN use '-'
-    for SFL-FILE. SFL-FILE should have the <cruise name> and <instrument serial>
+    for SFL-FILE. SFL-FILE may have the <cruise name> and <instrument serial>
     embedded in the filename as '<cruise name>_<instrument serial>.sfl'. If not,
-    specify as options. If a database file does not exist a new one will be
-    created. Errors or warnings are output to STDOUT.
+    it's expected that information is already in the database. If a database
+    file does not exist a new one will be created. Errors or warnings are
+    output to STDOUT.
     """
     if sfl_file is not sys.stdin:
         # Try to read cruise and serial from filename

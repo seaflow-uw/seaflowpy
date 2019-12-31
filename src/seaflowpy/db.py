@@ -54,10 +54,10 @@ def save_metadata(dbpath, vals):
     create_db(dbpath)
     # Bit drastic but there should only be one entry in metadata at a time
     sql_delete = "DELETE FROM metadata"
-    executemany(dbpath, sql_delete, vals)
+    execute(dbpath, sql_delete)
 
     sql_insert = "INSERT INTO metadata VALUES (:cruise, :inst)"
-    executemany(dbpath, sql_insert, vals)
+    executemany(dbpath, sql_insert, [vals])
 
 
 def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
@@ -247,6 +247,17 @@ def merge_dbs(db1, db2):
     # Merge opp
     # Merge vct
     # Merge meta
+
+
+def execute(dbpath, sql, timeout=120):
+    con = sqlite3.connect(dbpath, timeout=timeout)
+    try:
+        with con:
+            con.execute(sql)
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when executing SQL queries: {!s}".format(e))
+    finally:
+        con.close()
 
 
 def executemany(dbpath, sql, values=None, timeout=120):
