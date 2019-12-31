@@ -2,6 +2,7 @@ import sys
 import click
 from seaflowpy import db
 from seaflowpy.errors import SeaFlowpyError
+from seaflowpy import fileio
 from seaflowpy import sfl
 
 # Subcommand aliases for backwards compatibility
@@ -127,13 +128,7 @@ def db_import_filter_params_cmd(cruise, filter_file, db_file):
     if cruise is None:
         raise click.ClickException('cruise must be specified either as command-line option or in database metadata table.')
 
-    defaults = {
-        "sep": str(','),
-        "na_filter": True,
-        "encoding": "utf-8"
-    }
-    df = pd.read_csv(filter_file, **defaults)
-    df.columns = [c.replace('.', '_') for c in df.columns]
+    df = fileio.read_filter_params_csv(filter_file)
     params = df[df.cruise == cruise]
     if len(params.index) == 0:
         raise click.ClickException('no filter parameters found for cruise %s' % cruise)

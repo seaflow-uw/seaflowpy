@@ -284,6 +284,33 @@ def read_vct_csv(path, fileobj=None):
         return df
 
 
+def read_filter_params_csv(path):
+    """
+    Read a filter parameters csv file.
+
+    Parameters
+    ----------
+    path: str
+        Path to filter parameters csv file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Contents of csv file with "." in column headers replaced with "_".
+    """
+    defaults = {
+        "sep": str(','),
+        "na_filter": True,
+        "encoding": "utf-8"
+    }
+    df = pd.read_csv(path, **defaults)
+    # Fix column names
+    df.columns = [c.replace('.', '_') for c in df.columns]
+    # Make sure serial numbers are treated as strings
+    df = df.astype({"instrument": "str"})
+    return df
+
+
 def write_labview(df, path):
     """
     Write SeaFlow event DataFrame as LabView binary file.
