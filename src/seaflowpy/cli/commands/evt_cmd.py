@@ -1,11 +1,13 @@
 import os
 import click
+import numpy as np
 from seaflowpy import beads
 from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import seaflowfile
 from seaflowpy import fileio
 from seaflowpy import sample
+from seaflowpy import util
 
 
 def validate_file_fraction(ctx, param, value):
