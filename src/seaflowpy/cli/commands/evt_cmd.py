@@ -114,21 +114,25 @@ def beads_evt_cmd(beads_evt_file, db_file, evt_file, other_params, plot_file, ra
     except errors.SeaFlowpyError as e:
         raise click.ClickException(e)
 
+    click.echo("Finding beads")
     try:
         results = beads.find_beads(beads_evt_file, serial, radius=radius,
                                    evt_path=evt_file, pe_min=45000,
                                    min_cluster_frac=0.33)
     except (errors.SeaFlowpyError, ValueError) as e:
         raise click.ClickException(str(e))
+    click.echo(results["filter_params"])
 
-    try:
-        if db_file:
+    if db_file:
+        click.echo("Saving filter params to {}".format(db_file))
+        try:
             vals = results["filter_params"].to_dict('index').values()
             db.save_filter_params(db_file, vals)
-    except IOError as e:
-        raise click.ClickException(str(e))
+        except IOError as e:
+            raise click.ClickException(str(e))
 
     if plot_file:
+        click.echo("Generating image file {}".format(plot_file))
         try:
             if other_params:
                 params = fileio.read_filter_params_csv(other_params)

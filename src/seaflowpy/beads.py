@@ -280,7 +280,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
         },
         "radius": radius,
         "pe_min": pe_min,
-        "evt_path": evt_path
+        "evt_path": evt_path,
+        "bead_evt_path": bead_evt_path
     }
 
 
@@ -314,7 +315,7 @@ def plot(b, plot_file, otherip=None):
 
     nrows, ncols = 3, 3
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols)
-    fig.suptitle(f"HDBSCAN for {b['evt_path']}")
+    fig.suptitle(f"HDBSCAN for {b['bead_evt_path']}")
     fig.set_size_inches(18.5, 18.5)
 
     # Set axis limits
