@@ -2,6 +2,7 @@ import copy
 import sys
 import time
 import multiprocessing as mp
+import pandas as pd
 import queue
 from . import clouds
 from .conf import get_aws_config
@@ -132,7 +133,8 @@ def do_filter(work_q, opps_q):
             if work["s3"]:
                 cloud = clouds.AWS(work["cloud_config_items"])
                 fileobj = cloud.download_file_memory(evt_file)
-            evt_df = fileio.read_evt_labview(path=evt_file, fileobj=fileobj)
+            #evt_df = fileio.read_evt_labview(path=evt_file, fileobj=fileobj)
+            evt_df = pd.read_parquet(evt_file)
         except errors.FileError as e:
             work["error"] = f"Could not parse file {evt_file}: {e}"
             evt_df = particleops.empty_df()

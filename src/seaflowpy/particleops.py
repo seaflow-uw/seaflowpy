@@ -214,6 +214,25 @@ def merge_opp_vct(oppdf, vctdf):
     return pd.concat([oppdf, vctdf], axis=1)
 
 
+def minify(df):
+    """
+    Remove rarely used columns and remove rows with no fsc_small signal.
+
+    Parameters:
+    -----------
+    df: pandas.DataFrame
+        SeaFlow particle data, either EVT or OPP.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Minified copy of df.
+    """
+    df = df.drop(["time", "pulse_width", "fsc_perp", "fsc_big", "chl_big"], axis=1)
+    df = df[df["fsc_small"] > 0]
+    return df
+
+
 def quantiles_in_df(df):
     """
     Generator to iterate through focused particles by quantile.

@@ -6,6 +6,7 @@ from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import seaflowfile
 from seaflowpy import fileio
+from seaflowpy import particleops
 from seaflowpy import sample
 from seaflowpy import util
 
@@ -143,6 +144,121 @@ def beads_evt_cmd(beads_evt_file, db_file, evt_file, other_params, plot_file, ra
         except IOError as e:
             raise click.ClickException(str(e))
 
+
+@evt_cmd.command('minify')
+@click.option('-d', '--day', is_flag=True, default=False, show_default=True,
+    help="Aggregate EVT data into one parquet file per day.")
+@click.option('-H', '--no-header', is_flag=True, default=False, show_default=True,
+    help="Don't print column headers.")
+@click.option('-o', '--outdir', type=click.Path(), required=True,
+    help='Output directory.')
+@click.argument('evt-files', nargs=-1, type=click.Path(exists=True))
+def minify_evt_cmd(day, no_header, outdir, evt_files):
+    """
+    Removes unnecessary columns and rows with no fsc_small signal from EVT
+    files. Writes gzip compressed parquet files to outdir. If an input file has
+    a well-formatted SeaFlow filename and is within a day-of-year directory,
+    the output file will be placed in that directory in outdir.
+    """
+    if not evt_files:
+        return
+
+    # dirs to file paths
+    files = expand_file_list(evt_files)
+
+    header_printed = False
+    stats = {
+        "events_before": 0,
+        "events_after": 0,
+        "mem_size_before": 0,
+        "mem_size_after": 0,
+        "file_size_before": 0,
+        "file_size_after": 0
+    }
+
+    for filepath in files:
+        # Default values
+        events_before = 0
+        events_after = 0
+        mem_size_before = 0
+        mem_size_after = 0
+        file_size_before = 0
+        file_size_after = 0
+        status = "OK"
+
+        if filepath.endswith(".gz"):
+            outfilename = os.path.basename(filepath[:-3])
+        else:
+            outfilename = os.path.basename(filepath)
+        local_outdir = outdir
+        # Try to parse filename as SeaFlow file to set subdir
+        try:
+            sff = seaflowfile.SeaFlowFile(filepath)
+            if sff.path_dayofyear:
+                local_outdir = os.path.join(outdir, sff.path_dayofyear)
+        except errors.FileError:
+            # Non-standard name is OK
+            pass
+        util.mkdir_p(local_outdir)
+        outpath = os.path.join(local_outdir, outfilename + ".parquet.gz")
+
+        try:
+            df = fileio.read_evt_labview(filepath)
+            events_before = len(df.index)
+            stats["events_before"] += events_before
+            mem_size_before = np.sum(df.memory_usage())
+            stats["mem_size_before"] += mem_size_before
+            file_size_before = os.stat(filepath).st_size
+            stats["file_size_before"] += file_size_before
+
+            df = particleops.minify(df)
+
+            events_after = len(df.index)
+            stats["events_after"] += events_after
+            mem_size_after = np.sum(df.memory_usage())
+            stats["mem_size_after"] += mem_size_after
+            df.to_parquet(outpath, compression="gzip", index=False)
+            file_size_after = os.stat(outpath).st_size
+            stats["file_size_after"] += file_size_after
+        except Exception as e:
+            status = str(e)
+
+        def mb(b):
+            return "{:.2f}".format(b / 2**20)
+
+        if not header_printed and not no_header:
+            print('\t'.join([
+                'path', 'status',
+                'events_before', 'mem_size_before', 'file_size_before',
+                'events_after', 'mem_size_after', 'file_size_after'
+            ]))
+            header_printed = True
+        print('\t'.join([
+            filepath, status,
+            str(events_before), mb(mem_size_before), mb(file_size_before),
+            str(events_after), mb(mem_size_after), mb(file_size_after)
+        ]))
+
+    # Summary size reduction stats
+    try:
+        events_frac = stats["events_after"] / stats["events_before"]
+        events_frac = "{:.2f}".format(events_frac)
+    except ZeroDivisionError:
+        events_frac = "NaN"
+    try:
+        file_size_frac = stats["file_size_after"] / stats["file_size_before"]
+        file_size_frac = "{:.2f}".format(file_size_frac)
+    except ZeroDivisionError:
+        file_size_frac = "NaN"
+    try:
+        mem_size_frac = stats["mem_size_after"] / stats["mem_size_before"]
+        mem_size_frac = "{:.2f}".format(mem_size_frac)
+    except ZeroDivisionError:
+        mem_size_frac = "NaN"
+    print("")
+    print("event reduction = {}".format(events_frac))
+    print("memory size reduction = {}".format(mem_size_frac))
+    print("file size reduction = {}".format(file_size_frac))
 
 
 @evt_cmd.command('sample')
