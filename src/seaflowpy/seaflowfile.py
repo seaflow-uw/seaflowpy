@@ -1,6 +1,7 @@
 import datetime
 import os
 import re
+import pytz
 from . import errors
 from . import util
 
@@ -214,3 +215,35 @@ def keep_evt_files(files, opp=False):
             if (opp and sfile.is_opp) | (not opp and sfile.is_evt):
                 files_list.append(f)
     return files_list
+
+def timeselect_evt_files(files, tstart, tend):
+    """
+    Filter a list of EVT files by ISO8601 timestamps for start and end.
+
+    Either tstart or tend may be None.
+
+    Raises ValueError if there are old style non-timestamped EVT files in the
+    list or if tstart or tend can't be parsed, and raises errors.FileError if
+    any new style EVT files have unparseable dates.
+    """
+    sfiles = [SeaFlowFile(f) for f in files]
+    if any([f.is_old_style for f in sfiles]):
+        raise ValueError("old style EVT files can't be time selected")
+
+    if tstart:
+        if tstart.endswith("Z"):
+            tstart = tstart[:-1] + "+00:00"
+        t0 = datetime.datetime.fromisoformat(tstart)
+        if t0.tzinfo is None:
+            t0 = t0.replace(tzinfo=pytz.UTC)
+        sfiles = [f for f in sfiles if f.date >= t0]
+    if tend:
+        if tend.endswith("Z"):
+            tend = tend[:-1] + "+00:00"
+        t1 = datetime.datetime.fromisoformat(tend)
+        if t1.tzinfo is None:
+            t1 = t1.replace(tzinfo=pytz.UTC)
+        sfiles = [f for f in sfiles if f.date <= t1]
+
+    accepted = [f.path for f in sfiles]
+    return accepted

@@ -416,3 +416,79 @@ def test_find_evt_files():
         "tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00"
     ]
     assert files == answer
+
+def test_timeselect_evt_files():
+    files = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00"
+    ]
+
+    # Exact boundaries, test inclusivity
+    time_start = "2014-07-04T00:03:02Z"
+    time_end = "2014-07-04T00:06:02Z"
+    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
+    ]
+    assert selected == answer
+
+    # Exact boundaries, no tz offset
+    time_start = "2014-07-04T00:03:02"
+    time_end = "2014-07-04T00:06:02"
+    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
+    ]
+    assert selected == answer
+
+    # Exact boundaries, tz offset as +HH:MM
+    time_start = "2014-07-04T00:03:02+00:00"
+    time_end = "2014-07-04T00:06:02+00:00"
+    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
+    ]
+    assert selected == answer
+
+    # Inexact boundaries
+    time_start = "2014-07-04T00:03:00Z"
+    time_end = "2014-07-04T00:07:00Z"
+    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
+    ]
+    assert selected == answer
+
+    # No start
+    time_end = "2014-07-04T00:06:00Z"
+    selected = sfp.seaflowfile.timeselect_evt_files(files, None, time_end)
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
+    ]
+    assert selected == answer
+
+    # No end
+    time_start = "2014-07-04T00:06:00Z"
+    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, None)
+    answer = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00"
+    ]
+    assert selected == answer
+
+    # No dates
+    selected = sfp.seaflowfile.timeselect_evt_files(files, None, None)
+    assert selected == files
+
+    # Bad times
+    with pytest.raises(ValueError):
+        _ = sfp.seaflowfile.timeselect_evt_files(files, "2014-07-0a4T00:10:00Z", None)
+    with pytest.raises(ValueError):
+        _ = sfp.seaflowfile.timeselect_evt_files(files, None, "2014-07-0a4T00:10:00Z")

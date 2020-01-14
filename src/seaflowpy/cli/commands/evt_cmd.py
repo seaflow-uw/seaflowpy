@@ -158,6 +158,10 @@ def beads_evt_cmd(beads_evt_file, db_file, evt_file, other_params, plot_file, ra
     help='Mininum forward scatter (small) value.')
 @click.option('--min-pe', type=int, default=0, show_default=True,
     help='Mininum phycoerythrin value.')
+@click.option('--min-date', type=str,
+    help='Minimum date of file to sample.')
+@click.option('--max-date', type=str,
+    help='Maximum date of file to sample.')
 @click.option('-n', '--noise-filter', 'filter_noise', is_flag=True, default=False, show_default=True,
     help='Apply noise filter before subsampling.')
 @click.option('-s', '--seed', type=int, callback=validate_seed,
@@ -166,7 +170,7 @@ def beads_evt_cmd(beads_evt_file, db_file, evt_file, other_params, plot_file, ra
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def sample_evt_cmd(outfile, count, file_fraction, min_chl, min_fsc, min_pe,
-                   filter_noise, seed, verbose, files):
+                   min_date, max_date, filter_noise, seed, verbose, files):
     """
     Sample a subset of rows in EVT files.
 
@@ -178,6 +182,7 @@ def sample_evt_cmd(outfile, count, file_fraction, min_chl, min_fsc, min_pe,
     """
     # dirs to file paths, only keep EVT/OPP files
     files = seaflowfile.keep_evt_files(expand_file_list(files))
+    files = seaflowfile.timeselect_evt_files(files, min_date, max_date)
     try:
         df = sample.sample(
             files, count, file_fraction, filter_noise=filter_noise,
