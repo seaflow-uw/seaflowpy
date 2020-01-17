@@ -36,6 +36,7 @@ def cluster(df, columns, min_cluster_frac):
     Raises:
     -------
     TooManyClustersError if more than one cluster is found.
+    NoClusterError if no clusters are found.
     """
     min_cluster_size = int(len(df) * min_cluster_frac)
     clusterer = hdbscan.HDBSCAN(
@@ -45,6 +46,8 @@ def cluster(df, columns, min_cluster_frac):
     nclust = len(set(clusterer.labels_))
     if nclust > 2:
         raise errors.TooManyClustersError(f"too many {columns} clusters found: {nclust}")
+    if nclust == 0:
+        raise errors.NoClusterError(f"no {columns} clusters found")
 
     # Get all points inside expanded cluster boundaries
     idx = [i for i, x in enumerate(clusterer.labels_) if x >= 0]
@@ -190,6 +193,7 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
     Raises
     ------
     TooManyClustersError if more than one bead cluster is found.
+    NoClusterError if no clusters are found.
     """
     bead_evt = fileio.read_evt_labview(bead_evt_path)
     if evt_path:
@@ -214,6 +218,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
         # Get all points inside cluster boundaries
         idx = points_in_polygon(clust_fsc_pe["hull_points"], final_source[columns].values)
     pe_df = final_source.iloc[idx]  # beads by pe
+    if len(pe_df) == 0:
+        raise errors.NoClusterError(f"could not find points for {columns} cluster")
     fsc_q = quantiles(pe_df["fsc_small"].values)
 
     # ------------------------------------------
@@ -231,6 +237,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
         # Get all points inside cluster boundaries
         idx = points_in_polygon(clust_fsc_d1["hull_points"], final_source[columns].values)
     d1_df = final_source.iloc[idx]  # beads by D1
+    if len(d1_df) == 0:
+        raise errors.NoClusterError(f"could not find points for {columns} cluster")
     d1_q = quantiles(d1_df["D1"].values)[::-1]  # reverse to match Francois' results
 
     # ------------------------------------------
@@ -248,6 +256,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
         # Get all points inside cluster boundaries
         idx = points_in_polygon(clust_fsc_d2["hull_points"], final_source[columns].values)
     d2_df = final_source.iloc[idx]  # beads by D2
+    if len(d2_df) == 0:
+        raise errors.NoClusterError(f"could not find points for {columns} cluster")
     d2_q = quantiles(d2_df["D2"].values)[::-1]  # reverse to match Francois' results
 
     ip = pd.DataFrame({
@@ -610,9 +620,10 @@ def points_in_circle(x, y, r, points):
 def points_in_polygon(poly_points, points):
     """
     Find indexes of points within the the polygon defined by poly_points.
-    poly_points and points are 2d numpy arrays defining the bouding polygon and
+    poly_points and points are 2d numpy arrays defining the bounding polygon and
     the points to test. The polygon defined by points will automatically close,
     meaning the first point doesn't need to be repeated as the last point.
     """
     poly = mpl.path.Path(poly_points, closed=True)
-    return np.where(poly.contains_points(points))
+    # np.where returns a 1-item tuple. Get the one item alone to make it clearer
+    return np.where(poly.contains_points(points))[0]

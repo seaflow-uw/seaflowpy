@@ -98,13 +98,18 @@ def count_evt_cmd(no_header, evt_files):
     help='DB file to save filter parameters to. Should contain instrument serial number.')
 @click.option('-e', '--evt-file', type=click.Path(exists=True),
     help='EVT file to use for final filtering diagnostic plots.')
+@click.option('-f', '--frac', type=float, default=0.33, show_default=True,
+    help='min_cluster_frac parameter to hdbscan. Min fraction of data which should be in cluster.')
 @click.option('-o', '--other-params', type=click.Path(exists=True),
     help='Filtering parameter csv file to compare against')
 @click.option('-p', '--plot', 'plot_file', type=click.Path(),
     help='Output file for bead finding diagnostic plots. PNG format.')
+@click.option('-P', '--pe-min', type=int, default=40000, show_default=True,
+    help='PE minimum cutoff to use during bead cluster detection.')
 @click.option('-r', '--radius', type=int, callback=validate_positive,
     help='Radius of circle used to collect bead locations.')
-def beads_evt_cmd(beads_evt_file, db_file, evt_file, other_params, plot_file, radius):
+def beads_evt_cmd(beads_evt_file, db_file, evt_file, frac, other_params,
+                  plot_file, pe_min, radius):
     """
     Find bead location and generate filtering parameters.
     """
@@ -114,11 +119,11 @@ def beads_evt_cmd(beads_evt_file, db_file, evt_file, other_params, plot_file, ra
     except errors.SeaFlowpyError as e:
         raise click.ClickException(e)
 
-    click.echo("Finding beads")
+    click.echo("Finding beads for {}".format(db_file))
     try:
         results = beads.find_beads(beads_evt_file, serial, radius=radius,
-                                   evt_path=evt_file, pe_min=45000,
-                                   min_cluster_frac=0.33)
+                                   evt_path=evt_file, pe_min=pe_min,
+                                   min_cluster_frac=frac)
     except (errors.SeaFlowpyError, ValueError) as e:
         raise click.ClickException(str(e))
     click.echo(results["filter_params"])
