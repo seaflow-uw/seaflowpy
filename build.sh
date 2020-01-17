@@ -1,6 +1,25 @@
 #!/bin/bash
 # Build PyPI pure Python wheel, Docker image, pyinstaller execs
 
+skiptests=0
+while getopts ":hs" opt; do
+    case ${opt} in
+        h ) # help
+            echo "Usage: build.sh [-h] [-s]"
+            echo "  -h: display this help"
+            echo "  -s: skip tests"
+            exit
+            ;;
+        s ) # skip tests
+            skiptests=1
+            ;;
+        \? ) echo "Usage: build.sh [-h] [-s]"
+            exit
+            ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 # --------------------------------------------------------------------------- #
 # Pre-build checks
 # --------------------------------------------------------------------------- #
@@ -23,27 +42,32 @@ python3 setup.py -q bdist_wheel
 # --------------------------------------------------------------------------- #
 # Step 2
 # Test new wheel in a temporary virtual environment
-# --------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 venvdir=$(mktemp -dt seaflowpy)
 if [ -z "$venvdir" ]; then
     echo "Could not create virtualenv temp directory name" >&2
     exit 1
 fi
+echo "############################"
 echo "Creating virtualenv $venvdir" >&2
+echo "############################"
 python3 -m venv "$venvdir"
-# shellcheck source=/dev/null
-source "$venvdir/bin/activate"
-echo "Installing requirements-dev.txt; seaflowpy from wheel" >&2
-pip3 install -q -r requirements-dev.txt
-# --no-index to prevent pulling from pypi in case pypi version is higher
-pip3 install -q --no-index -f ./dist seaflowpy
-git clean -fdx tests  # clean up test caches
-pytest
-pytestrc=$?
-deactivate
 
-if [ $pytestrc -ne 0 ]; then
-    exit $pytestrc
+if [[ "$skiptests" -eq 0 ]]; then
+    # shellcheck source=/dev/null
+    source "$venvdir/bin/activate"
+    echo "Installing requirements-dev.txt; seaflowpy from wheel" >&2
+    pip3 install -q -r requirements-dev.txt
+    # --no-index to prevent pulling from pypi in case pypi version is higher
+    pip3 install -q --no-index -f ./dist seaflowpy
+    git clean -fdx tests  # clean up test caches
+    pytest
+    pytestrc=$?
+    deactivate
+
+    if [ $pytestrc -ne 0 ]; then
+        exit $pytestrc
+    fi
 fi
 
 # --------------------------------------------------------------------------- #
@@ -61,13 +85,15 @@ fi
 # Step 4
 # Test the new docker image
 # --------------------------------------------------------------------------- #
-git clean -fdx tests  # remove test cache
-docker run --rm -v "$(pwd):/mnt" seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest pytest-benchmark && pytest --cache-clear'
-git clean -fdx tests  # remove test cache from linux
-dockertestrc=$?
-if [ $dockertestrc -ne 0 ]; then
-    echo "Docker image failed tests" >&2
-    exit $?
+if [[ "$skiptests" -eq 0 ]]; then
+    git clean -fdx tests  # remove test cache
+    docker run --rm -v "$(pwd):/mnt" seaflowpy:"$verstr" bash -c 'cd /mnt && pip3 install -q pytest pytest-benchmark && pytest --cache-clear'
+    git clean -fdx tests  # remove test cache from linux
+    dockertestrc=$?
+    if [ $dockertestrc -ne 0 ]; then
+        echo "Docker image failed tests" >&2
+        exit $?
+    fi
 fi
 
 # --------------------------------------------------------------------------- #
