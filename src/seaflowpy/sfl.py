@@ -465,6 +465,8 @@ def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs)
 def save_to_db(df, dbpath, cruise=None, serial=None):
     """Write SFL dataframe to a SQLite3 database.
 
+    Any pre-existing SFL data will be erased.
+
     Arguments:
     df -- SFL DataFrame.
     dbpath -- Path to SQLite3 database file.

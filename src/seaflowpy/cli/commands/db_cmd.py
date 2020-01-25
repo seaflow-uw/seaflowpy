@@ -64,8 +64,9 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
     for SFL-FILE. SFL-FILE may have the <cruise name> and <instrument serial>
     embedded in the filename as '<cruise name>_<instrument serial>.sfl'. If not,
     it's expected that information is already in the database. If a database
-    file does not exist a new one will be created. Errors or warnings are
-    output to STDOUT.
+    file does not exist a new one will be created. Any SFL data in the database
+    will be erased before importing new data. Errors or warnings are output to
+    STDOUT.
     """
     cruise, serial = None, None
     if sfl_file is not sys.stdin:

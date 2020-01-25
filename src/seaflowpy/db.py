@@ -144,6 +144,11 @@ def save_outlier(file, flag, dbpath):
 
 def save_sfl(dbpath, vals):
     create_db(dbpath)
+
+    # Remove any previous SFL data
+    sql_delete = "DELETE FROM sfl"
+    execute(dbpath, sql_delete)
+
     # NOTE: values inserted must be in the same order as fields in sfl
     # table. Defining that order in a list here makes it easier to verify
     # that the right order is used.
