@@ -57,7 +57,7 @@ def save_metadata(dbpath, vals):
     execute(dbpath, sql_delete)
 
     sql_insert = "INSERT INTO metadata VALUES (:cruise, :inst)"
-    executemany(dbpath, sql_insert, [vals])
+    executemany(dbpath, sql_insert, vals)
 
 
 def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):

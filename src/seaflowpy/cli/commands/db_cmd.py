@@ -67,14 +67,13 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
     file does not exist a new one will be created. Errors or warnings are
     output to STDOUT.
     """
+    cruise, serial = None, None
     if sfl_file is not sys.stdin:
         # Try to read cruise and serial from filename
         results = sfl.parse_sfl_filename(sfl_file.name)
         if results:
-            if cruise is None:
-                cruise = results[0]
-            if serial is None:
-                serial = results[1]
+            cruise = results[0]
+            serial = results[1]
 
     # Try to read cruise and serial from database if not already defined
     if cruise is None:
