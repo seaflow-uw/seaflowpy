@@ -40,7 +40,7 @@ def db_create_cmd(db_file, cruise, serial):
     Create or updated a popcycle database with cruise and serial number.
     """
     try:
-        db.save_metadata(db_file, {"cruise": cruise, "inst": serial})
+        db.save_metadata(db_file, [{"cruise": cruise, "inst": serial}])
     except SeaFlowpyError as e:
         raise click.ClickException(str(e))
 
