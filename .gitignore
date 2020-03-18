@@ -6,3 +6,5 @@ __pycache__/
 .Rhistory
 /.tox/
 /.benchmarks/
+/dist
+/pyinstaller
