@@ -4,6 +4,7 @@ import botocore
 import click
 from seaflowpy import clouds
 from seaflowpy import db
+from seaflowpy import errors as sfperrors
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
 
@@ -188,12 +189,10 @@ def sfl_print_cmd(sfl_files):
 
 
 @sfl_cmd.command('validate')
-@click.option('-j', '--json', is_flag=True,
-    help='Report errors as JSON.')
-@click.option('-v', '--verbose', is_flag=True,
+@click.option('-a', '--all', 'report_all', is_flag=True,
     help='Report all errors.')
 @click.argument('sfl-file', nargs=-1, type=click.Path(exists=True, readable=True))
-def sfl_validate_cmd(json, verbose, sfl_file):
+def sfl_validate_cmd(report_all, sfl_file):
     """
     Validates SFL files.
 
@@ -226,17 +225,18 @@ def sfl_validate_cmd(json, verbose, sfl_file):
 
     Because some of these errors can affect every row of the file (e.g. out of
     order files), only the first error of each type is printed. To get a full
-    printout of all errors use --verbose.
+    printout of all errors use --all.
 
-    Prints to STDOUT.
+    Prints error report to STDOUT.
     """
+    need_header = True
     for f in sfl_file:
-        print(os.path.basename(f))
-        df = sfl.read_file(f)
+        try:
+            df = sfl.read_file(f)
+        except sfperrors.FileError as e:
+            raise click.ClickException(str(e))
         errors = sfl.check(df)
         if len(errors) > 0:
-            if json:
-                sfl.print_json_errors(errors, sys.stdout, print_all=verbose)
-            else:
-                sfl.print_tsv_errors(errors, sys.stdout, print_all=verbose)
-        print("")  # blank line spacer
+            sfl.print_tsv_errors(errors, sys.stdout, os.path.basename(f),
+                                 print_all=report_all, header=need_header)
+        need_header = False

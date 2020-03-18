@@ -383,50 +383,42 @@ def parse_sfl_filename(fn):
 
 
 @util.suppress_sigpipe
-def print_json_errors(errors, fh, print_all=True):
+def print_json_errors(errors, fh, filename, print_all=True):
     errors_output = []
     errors_seen = set()
     for e in errors:
-        if (not print_all) and (e["message"] in errors_seen):
+        e["file"] = filename
+        error_key = e["column"] + e["message"]
+        if (not print_all) and (error_key in errors_seen):
             continue
-        errors_seen.add(e["message"])
+        errors_seen.add(error_key)
         errors_output.append(e)
     fh.write(json.dumps(errors_output, sort_keys=True, indent=2, separators=(',', ':')))
     fh.write("\n")
 
 
 @util.suppress_sigpipe
-def print_tsv_errors(errors, fh, print_all=True):
+def print_tsv_errors(errors, fh, filename, print_all=True, header=True,):
     errors_output = []
     errors_seen = set()
     for e in errors:
-        if (not print_all) and (e["message"] in errors_seen):
+        e["file"] = filename
+        error_key = e["column"] + e["message"]
+        if (not print_all) and (error_key in errors_seen):
             continue
-        errors_seen.add(e["message"])
+        errors_seen.add(error_key)
         errors_output.append(e)
 
-    # Find longest string in each column
-    longest = {}
-    for e in errors_output:
-        for k, v in e.items():
-            if k not in longest or longest[k] < len(k):
-                longest[k] = len(k)
-            if longest[k] < len(str(v)):
-                longest[k] = len(str(v))
-
-    # Write left-alignd space-spadded TSV output
-    header_written = False
+    # TSV output
+    if header:
+        header_written = False
+    else:
+        header_written = True
     for e in errors_output:
         if not header_written:
-            texts = []
-            for k in sorted(e.keys()):
-                texts.append(k + (" " * (longest[k] - len(k))))
-            print("\t".join(texts), file=fh)
+            print("\t".join([k for k in sorted(e.keys())]), file=fh)
             header_written = True
-        texts = []
-        for k in sorted(e.keys()):
-            texts.append(str(e[k]) + (" " * (longest[k] - len(str(e[k])))))
-        print("\t".join(texts), file=fh)
+        print("\t".join([str(e[k]) for k in sorted(e.keys())]), file=fh)
 
 
 def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs):
@@ -448,7 +440,10 @@ def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs)
     }
     kwargs_defaults = dict(defaults, **kwargs)
 
-    df = pd.read_csv(file_path, **kwargs_defaults)
+    try:
+        df = pd.read_csv(file_path, **kwargs_defaults)
+    except pd.errors.ParserError:
+        raise sfperrors.FileError("could not parse {} as an sfl file".format(file_path))
     df = df.rename(columns=colname_mapping["file_to_table"])
 
     if convert_numerics:
