@@ -23,7 +23,7 @@ def dayofyear_cmd(verbose, files):
             click.echo("%s %s" % (file, e), err=True)
             continue
         if verbose:
-            output.append([file, sfile.filename, sfile.dayofyear])
+            output.append([file, sfile.file_id, sfile.filename, sfile.dayofyear])
         else:
             output.append([sfile.dayofyear])
     if output:
