@@ -1,13 +1,13 @@
 import os
+import sys
+
 import click
-import numpy as np
 from seaflowpy import beads
 from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import seaflowfile
 from seaflowpy import fileio
 from seaflowpy import sample
-from seaflowpy import util
 
 
 def validate_file_fraction(ctx, param, value):
@@ -203,21 +203,16 @@ def sample_evt_cmd(outfile, count, file_fraction, min_chl, min_fsc, min_pe,
 
 
 @evt_cmd.command('validate')
-@click.option('-H', '--no-header', is_flag=True, default=False, show_default=True,
-    help="Don't print column headers.")
-@click.option('-o', '--opp', is_flag=True, default=False, show_default=True,
-    help="Assume file is OPP, regardless of what the filename looks like.")
-@click.option('-S', '--no-summary', is_flag=True, default=False, show_default=True,
-    help="Don't print final summary line.")
-@click.option('-v', '--verbose', is_flag=True,
+@click.option('-a', '--all', 'report_all', is_flag=True,
     help='Show information for all files. If not specified then only files errors are printed.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
-def validate_evt_cmd(no_header, opp, no_summary, verbose, files):
+def validate_evt_cmd(report_all, files):
     """
     Examines EVT/OPP files.
 
     If any of the file arguments are directories all EVT/OPP files within those
-    directories will be recursively found and examined. Prints to STDOUT.
+    directories will be recursively found and examined. Prints file validation
+    report to STDOUT. Print summary of files passing validation to STDERR.
     """
     if not files:
         return
@@ -230,52 +225,71 @@ def validate_evt_cmd(no_header, opp, no_summary, verbose, files):
 
     for filepath in files:
         # Default values
+        type_from_filename = '-'
         filetype = '-'
         file_id = '-'
         events = 0
-        events_fsc_small_gt0 = 0
 
         # Try to parse filename as SeaFlow file
         try:
             sff = seaflowfile.SeaFlowFile(filepath)
             file_id = sff.file_id
-            # If not given on CLI, determine file type from name
-            if not opp:
-                opp = sff.is_opp
-        except errors.FileError as e:
-            # Honor file type from CLI
+            if sff.is_evt:
+                type_from_filename = 'evt'
+                filetype = 'evt'
+            elif sff.is_opp:
+                type_from_filename = 'opp'
+                filetype = 'opp'
+        except errors.FileError:
+            # unusual name, no file_id
             pass
 
-        try:
-            if opp:
-                filetype = 'opp'
-                data = fileio.read_opp_labview(filepath)
-            else:
-                filetype = 'evt'
+        if type_from_filename == 'evt':
+            try:
                 data = fileio.read_evt_labview(filepath)
-            events = len(data.index)
-            events_fsc_small_gt0 = np.sum(data["fsc_small"].values > 0)
-        except errors.FileError as e:
-            status = str(e)
-            bad += 1
-        else:
-            status = "OK"
-            ok += 1
-        frac_fsc_small_gt0 = util.zerodiv(events_fsc_small_gt0, events)
+                status = 'OK'
+                ok += 1
+                events = len(data.index)
+            except errors.FileError as e:
+                status = str(e)
+                bad += 1
+                events = 0
+        elif type_from_filename == 'opp':
+            try:
+                data = fileio.read_opp_labview(filepath)
+                status = 'OK'
+                ok += 1
+                events = len(data.index)
+            except errors.FileError as e:
+                status = str(e)
+                bad += 1
+                events = 0
+        elif type_from_filename == '-':
+            # Try to read as both EVT or OPP
+            try:
+                data = fileio.read_evt_labview(filepath)
+                filetype = 'evt'
+                status = 'OK'
+                ok += 1
+                events = len(data.index)
+            except errors.FileError:
+                try:
+                    data = fileio.read_opp_labview(filepath)
+                    filetype = 'opp'
+                    status = 'OK'
+                    ok += 1
+                    events = len(data.index)
+                except errors.FileError as e:
+                    status = str(e)
+                    bad += 1
+                    events = 0
 
-        if not verbose:
-            if status != 'OK':
-                if not header_printed and not no_header:
-                    print('\t'.join(['path', 'file_id', 'type', 'status', 'events', 'fsc_small_gt_0', 'frac_fsc_small_gt_0']))
-                    header_printed = True
-                print('\t'.join([filepath, file_id, filetype, status, str(events), str(events_fsc_small_gt0), "{:0.4f}".format(frac_fsc_small_gt0)]))
-        else:
-            if not header_printed and not no_header:
-                print('\t'.join(['path', 'file_id', 'type', 'status', 'events', 'fsc_small_gt_0', 'frac_fsc_small_gt_0']))
-                header_printed = True
-            print('\t'.join([filepath, file_id, filetype, status, str(events), str(events_fsc_small_gt0), "{:0.4f}".format(frac_fsc_small_gt0)]))
-    if not no_summary:
-        print("%d/%d files passed validation" % (ok, bad + ok))
+        if not header_printed:
+            print('\t'.join(['path', 'file_id', 'type', 'status', 'events']))
+            header_printed = True
+        if (report_all and status == 'OK') or (status != 'OK'):
+            print('\t'.join([filepath, file_id, filetype, status, str(events)]))
+    print('%d/%d files passed validation' % (ok, bad + ok), file=sys.stderr)
 
 
 def expand_file_list(files_and_dirs):
