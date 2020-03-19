@@ -303,7 +303,10 @@ def read_filter_params_csv(path):
         "na_filter": True,
         "encoding": "utf-8"
     }
-    df = pd.read_csv(path, **defaults)
+    try:
+        df = pd.read_csv(path, **defaults)
+    except pd.errors.ParserError:
+        raise errors.FileError("could not parse {} as csv filter paramater file".format(path))
     # Fix column names
     df.columns = [c.replace('.', '_') for c in df.columns]
     # Make sure serial numbers are treated as strings

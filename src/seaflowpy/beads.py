@@ -63,7 +63,7 @@ def cluster(df, columns, min_cluster_frac):
         "columns": columns, # columns of df used to cluster
         "indices": idx, # indices into df of clustered points
         "points": points, # 2d array of points in cluster
-        "center": center, # center of cluster points
+        "center": center, # median center of cluster points
         "hull_points": hull_points, # (x, y) of convex hull points
         "clusterer": clusterer
     }
@@ -78,8 +78,8 @@ def params2ip(params):
     """
     Convert filtering parameters to inflection point data frame.
     """
-    cmod = {"beads_fsc_small": "fsc_small", "beads_D1": "D1", "beads_D2": "D2"}
-    ip = params.rename(columns=cmod)[["quantile", "fsc_small", "D1", "D2"]]
+    col_rename = {"beads_fsc_small": "fsc_small", "beads_D1": "D1", "beads_D2": "D2"}
+    ip = params.rename(columns=col_rename)[["quantile", "fsc_small", "D1", "D2"]]
     ip = ip.sort_values(by=["quantile"])
     ip = ip.reset_index(drop=True)
     return ip
@@ -160,25 +160,16 @@ def round_(x, prec=0):
     return float("{1:.{0}f}".format(prec, x))
 
 
-def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
-               min_cluster_frac=0.33):
+def find_beads(evt_path, serial, pe_min=45000, min_cluster_frac=0.33):
     """
     Find bead coordinates with DBSCAN clustering.
 
     Parameters
     ----------
-    bead_evt_path: str
-        Path to an EVT file to use for identifying beads positions.
-    serial: int
-        Instrument serial number
     evt_path: str
-        Path to an EVT file to use for final filtering plots.
-    radius: int
-        If not None, radius of circle to use to collect bead particles after
-        the cluster has been identified. The circle is centered around the
-        centroid of the cluster. For FSC vs D1 or D2 the circle's radius is
-        doubled. If radius is None, bead particles are those only within the
-        cluster.
+        Path to an EVT file to with bead particles.
+    serial: str
+        Instrument serial number.
     pe_min: int, default 45000
         PE minimum cutoff to use when identifying beads clusters. This number
         should be large enough to eliminate other common large clusters.
@@ -195,12 +186,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
     TooManyClustersError if more than one bead cluster is found.
     NoClusterError if no clusters are found.
     """
-    bead_evt = fileio.read_evt_labview(bead_evt_path)
-    if evt_path:
-        evt = fileio.read_evt_labview(evt_path)
-    else:
-        evt = bead_evt
-    opp = particleops.roughfilter(bead_evt)
+    evt = fileio.read_evt_labview(evt_path)
+    opp = particleops.roughfilter(evt)
     opp_top = opp[opp["pe"] > pe_min]
 
     # ----------------------------
@@ -208,19 +195,15 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
     # ----------------------------
     columns = ["fsc_small", "pe"]
     initial_source = opp_top # data for clusterer
-    final_source = bead_evt  # source of final cluster points
+    final_source = evt  # source of final cluster points
     clust_fsc_pe = cluster(initial_source, columns, min_cluster_frac=min_cluster_frac)
-    # Get cluster points
-    if radius is not None:
-        # Get all points inside expanded cluster boundaries as circle
-        idx = points_in_circle(*clust_fsc_pe["center"], radius, final_source[columns].values)
-    else:
-        # Get all points inside cluster boundaries
-        idx = points_in_polygon(clust_fsc_pe["hull_points"], final_source[columns].values)
+    # Get all points inside cluster boundaries
+    idx = points_in_polygon(clust_fsc_pe["hull_points"], final_source[columns].values)
     pe_df = final_source.iloc[idx]  # beads by pe
     if len(pe_df) == 0:
         raise errors.NoClusterError(f"could not find points for {columns} cluster")
     fsc_q = quantiles(pe_df["fsc_small"].values)
+    pe_q = quantiles(pe_df["pe"].values)
 
     # ------------------------------------------
     # Find fsc vs D1 beads as subset of pe beads
@@ -229,13 +212,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
     intial_source = pe_df # data for clusterer
     final_source = pe_df  # source of final cluster points
     clust_fsc_d1 = cluster(intial_source, columns, min_cluster_frac=min_cluster_frac)
-    # Get cluster points
-    if radius is not None:
-        # Get all points inside expanded cluster boundaries as circle
-        idx = points_in_circle(*clust_fsc_d1["center"], radius, final_source[columns].values)
-    else:
-        # Get all points inside cluster boundaries
-        idx = points_in_polygon(clust_fsc_d1["hull_points"], final_source[columns].values)
+    # Get all points inside cluster boundaries
+    idx = points_in_polygon(clust_fsc_d1["hull_points"], final_source[columns].values)
     d1_df = final_source.iloc[idx]  # beads by D1
     if len(d1_df) == 0:
         raise errors.NoClusterError(f"could not find points for {columns} cluster")
@@ -248,13 +226,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
     intial_source = pe_df # data for clusterer
     final_source = pe_df  # source of final cluster points
     clust_fsc_d2 = cluster(intial_source, columns, min_cluster_frac=min_cluster_frac)
-    # Get cluster points
-    if radius is not None:
-        # Get all points inside expanded cluster boundaries as circle
-        idx = points_in_circle(*clust_fsc_d2["center"], radius, final_source[columns].values)
-    else:
-        # Get all points inside cluster boundaries
-        idx = points_in_polygon(clust_fsc_d2["hull_points"], final_source[columns].values)
+    # Get all points inside cluster boundaries
+    idx = points_in_polygon(clust_fsc_d2["hull_points"], final_source[columns].values)
     d2_df = final_source.iloc[idx]  # beads by D2
     if len(d2_df) == 0:
         raise errors.NoClusterError(f"could not find points for {columns} cluster")
@@ -263,6 +236,7 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
     ip = pd.DataFrame({
         "quantile": [2.5, 50, 97.5],
         "fsc_small": fsc_q,
+        "pe": pe_q,
         "D1": d1_q,
         "D2": d2_q
     })
@@ -272,14 +246,12 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
 
     return {
         "inflection_point": ip,
-        "filter_params": params,
         "cluster_results": {
             "fsc_pe": clust_fsc_pe,
             "fsc_D1": clust_fsc_d1,
             "fsc_D2": clust_fsc_d2
         },
         "df": {
-            "bead_evt": bead_evt,
             "evt": evt,
             "rough_opp": opp,
             "final_opp": final_opp,
@@ -288,10 +260,8 @@ def find_beads(bead_evt_path, serial, evt_path=None, radius=None, pe_min=45000,
             "fsc_D1": d1_df,    # points identified as beads by fsc D1
             "fsc_D2": d2_df     # points identified as beads by fsc D2
         },
-        "radius": radius,
         "pe_min": pe_min,
-        "evt_path": evt_path,
-        "bead_evt_path": bead_evt_path
+        "evt_path": evt_path
     }
 
 
@@ -337,7 +307,7 @@ def plot(b, plot_file, otherip=None):
     # -------------------------
     # Common plot options
     # -------------------------
-    nbin = 200
+    nbin = 300
     npoints = 20000
     dens_opts = {"s": 5, "edgecolors": 'none', "alpha": 0.75, "cmap": plt.get_cmap("viridis")}
     back_opts = {"s": 10, "color": 'orange', "linewidth": 0, "alpha": 0.1}
@@ -355,7 +325,7 @@ def plot(b, plot_file, otherip=None):
     res = b["cluster_results"]["fsc_pe"] # clustering results
     plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
     legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen))
+    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
     if otherip is not None:
         legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
     thisax.legend(handles=legend_handles)
@@ -371,7 +341,7 @@ def plot(b, plot_file, otherip=None):
     res = b["cluster_results"]["fsc_pe"] # clustering results
     plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
     legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen))
+    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
     if otherip is not None:
         legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
     thisax.legend(handles=legend_handles)
@@ -385,6 +355,11 @@ def plot(b, plot_file, otherip=None):
     thisax.set_ylabel('PE')
     x, y = final_opp["fsc_small"].head(npoints), final_opp["pe"].head(npoints)
     plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
+    legend_handles = []
+    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
+    if otherip is not None:
+        legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
+    thisax.legend(handles=legend_handles)
 
     # -------------------------
     # Final OPP fsc chl
@@ -436,7 +411,7 @@ def plot(b, plot_file, otherip=None):
     # Plot convex hull of cluster
     plot_cluster(thisax, res["hull_points"], res["center"], radius)
     legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen))
+    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
     if otherip is not None:
         legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
     thisax.legend(handles=legend_handles)
@@ -461,7 +436,7 @@ def plot(b, plot_file, otherip=None):
     # Plot convex hull of cluster
     plot_cluster(thisax, res["hull_points"], res["center"], radius)
     legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["D1"], res["center"], "west", linewidth, linelen))
+    legend_handles.append(plot_bead_coords(thisax, ip["D1"], res["center"], "west", linewidth, linelen, median_target=True))
     if otherip is not None:
         legend_handles.append(plot_bead_coords(thisax, otherip["D1"], res["center"], "east", linewidth, linelen))
     thisax.legend(handles=legend_handles)
@@ -486,7 +461,7 @@ def plot(b, plot_file, otherip=None):
     # Plot convex hull of cluster
     plot_cluster(thisax, res["hull_points"], res["center"], radius)
     legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["D2"], res["center"], "west", linewidth, linelen))
+    legend_handles.append(plot_bead_coords(thisax, ip["D2"], res["center"], "west", linewidth, linelen, median_target=True))
     if otherip is not None:
         legend_handles.append(plot_bead_coords(thisax, otherip["D2"], res["center"], "east", linewidth, linelen))
     thisax.legend(handles=legend_handles)
@@ -545,7 +520,7 @@ def plot_cluster(ax, points, center, radius):
         ax.add_artist(beads_circle)
 
 
-def plot_bead_coords(ax, coords, center, direction, w, l):
+def plot_bead_coords(ax, coords, center, direction, w, l, median_target=False):
     """
     direction is north, south, east, west on a compass to express if the lines
     should represent positions in x (north/south) or y (east/west), and to
@@ -556,56 +531,63 @@ def plot_bead_coords(ax, coords, center, direction, w, l):
     """
     blue = "#4242f5"
     pink = "#f542bc"
+    alpha = 0.40
     centerx, centery = center
     median = str(int(coords.iloc[1]))
+    target_line_width = w * 0.5  # half of quantile lines
     if direction == "west":
         lines = [
             [(centerx-l, coords.iloc[0]), (centerx, coords.iloc[0])],
             [(centerx-l, coords.iloc[1]), (centerx, coords.iloc[1])],
             [(centerx-l, coords.iloc[2]), (centerx, coords.iloc[2])]
         ]
-        lc = mpl.collections.LineCollection(lines, colors=pink, linewidths=w)
+        lc = mpl.collections.LineCollection(lines, colors=pink, linewidths=w, alpha=alpha)
         ax.add_collection(lc)
+        if median_target:
+            ax.axvline(centerx, color=pink, linewidth=target_line_width)
+            ax.axhline(centery, color=pink, linewidth=target_line_width)
         return mpl.patches.Patch(color=pink, label="auto median: " + median)
-        #ax.text(0.1, 0.15, "auto median: " + median, color=pink, transform=ax.transAxes)
     elif direction == "east":
         lines = [
             [(centerx, coords.iloc[0]), (centerx+l, coords.iloc[0])],
             [(centerx, coords.iloc[1]), (centerx+l, coords.iloc[1])],
             [(centerx, coords.iloc[2]), (centerx+l, coords.iloc[2])]
         ]
-        lc = mpl.collections.LineCollection(lines, colors=blue, linewidths=w)
+        lc = mpl.collections.LineCollection(lines, colors=blue, linewidths=w, alpha=alpha)
         ax.add_collection(lc)
+        if median_target:
+            ax.axvline(centerx, color=pink, linewidth=target_line_width)
+            ax.axhline(centery, color=pink, linewidth=target_line_width)
         return mpl.patches.Patch(color=blue, label="other median: " + median)
-        #ax.text(0.1, 0.1, "other median: " + median, color=blue, transform=ax.transAxes)
     elif direction == "north":
         lines = [
             [(coords.iloc[0], centery), (coords.iloc[0], centery+l)],
             [(coords.iloc[1], centery), (coords.iloc[1], centery+l)],
             [(coords.iloc[2], centery), (coords.iloc[2], centery+l)]
         ]
-        lc = mpl.collections.LineCollection(lines, colors=pink, linewidths=w)
+        lc = mpl.collections.LineCollection(lines, colors=pink, linewidths=w, alpha=alpha)
         ax.add_collection(lc)
+        if median_target:
+            ax.axvline(centerx, color=pink, linewidth=target_line_width)
+            ax.axhline(centery, color=pink, linewidth=target_line_width)
         return mpl.patches.Patch(color=pink, label="auto median: " + median)
-        #ax.text(0.1, 0.15, "auto median: " + median, color=pink, transform=ax.transAxes)
     elif direction == "south":
         lines = [
             [(coords.iloc[0], centery-l), (coords.iloc[0], centery)],
             [(coords.iloc[1], centery-l), (coords.iloc[1], centery)],
             [(coords.iloc[2], centery-l), (coords.iloc[2], centery)]
         ]
-        lc = mpl.collections.LineCollection(lines, colors=blue, linewidths=w)
+        lc = mpl.collections.LineCollection(lines, colors=blue, linewidths=w, alpha=alpha)
         ax.add_collection(lc)
+        if median_target:
+            ax.axvline(centerx, color=pink, linewidth=target_line_width)
+            ax.axhline(centery, color=pink, linewidth=target_line_width)
         return mpl.patches.Patch(color=blue, label="other median: " + median)
-        #ax.text(0.1, 0.1, "other median: " + median, color=blue, transform=ax.transAxes)
 
 
 def centroid(points):
-    """Find the centroid of points in 2d numpy array."""
-    length = points.shape[0]
-    sum_x = np.sum(points[:, 0])
-    sum_y = np.sum(points[:, 1])
-    return sum_x/length, sum_y/length
+    """Find the median centroid of points in 2d numpy array."""
+    return np.median(points[:, 0]), np.median(points[:, 1])
 
 
 def points_in_circle(x, y, r, points):

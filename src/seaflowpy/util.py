@@ -43,6 +43,28 @@ def gzip_file(path, print_timing=False):
         print("Compression completed in %.2f seconds" % (t1 - t0))
 
 
+def jobs_parts(things, n):
+    """Split a list of things into n sublists."""
+    if n < 1:
+        raise ValueError("n must be > 1")
+    n = int(min(len(things), n))
+    per_part = len(things) // n
+    rem = len(things) % n
+    buckets = []
+    i = 0
+    while i < len(things):
+        if rem > 0:
+            extra = 1
+        else:
+            extra = 0
+        start = i
+        end = i + per_part + extra
+        rem -= 1
+        i = end
+        buckets.append(things[start:end])
+    return buckets
+
+
 def mkdir_p(path):
     """Create directory tree for path."""
     if path == '':
@@ -54,6 +76,16 @@ def mkdir_p(path):
             pass
         else:
             raise
+
+
+def quantile_str(q):
+    """
+    Display quantile float as string.
+
+    If there is not decimal part, don't display ".0". If there is a decimal
+    part, display it.
+    """
+    return "{0}".format(str(q) if q % 1 else int(q))
 
 
 def splitpath(path):
@@ -71,16 +103,6 @@ def splitpath(path):
                 parts.append(path)
             break
     return parts[::-1]
-
-
-def quantile_str(q):
-    """
-    Display quantile float as string.
-
-    If there is not decimal part, don't display ".0". If there is a decimal
-    part, display it.
-    """
-    return "{0}".format(str(q) if q % 1 else int(q))
 
 
 def suppress_sigpipe(f):
