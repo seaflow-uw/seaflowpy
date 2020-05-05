@@ -35,6 +35,7 @@ fi
 # Step 1
 # Create pure python wheel and source tarball. Will be saved in ./dist
 # --------------------------------------------------------------------------- #
+[[ -d dist ]] && rm -rf dist
 python3 setup.py -q sdist
 python3 setup.py -q bdist_wheel
 [[ -d build ]] && rm -rf build

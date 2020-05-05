@@ -457,7 +457,7 @@ def multi_file_asserts(tmpout):
     )
     npt.assert_array_equal(
         opp_table["opp_evt_ratio"],
-        (opp_table["opp_count"] / opp_table["evt_count"]).replace(pd.np.inf, 0).replace(pd.np.NaN, 0)
+        (opp_table["opp_count"] / opp_table["evt_count"]).replace(np.inf, 0).replace(np.NaN, 0)
     )
 
     files = [
