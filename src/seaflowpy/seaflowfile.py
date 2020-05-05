@@ -133,7 +133,8 @@ def create_dayofyear_directory(dt):
 def date_from_filename(filename):
     """Return a datetime object based on new-style SeaFlow filename.
 
-    Parts of the filename after the datestamp will be ignored.
+    Parts of the filename after the datestamp will be ignored. Any timezone information
+    will be ignored and the datetime object returned will be UTC.
     """
     filename_noext = remove_ext(os.path.basename(filename))
     m = re.match(new_file_re, filename_noext)
@@ -144,6 +145,7 @@ def date_from_filename(filename):
         # Parse RFC 3339 date string
         try:
             date = datetime.datetime.fromisoformat("{date}T{hours}:{minutes}:{seconds}{tzhours}:{tzminutes}".format(**m.groupdict()))
+            date = date.replace(tzinfo=pytz.utc)
         except ValueError as e:
             raise e
         else:
@@ -215,6 +217,7 @@ def keep_evt_files(files, opp=False):
             if (opp and sfile.is_opp) | (not opp and sfile.is_evt):
                 files_list.append(f)
     return files_list
+
 
 def timeselect_evt_files(files, tstart, tend):
     """

@@ -268,13 +268,13 @@ def test_date_from_file_name():
     files = [
         "2014-07-06T00-00-05+00-00",
         "2014-07-06T00-00-05-00-00",
-        "2014-07-06T00-00-05-07-00",
+        "2014-07-06T00-00-05-07-00",  # all dates assumed UTC, even if non-UTC TZ offset
         "2014-07-06T00-00-05+00-00.gz"
     ]
     answers = [
         "2014-07-06T00:00:05+00:00",
         "2014-07-06T00:00:05+00:00",
-        "2014-07-06T00:00:05-07:00",
+        "2014-07-06T00:00:05+00:00",  # all dates assumed UTC, even if non-UTC TZ offset
         "2014-07-06T00:00:05+00:00"
     ]
     for i, f in enumerate(files):
