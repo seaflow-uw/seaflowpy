@@ -8,10 +8,6 @@ class FileError(SeaFlowpyError):
     pass
 
 
-class TooManyClustersError(SeaFlowpyError):
-    """Custom exception class for when more than one bead cluster is found"""
-    pass
-
-class NoClusterError(SeaFlowpyError):
-    """Custom exception class for when no bead cluster is found"""
+class ClusterError(SeaFlowpyError):
+    """Custom exception class bead clustering errors"""
     pass

@@ -1,13 +1,14 @@
 """Do things to SFL data DataFrames"""
 from collections import OrderedDict
-import datetime
 import json
 import os
 import re
 import pandas as pd
+import pytz
 from . import db
 from . import errors as sfperrors
 from . import geo
+from . import time
 from . import util
 from . import seaflowfile
 
@@ -54,6 +55,23 @@ min_lon, max_lon = -180, 180
 min_stream_pressure = 1e-4
 min_event_rate = 0
 
+
+def add_date_column(df):
+    """Add a date column if needed and return a new dataframe."""
+    newdf = df.copy(deep=True)
+
+    def date_from_file(f):
+        try:
+            d = seaflowfile.SeaFlowFile(f).rfc3339
+        except sfperrors.FileError:
+            d = ''
+        return d
+
+    if "date" not in newdf.columns:
+        newdf["date"] = newdf["file"].map(date_from_file)
+    return newdf
+
+
 def check(df):
     """Perform checks on SFL dataframe
 
@@ -94,11 +112,11 @@ def check_date_string(date):
     """Confirm value is an RFC3339 string with UTC timezone as [+-]00:00"""
     passed = False
     try:
-        dt = datetime.datetime.fromisoformat(date)
+        dt = time.parse_date(date)
     except ValueError:
         pass
     else:
-        if dt.tzinfo == datetime.timezone.utc and (date.endswith('+00:00') or date.endswith('-00:00')):
+        if dt.tzinfo == pytz.UTC and (date.endswith('+00:00') or date.endswith('-00:00')):
             passed = True
     # Return true if any format is correct
     return passed
@@ -295,16 +313,7 @@ def fix(df):
     """
     newdf = df.copy(deep=True)
 
-    # Add a date column if needed
-    def date_from_file(f):
-        try:
-            d = seaflowfile.SeaFlowFile(f).rfc3339
-        except sfperrors.FileError:
-            d = ''
-        return d
-
-    if "date" not in newdf.columns:
-        newdf["date"] = newdf["file"].map(date_from_file)
+    newdf = add_date_column(newdf)
 
     # Add day of year directory if needed
     def dayofyear_from_file(f):
@@ -421,13 +430,17 @@ def print_tsv_errors(errors, fh, filename, print_all=True, header=True,):
         print("\t".join([str(e[k]) for k in sorted(e.keys())]), file=fh)
 
 
-def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs):
+def read_file(
+        file_path, convert_dates=False, convert_numerics=True,
+        convert_colnames=True, **kwargs
+    ):
     """Parse SFL file into a DataFrame.
 
     Arguments:
     file -- SFL file path.
 
     Keyword arguments:
+    convert_dates -- Convert date column to datetime objects (default False).
     convert_numerics -- Cast numeric SQL columns as numbers (default True).
     convert_colnames -- Remap file column names to match SFL SQL table column
         where appropriate. (default True).
@@ -445,6 +458,10 @@ def read_file(file_path, convert_numerics=True, convert_colnames=True, **kwargs)
     except pd.errors.ParserError:
         raise sfperrors.FileError("could not parse {} as an sfl file".format(file_path))
     df = df.rename(columns=colname_mapping["file_to_table"])
+
+    if convert_dates:
+        df = add_date_column(df)
+        df["date"] = df["date"].map(time.parse_date)
 
     if convert_numerics:
         for colname in numeric_columns:

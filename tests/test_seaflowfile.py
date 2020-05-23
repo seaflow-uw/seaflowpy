@@ -1,3 +1,4 @@
+import datetime
 import pytest
 import seaflowpy as sfp
 
@@ -212,6 +213,25 @@ def test_old_style():
     assert f.is_new_style is False
 
 
+def test_set_date():
+    # Should do nothing for new style if matches
+    date = datetime.datetime.fromisoformat("2014-07-04T00:00:02+00:00")
+    f = sfp.seaflowfile.SeaFlowFile("2014_185/2014-07-04T00-00-02+00-00", date=date)
+    assert f.rfc3339 == "2014-07-04T00:00:02+00:00"
+
+    # Should raise ValueError for new style if doesn't match
+    date = datetime.datetime.fromisoformat("2014-07-05T00:00:02+00:00")
+    with pytest.raises(ValueError):
+        _ = sfp.seaflowfile.SeaFlowFile("2014_185/2014-07-04T00-00-02+00-00", date=date)
+
+    # Should set data for old style
+    date = datetime.datetime.fromisoformat("2014-07-04T02:06:00+00:00")
+    f = sfp.seaflowfile.SeaFlowFile("2014_185/42.evt", date=date)
+    assert f.file_id == "2014_185/42.evt"
+    assert f.dayofyear == "2014_185"
+    assert f.rfc3339 == "2014-07-04T02:06:00+00:00"
+
+
 def test_sort_new_chronologically():
     exts = [".opp", ".vct", ".opp.vct"]
     unsorted_files = [
@@ -418,77 +438,78 @@ def test_find_evt_files():
     assert files == answer
 
 def test_timeselect_evt_files():
-    files = [
+    raw_files = [
         "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
         "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
         "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
         "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00"
     ]
+    files = [sfp.seaflowfile.SeaFlowFile(f) for f in raw_files]
 
     # Exact boundaries, test inclusivity
-    time_start = "2014-07-04T00:03:02Z"
-    time_end = "2014-07-04T00:06:02Z"
+    time_start = datetime.datetime.fromisoformat("2014-07-04T00:03:02+00:00")
+    time_end = datetime.datetime.fromisoformat("2014-07-04T00:06:02+00:00")
     selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
     answer = [
         "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
         "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
     ]
-    assert selected == answer
-
-    # Exact boundaries, no tz offset
-    time_start = "2014-07-04T00:03:02"
-    time_end = "2014-07-04T00:06:02"
-    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
-    answer = [
-        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
-        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
-    ]
-    assert selected == answer
-
-    # Exact boundaries, tz offset as +HH:MM
-    time_start = "2014-07-04T00:03:02+00:00"
-    time_end = "2014-07-04T00:06:02+00:00"
-    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
-    answer = [
-        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
-        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
-    ]
+    selected = [f.path for f in selected]
     assert selected == answer
 
     # Inexact boundaries
-    time_start = "2014-07-04T00:03:00Z"
-    time_end = "2014-07-04T00:07:00Z"
+    time_start = datetime.datetime.fromisoformat("2014-07-04T00:03:00+00:00")
+    time_end = datetime.datetime.fromisoformat("2014-07-04T00:07:00+00:00")
     selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
     answer = [
         "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
         "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00"
     ]
+    selected = [f.path for f in selected]
     assert selected == answer
 
     # No start
-    time_end = "2014-07-04T00:06:00Z"
+    time_end = datetime.datetime.fromisoformat("2014-07-04T00:06:00+00:00")
     selected = sfp.seaflowfile.timeselect_evt_files(files, None, time_end)
     answer = [
         "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
         "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz"
     ]
+    selected = [f.path for f in selected]
     assert selected == answer
 
     # No end
-    time_start = "2014-07-04T00:06:00Z"
+    time_start = datetime.datetime.fromisoformat("2014-07-04T00:06:00+00:00")
     selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, None)
     answer = [
         "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
         "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00"
     ]
+    selected = [f.path for f in selected]
     assert selected == answer
+
+    # Nothing is selected
+    time_start = datetime.datetime.fromisoformat("2014-07-01T00:03:02+00:00")
+    time_end = datetime.datetime.fromisoformat("2014-07-03T00:06:02+00:00")
+    selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
+    assert selected == []
 
     # No dates
     selected = sfp.seaflowfile.timeselect_evt_files(files, None, None)
-    assert selected == files
+    selected = [f.path for f in selected]
+    assert selected == raw_files
 
-    # Bad times
-    with pytest.raises(ValueError):
-        _ = sfp.seaflowfile.timeselect_evt_files(files, "2014-07-0a4T00:10:00Z", None)
-    with pytest.raises(ValueError):
-        _ = sfp.seaflowfile.timeselect_evt_files(files, None, "2014-07-0a4T00:10:00Z")
+    # No tz offset
+    time_start = datetime.datetime.fromisoformat("2014-07-04T00:03:02")
+    time_end = datetime.datetime.fromisoformat("2014-07-04T00:06:02")
+    with pytest.raises(TypeError):
+        selected = sfp.seaflowfile.timeselect_evt_files(files, time_start, time_end)
+
+    # Set date to None for one of the files
+    files_tmp = [sfp.seaflowfile.SeaFlowFile(f) for f in raw_files]
+    files_tmp[2].date = None  # erase date
+    time_start = datetime.datetime.fromisoformat("2014-07-04T00:06:00+00:00")
+    selected = sfp.seaflowfile.timeselect_evt_files(files_tmp, time_start, None)
+    answer = ["tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00"]
+    selected = [f.path for f in selected]
+    assert selected == answer

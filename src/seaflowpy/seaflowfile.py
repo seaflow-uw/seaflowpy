@@ -1,8 +1,7 @@
-import datetime
 import os
 import re
-import pytz
 from . import errors
+from . import time
 from . import util
 
 
@@ -18,8 +17,14 @@ opp_file_re = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}\.opp(?:\.gz)
 class SeaFlowFile:
     """Base class for EVT/OPP/VCT file classes"""
 
-    def __init__(self, path):
-        self.path = path  # file path
+    def __init__(self, path, date=None):
+        """
+        The date can be set from the date argument for old style filenames that
+        don't have timestamps. For new style file names if the date parsed from
+        the filename doesn't match the date passed in the contructor a ValueError
+        will be raised.
+        """
+        self.path = path
 
         parts = parse_path(self.path)
         self.filename = parts["file"]
@@ -31,18 +36,25 @@ class SeaFlowFile:
         if self.is_new_style:
             err = None
             try:
-                self.date = date_from_filename(self.filename_noext)
+                timestamp = timestamp_from_filename(self.filename_noext)
+                self.date = time.parse_date(timestamp)
             except ValueError as e:
                 err = e
             if err:
                 raise errors.FileError(str(err))
+            if date is not None and self.date != date:
+                raise ValueError(
+                    "parsed date does not match date argument, {} != {}".format(
+                        self.date.isoformat(timespec="seconds"),
+                        date.isoformat(timespec="seconds")
+                    )
+                )
         else:
-            self.date = None
+            self.date = date
 
         # YYYY_dayofyear directory found in file path and parsed
         # from file datestmap
         self.path_dayofyear = parts["dayofyear"]
-        self.dayofyear = create_dayofyear_directory(self.date)
 
         # Identifer to match across file types (EVT/OPP/VCT)
         # Should be something like 2014_142/42.evt for old files. Note always
@@ -68,9 +80,13 @@ class SeaFlowFile:
             else:
                 self.path_file_id = self.filename_noext
 
-
     def __str__(self):
         return "SeaFlowFile: {}, {}".format(self.file_id, self.path)
+
+    @property
+    def dayofyear(self):
+        """Return day of year based on date."""
+        return create_dayofyear_directory(self.date)
 
     @property
     def isgz(self):
@@ -122,7 +138,6 @@ class SeaFlowFile:
         return (year, day, file_key)
 
 
-
 def create_dayofyear_directory(dt):
     """Create SeaFlow day of year directory from a datetime object"""
     if dt:
@@ -130,12 +145,7 @@ def create_dayofyear_directory(dt):
     return ''
 
 
-def date_from_filename(filename):
-    """Return a datetime object based on new-style SeaFlow filename.
-
-    Parts of the filename after the datestamp will be ignored. Any timezone information
-    will be ignored and the datetime object returned will be UTC.
-    """
+def timestamp_from_filename(filename):
     filename_noext = remove_ext(os.path.basename(filename))
     m = re.match(new_file_re, filename_noext)
     if m:
@@ -143,13 +153,7 @@ def date_from_filename(filename):
         # - 2014-05-15T17-07-08+00-00
         # - 2014-05-15T17-07-08-07-00
         # Parse RFC 3339 date string
-        try:
-            date = datetime.datetime.fromisoformat("{date}T{hours}:{minutes}:{seconds}{tzhours}:{tzminutes}".format(**m.groupdict()))
-            date = date.replace(tzinfo=pytz.utc)
-        except ValueError as e:
-            raise e
-        else:
-            return date
+        return "{date}T{hours}:{minutes}:{seconds}{tzhours}:{tzminutes}".format(**m.groupdict())
     raise ValueError('filename does not look like a new-style SeaFlow file')
 
 
@@ -219,34 +223,30 @@ def keep_evt_files(files, opp=False):
     return files_list
 
 
-def timeselect_evt_files(files, tstart, tend):
+def timeselect_evt_files(sfiles, tstart, tend):
     """
-    Filter a list of EVT files by ISO8601 timestamps for start and end.
+    Filter a list of EVT files by datetime.datetime start and end.
 
-    Either tstart or tend may be None.
+    Parameters
+    -----------
+    sfiles: iterable of seaflowfile.SeaFlowFile
+        Any files without dates will not be selected.
+    tstart: str
+        Start datetime. Pass None to remove lower bound.
+    tend: str
+        End datetime. Pass None to remove upper bound.
 
-    Raises ValueError if there are old style non-timestamped EVT files in the
-    list or if tstart or tend can't be parsed, and raises errors.FileError if
-    any new style EVT files have unparseable dates.
+    Raises
+    ------
+    ValueError if tstart or tend can't be parsed.
+
+    Returns
+    -------
+    List of seaflowfile.SeaFlowFile within tstart and tend.
     """
-    sfiles = [SeaFlowFile(f) for f in files]
-    if any([f.is_old_style for f in sfiles]):
-        raise ValueError("old style EVT files can't be time selected")
-
-    if tstart:
-        if tstart.endswith("Z"):
-            tstart = tstart[:-1] + "+00:00"
-        t0 = datetime.datetime.fromisoformat(tstart)
-        if t0.tzinfo is None:
-            t0 = t0.replace(tzinfo=pytz.UTC)
-        sfiles = [f for f in sfiles if f.date >= t0]
-    if tend:
-        if tend.endswith("Z"):
-            tend = tend[:-1] + "+00:00"
-        t1 = datetime.datetime.fromisoformat(tend)
-        if t1.tzinfo is None:
-            t1 = t1.replace(tzinfo=pytz.UTC)
-        sfiles = [f for f in sfiles if f.date <= t1]
-
-    accepted = [f.path for f in sfiles]
-    return accepted
+    sfiles = [f for f in sfiles if f.date is not None]
+    if tstart is not None:
+        sfiles = [f for f in sfiles if f.date >= tstart]
+    if tend is not None:
+        sfiles = [f for f in sfiles if f.date <= tend]
+    return sfiles

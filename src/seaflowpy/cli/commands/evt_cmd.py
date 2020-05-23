@@ -1,14 +1,18 @@
+import logging
 import os
+import pathlib
 import sys
 
 import click
+import numpy as np
 import pandas as pd
 from seaflowpy import beads
 from seaflowpy import errors
 from seaflowpy import seaflowfile
 from seaflowpy import fileio
 from seaflowpy import sample
-from seaflowpy import util
+from seaflowpy import sfl
+from seaflowpy import time
 
 
 def validate_file_fraction(ctx, param, value):
@@ -26,6 +30,15 @@ def validate_positive(ctx, param, value):
 def validate_seed(ctx, param, value):
     if value is not None and (value < 0 or value > (2**32 - 1)):
         raise click.BadParameter(f'must be between 0 and 2**32 - 1.')
+    return value
+
+
+def validate_timestamp(ctx, param, value):
+    if value is not None:
+        try:
+            value = time.parse_date(value, assume_utc=False)
+        except ValueError:
+            raise click.BadParameter(f'unable to parse timestamp.')
     return value
 
 
@@ -93,32 +106,50 @@ def count_evt_cmd(no_header, evt_files):
 
 
 @evt_cmd.command('beads')
+@click.option('-c', '--cruise', type=str, required=True,
+    help='Cruise name for summary plot title.')
+@click.option('-C', '--cytograms', is_flag=True, default=False, show_default=True,
+    help="""Create per-time-window cytogram PNGs. Files may be about 1-2MB and plotting
+    is much slower than bead finding itself, so consider using with a limited time
+    range and/or large resolution for diagnostic purposes.""")
+@click.option('-e', '--event-limit', type=int, default=30000, show_default=True,
+    help='Maximum event count for bead clustering.')
 @click.option('-f', '--frac', type=float, default=0.33, show_default=True,
     help='min_cluster_frac parameter to hdbscan. Min fraction of data which should be in cluster.')
-@click.option('-o', '--outpath', type=click.Path(),
-    help='Output file path for bead coordinates. Parquet format.')
+@click.option('-F', '--fsc-min', type=int, default=40000, show_default=True,
+    help='FSC minimum cutoff to use during bead cluster detection.')
+@click.option("-i", "--iqr", type=int, default=5000, show_default=True,
+    help='Maximum interquartile spread to accept a bead location for fsc_small, D1, D2.')
+@click.option('--min-date', type=str, callback=validate_timestamp,
+    help='Minimum date of file to sample as ISO8601 timestamp.')
+@click.option('--max-date', type=str, callback=validate_timestamp,
+    help='Maximum date of file to sample as ISO8601 timestamp.')
+@click.option('-o', '--out-dir', type=click.Path(), required=True,
+    help='Directory for output files.')
 @click.option('-O', '--other-params', type=click.Path(exists=True),
     help='Filtering parameter csv file to compare against')
-@click.option('-p', '--plot-dir', type=click.Path(),
-    help='Output directory for bead finding diagnostic plots. PNG format.')
 @click.option('-P', '--pe-min', type=int, default=40000, show_default=True,
     help='PE minimum cutoff to use during bead cluster detection.')
-@click.option('-r', '--radius', type=int, callback=validate_positive,
-    help='Radius of circle used to collect bead locations.')
-@click.option('-s', '--serial',
-    help='Instrument serial number.')
-@click.argument('evt-files', nargs=-1, type=click.Path(exists=True))
-def beads_evt_cmd(frac, outpath, other_params, plot_dir, pe_min, radius, evt_files, serial):
+@click.option('-r', '--resolution', type=str, default='1H', show_default=True,
+    help='Time resolution for bead detection. Follows Pandas offset aliases.')
+@click.option('-v', '--verbose', count=True,
+    help='Print progress info.')
+@click.argument('particle-file', nargs=1, type=click.Path(exists=True))
+def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
+    max_date, out_dir, other_params, pe_min, resolution, verbose, particle_file):
     """
     Find bead location and generate filtering parameters.
     """
-    if not evt_files:
-        return
-
-    # dirs to file paths
-    files = seaflowfile.keep_evt_files(expand_file_list(evt_files))
+    if verbose == 0:
+        loglevel = logging.WARNING
+    elif verbose == 1:
+        loglevel = logging.INFO
+    else:
+        loglevel = logging.DEBUG
+    logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
 
     if other_params:
+        logging.info("other filter parameter file: %s", other_params)
         try:
             params = fileio.read_filter_params_csv(other_params)
         except errors.FileError as e:
@@ -127,68 +158,122 @@ def beads_evt_cmd(frac, outpath, other_params, plot_dir, pe_min, radius, evt_fil
     else:
         otherip = None
 
-    coords_df = None
-    etemplate = "{}: {!r}: {}"
-    for f in files:
-        try:
-            results = beads.find_beads(f, serial, pe_min=pe_min, min_cluster_frac=frac)
-            df = results["inflection_point"]
-            df["path"] = results["evt_path"]
-            df["file_id"] = seaflowfile.SeaFlowFile(f).file_id
-            df["date"] = seaflowfile.SeaFlowFile(f).date
-            if coords_df is None:
-                coords_df = df
-            else:
-                coords_df = pd.concat([coords_df, df], ignore_index=True)
-        except Exception as e:
-            print(etemplate.format(type(e).__name__, e.args, str(e), file=sys.stderr))
+    evt_df = pd.read_parquet(particle_file)
+    if len(evt_df) == 0:
+        raise click.ClickException("no EVT data for bead finding")
+    if "date" not in evt_df.columns:
+        evt_df = evt_df.reset_index()  # maybe it's the index
+    if "date" not in evt_df.columns:
+        raise click.ClickException("no date column in EVT dataframe")
+
+    # Apply any date filters
+    date_bool = np.full(len(evt_df), True, dtype=bool)
+    logging.info("apply date range %s to %s", min_date, max_date)
+    logging.info("%s rows before date filter", len(evt_df))
+    if min_date is not None:
+        date_bool = evt_df["date"] >= min_date
+        logging.info("%s after min_date filter", np.sum(date_bool))
+    if max_date is not None:
+        date_bool = date_bool & (evt_df["date"] <= max_date)
+        logging.info("%s after max_date filter", np.sum(date_bool))
+    evt_df = evt_df[date_bool]
+    logging.info(
+        "%s rows between %s and %s after date filter",
+        len(evt_df), evt_df["date"].min(), evt_df["date"].max()
+    )
+
+    pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
+    cyto_plot_dir = os.path.join(out_dir, "cytogram_plots")
+    summary_plot_dir = os.path.join(out_dir, "summary_plots")
+
+    all_dfs = []
+    for name, group in evt_df.set_index("date").resample(resolution):
+        if len(group) == 0:
             continue
-        if plot_dir:
-            sff = seaflowfile.SeaFlowFile(f)
-            plot_path = os.path.join(plot_dir, sff.file_id + ".png")
-            util.mkdir_p(os.path.dirname(plot_path))
+        logging.info("finding beads for %s", str(name))
+        if len(group) <= event_limit:
+            tmp_df = group.reset_index(drop=True)
+        else:
+            tmp_df = group.reset_index(drop=True).sample(n=event_limit)
+        tmp_df = tmp_df.copy()
+        try:
+            results = beads.find_beads(tmp_df, fsc_min=fsc_min, pe_min=pe_min, min_cluster_frac=frac)
+        except Exception as e:
+            logging.warning("%s: %s: %s", name, type(e).__name__, str(e))
+            if type(e).__name__ != "ClusterError":
+                continue
+        else:
+            if results["message"]:
+                logging.warning("%s: %s", name, results["message"])
+            df = results["bead_coordinates"]
+            df["date"] = name
+            all_dfs.append(df)
+
+        if cytograms:
+            logging.info("plotting %s", str(name))
+
+            pathlib.Path(cyto_plot_dir).mkdir(parents=True, exist_ok=True)
+            cyto_plot_path = os.path.join(cyto_plot_dir, name.isoformat().replace(":", "-"))
             try:
-                beads.plot(results, plot_path, otherip=otherip)
+                beads.plot(results, cyto_plot_path, file_id=name, otherip=otherip)
             except Exception as e:
-                print(etemplate.format(type(e).__name__, e.args, str(e), file=sys.stderr))
-    coords_df.to_parquet(outpath)
+                logging.warning("%s: %s: %s", type(e).__name__, e.args, str(e))
+                raise e
+
+    if all_dfs:
+        out_df = pd.concat(all_dfs, ignore_index=True)
+        out_df["resolution"] = resolution
+        out_df["resolution"] = out_df["resolution"].astype("category")
+        logging.info("creating summary plots")
+        pathlib.Path(summary_plot_dir).mkdir(parents=True, exist_ok=True)
+        for col in ["fsc_small", "D1", "D2"]:
+            beads.plot_cruise(
+                out_df,
+                col,
+                summary_plot_dir,
+                filter_params_path=other_params,
+                cruise=cruise,
+                iqr=iqr
+            )
+        parquet_path = os.path.join(out_dir, cruise + f".beads-by-{resolution}" + ".parquet")
+        out_df.to_parquet(parquet_path)
+        logging.info("done")
 
 
 @evt_cmd.command('sample')
 @click.option('-o', '--outpath', type=click.Path(), required=True,
-    help="""Output path. If --multi is used, this option will be interpreted as a
-            directory and there will be one output file per input file. All files will
-            gzip compressed. If --multi is not used all input files will be subsampled
-            into one output file given by this option. If --outpath ends with '.gz'
-            the output file will be gzip compressed.""")
+    help="""Output path for parquet file with subsampled event data.""")
 @click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_positive,
     help='Target number of events to keep.')
 @click.option('-f', '--file-fraction', type=float, default=0.1, show_default=True, callback=validate_file_fraction,
-    help='Fraction of files to sample from, > 0 and <= 1.')
+    help='Fraction of files to sample from, > 0 and <= 1. Using --multi sets this option to 1.')
 @click.option('--min-chl', type=int, default=0, show_default=True,
     help='Mininum chlorophyll (small) value.')
 @click.option('--min-fsc', type=int, default=0, show_default=True,
     help='Mininum forward scatter (small) value.')
 @click.option('--min-pe', type=int, default=0, show_default=True,
     help='Mininum phycoerythrin value.')
-@click.option('--min-date', type=str,
-    help='Minimum date of file to sample.')
-@click.option('--max-date', type=str,
-    help='Maximum date of file to sample.')
+@click.option('--min-date', type=str, callback=validate_timestamp,
+    help='Minimum date of file to sample as ISO8601 timestamp.')
+@click.option('--max-date', type=str, callback=validate_timestamp,
+    help='Maximum date of file to sample as ISO8601 timestamp.')
 @click.option('--multi', is_flag=True, default=False, show_default=True,
-    help='Sample each input file separately and create one output file per input file.')
+    help='Sample --count events from each input file separately, rather than --count events overall.')
 @click.option('-n', '--noise-filter', is_flag=True, default=False, show_default=True,
     help='Apply noise filter before subsampling.')
 @click.option('-p', '--process-count', type=int, default=1, show_default=True, callback=validate_positive,
     help='Number of processes to use.')
 @click.option('-s', '--seed', type=int, callback=validate_seed,
     help='Integer seed for PRNG, otherwise system-dependent source of randomness is used to seed the PRNG.')
+@click.option('-S', '--sfl', 'sfl_path', type=click.Path(),
+    help="""SFL file that can be used to associate dates with EVT files. Useful when
+            sampling undated EVT files.""")
 @click.option('-v', '--verbose', count=True,
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
                    min_date, max_date, multi, noise_filter, process_count, seed,
-                   verbose, files):
+                   sfl_path, verbose, files):
     """
     Sample a subset of events in EVT files.
 
@@ -198,15 +283,63 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     If --outpath is a single file only a fraction of the input files will be
     sampled from (FILE-FRACTION) and one combined output file will be created.
     """
+    if verbose == 0:
+        loglevel = logging.WARNING
+    elif verbose == 1:
+        loglevel = logging.INFO
+    else:
+        loglevel = logging.DEBUG
+    logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
+
+    # Get file to date mappings from SFL file
+    if sfl_path:
+        sfl_df = sfl.read_file(sfl_path, convert_dates=True)
+        sfl_df = sfl.fix(sfl_df)  # ensure valid file_ids in file column
+        dates = dict(zip(sfl_df["file"].tolist(), sfl_df["date"].tolist()))
+    else:
+        dates = {}
+
     # dirs to file paths, only keep EVT/OPP files
     files = seaflowfile.keep_evt_files(expand_file_list(files))
-    time_files = seaflowfile.timeselect_evt_files(files, min_date, max_date)
-    chosen_files = sample.random_select(time_files, file_fraction, seed)
+    # Parse file names, adding dates from SFL data if needed
+    sfiles = []
+    for f in files:
+        try:
+            # Create an initial SeaFlowFile to get file_id
+            sf = seaflowfile.SeaFlowFile(f)
+        except errors.FileError:
+            logging.warning("could not parse filename for %s", f)
+        else:
+            if sfl_path is not None:
+                if sf.file_id in dates:
+                    # For old filenames without timestamp, this sets the date from
+                    # SFL. For new filenames with timestamps, this checks that both
+                    # dates match.
+                    sf = seaflowfile.SeaFlowFile(f, date=dates.get(sf.file_id, None))
+                    # Only add to list if in SFL when SFL is provided
+                    sfiles.append(sf)
+            else:
+                # Always accept file in absence of SFL
+                sfiles.append(sf)
+            # Add date to dates dict if not already there from SFL
+            dates[sf.file_id] = sf.date
+
+    # Select by time.
+    # If paths don't have timestamps and SFL not provided, this step will always
+    # filter out all files.
+    time_files = seaflowfile.timeselect_evt_files(sfiles, min_date, max_date)
+    time_files = [sf.path for sf in time_files]
+    # Select fraction of files
+    if not multi:
+        chosen_files = sample.random_select(time_files, file_fraction, seed)
+    else:
+        chosen_files = time_files
 
     results, errs = sample.sample(
         chosen_files,
         count,
         outpath,
+        dates=dates,
         min_chl=min_chl,
         min_fsc=min_fsc,
         min_pe=min_pe,
@@ -238,7 +371,10 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
             print(err, file=sys.stderr)
         print("", file=sys.stderr)
 
+    if sfl_path:
+        print("{} entries found in SFL file".format(len(sfl_df)), file=sys.stderr)
     print("{} input files".format(len(files)), file=sys.stderr)
+    print("{} files within time window".format(len(time_files)), file=sys.stderr)
     print("{} selected files".format(len(chosen_files)), file=sys.stderr)
     print("{} total events".format(sum([r["events"] for r in results])), file=sys.stderr)
     print("{} events after noise/min filtering".format(sum([r["events_postfilter"] for r in results])), file=sys.stderr)

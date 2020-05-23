@@ -1,19 +1,22 @@
+import logging
 import os
 import pathlib
 import hdbscan
 import matplotlib as mpl
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from kern_smooth import densCols
-from scipy.spatial import ConvexHull
+from matplotlib.collections import LineCollection
+from scipy.spatial import ConvexHull  # pylint: disable=no-name-in-module
 from seaflowpy import errors
 from seaflowpy import fileio
 from seaflowpy import particleops
+from seaflowpy import seaflowfile
 
 
-
-def cluster(df, columns, min_cluster_frac):
+def cluster(df, columns, min_cluster_frac, min_points=50):
     """
     Find a 2d cluster of points in df[columns] with HDBSCAN. Clustering has been
     tuned to work well for SeaFlow bead clusters.
@@ -27,6 +30,8 @@ def cluster(df, columns, min_cluster_frac):
     min_cluster_frac: float
         Minimum fraction of points that should be in  the cluster. Passed to
         HDBSCAN's clusterer as min_cluster_size.
+    min_points: int
+        Raise errors.ClustererError if input dataframe has fewer than this many rows.
 
     Returns
     -------
@@ -35,43 +40,51 @@ def cluster(df, columns, min_cluster_frac):
 
     Raises:
     -------
-    TooManyClustersError if more than one cluster is found.
-    NoClusterError if no clusters are found.
+    errors.ClusterError if more than one cluster or no cluster is found or input is too small.
     """
+    if len(df) < min_points:
+        raise errors.ClusterError(f"< {min_points} to cluster on {columns}")
     min_cluster_size = int(len(df) * min_cluster_frac)
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=min_cluster_size,
         allow_single_cluster=True,
-        cluster_selection_method="eom").fit(df[columns].values)
+        cluster_selection_method="eom",
+    ).fit(df[columns].values)
     nclust = len(set(clusterer.labels_))
     if nclust > 2:
-        raise errors.TooManyClustersError(f"too many {columns} clusters found: {nclust}")
+        raise errors.ClusterError(f"too many {columns} clusters found: {nclust}")
     if nclust == 0:
-        raise errors.NoClusterError(f"no {columns} clusters found")
+        raise errors.ClusterError(f"no {columns} clusters found")
 
     # Get all points inside expanded cluster boundaries
     idx = [i for i, x in enumerate(clusterer.labels_) if x >= 0]
+    if len(idx) < 3:
+        raise errors.ClusterError(f"{columns} cluster too small to find convex hull")
     points = df.iloc[idx][columns].values
-    center = centroid(points) # x, y center of the cluster
-    hull = ConvexHull(points)
+    try:
+        hull = ConvexHull(points)
+    except Exception as e:
+        if type(e).__name__ == "QhullError":
+            raise errors.ClusterError(f"could not find convex hull for {columns}")
+        raise e
     # hull.vertices contains row indexes of points that make up convex hull
     # hull_points is a 2d array of x, y points that make up the convex hull
     hull_points = points[hull.vertices, :]
 
     return {
         "df": df,  # input data frame for DBSCAN
-        "columns": columns, # columns of df used to cluster
-        "indices": idx, # indices into df of clustered points
-        "points": points, # 2d array of points in cluster
-        "center": center, # median center of cluster points
-        "hull_points": hull_points, # (x, y) of convex hull points
-        "clusterer": clusterer
+        "columns": columns,  # columns of df used to cluster
+        "indices": idx,  # indices into df of clustered points
+        "points": points,  # 2d array of points in cluster
+        "hull_points": hull_points,  # (x, y) of convex hull points
+        "clusterer": clusterer,
     }
 
 
-def quantiles(a):
-    """Return tuple of 3 quantiles of a (.25, .5, .75)."""
-    return (np.quantile(a, .25), np.quantile(a, .5), np.quantile(a, .75))
+def quantiles(a, q_levels):
+    """Return tuple of quantiles q_levels for a."""
+    qs = [np.quantile(a, q) for q in q_levels]
+    return qs
 
 
 def params2ip(params):
@@ -85,7 +98,7 @@ def params2ip(params):
     return ip
 
 
-def ip2params(ip, serial, width=5000):
+def ip2params(ip, slopes, width=5000):
     """
     Convert inflection point dataframe to filtering params.
 
@@ -93,8 +106,8 @@ def ip2params(ip, serial, width=5000):
     ---------
     ip: pandas.DataFrame
         Inflection points for 1 micron beads.
-    serial: int
-        Instrument serial number.
+    slopes: pandas.DataFrame
+        Calibration slopes for SeaFlow filtering of one instrument.
     width: int, 5000
         Filtering parameter "width", tolerance in D1 D2 equality.
 
@@ -103,49 +116,65 @@ def ip2params(ip, serial, width=5000):
     pandas.DataFrame
         Filtering parameter dataframe ready to be saved to a popcycle database.
     """
-    slope_url = "https://raw.githubusercontent.com/armbrustlab/seaflow-virtualcore/master/1.bead_calibration/seaflow_filter_slopes.csv"
-    slopes = pd.read_csv(slope_url)
-    slopes = slopes.astype({"ins": "str"})
-
     headers = [
-        "quantile", "beads_fsc_small",
-        "beads_D1", "beads_D2", "width",
-        "notch_small_D1", "notch_small_D2",
-        "notch_large_D1", "notch_large_D2",
-        "offset_small_D1", "offset_small_D2",
-        "offset_large_D1", "offset_large_D2"
+        "quantile",
+        "beads_fsc_small",
+        "beads_D1",
+        "beads_D2",
+        "width",
+        "notch_small_D1",
+        "notch_small_D2",
+        "notch_large_D1",
+        "notch_large_D2",
+        "offset_small_D1",
+        "offset_small_D2",
+        "offset_large_D1",
+        "offset_large_D2",
     ]
 
     params = pd.DataFrame(columns=headers)
     qs = [
         {"quant": 2.5, "suffix": "_2.5"},
         {"quant": 50.0, "suffix": ""},
-        {"quant": 97.5, "suffix": "_97.5"}
+        {"quant": 97.5, "suffix": "_97.5"},
     ]
     for i, q in enumerate(qs):
         suffix = q["suffix"]
         # Small particles
         offset_small_D1 = 0
         offset_small_D2 = 0
-        notch_small_D1 = round_((ip.loc[i, "D1"])/ip.loc[i, "fsc_small"], 3)
-        notch_small_D2 = round_((ip.loc[i, "D2"])/ip.loc[i, "fsc_small"], 3)
+        notch_small_D1 = round_((ip.loc[i, "D1"]) / ip.loc[i, "fsc_small"], 3)
+        notch_small_D2 = round_((ip.loc[i, "D2"]) / ip.loc[i, "fsc_small"], 3)
 
         # Large particles
-        notch_large_D1 = round_(slopes.loc[slopes["ins"] == serial, f"notch.large.D1{suffix}"].iloc[0], 3)
-        notch_large_D2 = round_(slopes.loc[slopes["ins"] == serial, f"notch.large.D2{suffix}"].iloc[0], 3)
-        offset_large_D1 = round_(ip.loc[i, "D1"] - notch_large_D1 * ip.loc[i, "fsc_small"])
-        offset_large_D2 = round_(ip.loc[i, "D2"] - notch_large_D2 * ip.loc[i, "fsc_small"])
+        notch_large_D1 = round_(slopes.loc[:, f"notch.large.D1{suffix}"].iloc[0], 3)
+        notch_large_D2 = round_(slopes.loc[:, f"notch.large.D2{suffix}"].iloc[0], 3)
+        offset_large_D1 = round_(
+            ip.loc[i, "D1"] - notch_large_D1 * ip.loc[i, "fsc_small"]
+        )
+        offset_large_D2 = round_(
+            ip.loc[i, "D2"] - notch_large_D2 * ip.loc[i, "fsc_small"]
+        )
 
         row = pd.DataFrame(
             columns=headers,
-            data=[[
-                q["quant"], int(ip.loc[i, "fsc_small"]),
-                int(ip.loc[i, "D1"]), int(ip.loc[i, "D2"]), width,
-                notch_small_D1, notch_small_D2,
-                notch_large_D1, notch_large_D2,
-                offset_small_D1, offset_small_D2,
-                offset_large_D1, offset_large_D2
-            ]]
+            data=[
+                [
+                    q["quant"],
+                    int(ip.loc[i, "fsc_small"]),
+                    int(ip.loc[i, "D1"]),
+                    int(ip.loc[i, "D2"]),
+                    width,
+                    notch_small_D1,
+                    notch_small_D2,
+                    notch_large_D1,
+                    notch_large_D2,
+                    offset_small_D1,
+                    offset_small_D2,
+                    offset_large_D1,
+                    offset_large_D2,
+                ]
+            ],
         )
         params = params.append(row)
 
@@ -160,18 +189,19 @@ def round_(x, prec=0):
     return float("{1:.{0}f}".format(prec, x))
 
 
-def find_beads(evt_path, serial, pe_min=45000, min_cluster_frac=0.33):
+def find_beads(evt_df, pe_min=45000, fsc_min=40000, min_cluster_frac=0.33):
     """
     Find bead coordinates with DBSCAN clustering.
 
     Parameters
     ----------
-    evt_path: str
-        Path to an EVT file to with bead particles.
-    serial: str
-        Instrument serial number.
+    evt_df: pandas.DataFrame
+        EVT particle data.
     pe_min: int, default 45000
         PE minimum cutoff to use when identifying beads clusters. This number
+        should be large enough to eliminate other common large clusters.
+    fsc_min: int, default 40000
+        FSC minimum cutoff to use when identifying beads clusters. This number
         should be large enough to eliminate other common large clusters.
     min_cluster_frac: float, default 0.33
         Minimum fraction of points that should be in  the cluster.
@@ -183,89 +213,146 @@ def find_beads(evt_path, serial, pe_min=45000, min_cluster_frac=0.33):
 
     Raises
     ------
-    TooManyClustersError if more than one bead cluster is found.
-    NoClusterError if no clusters are found.
+    errors.ClusterError
     """
-    evt = fileio.read_evt_labview(evt_path)
-    opp = particleops.roughfilter(evt)
-    opp_top = opp[opp["pe"] > pe_min]
+    q_levels = (0.25, 0.5, 0.75)
+    opp = particleops.roughfilter(evt_df)
+
+    # Min value filter
+    # Start with a condition that's True for every row
+    min_indexer = opp["fsc_small"] >= 0
+    if pe_min:
+        min_indexer = min_indexer & (opp["pe"] >= pe_min)
+    if fsc_min:
+        min_indexer = min_indexer & (opp["fsc_small"] >= fsc_min)
+    opp_top = opp[min_indexer]
+
+    msg = ""  # any error message encountered during clustering
 
     # ----------------------------
     # Find initial fsc vs pe beads
     # ----------------------------
     columns = ["fsc_small", "pe"]
-    initial_source = opp_top # data for clusterer
-    final_source = evt  # source of final cluster points
-    clust_fsc_pe = cluster(initial_source, columns, min_cluster_frac=min_cluster_frac)
-    # Get all points inside cluster boundaries
-    idx = points_in_polygon(clust_fsc_pe["hull_points"], final_source[columns].values)
-    pe_df = final_source.iloc[idx]  # beads by pe
-    if len(pe_df) == 0:
-        raise errors.NoClusterError(f"could not find points for {columns} cluster")
-    fsc_q = quantiles(pe_df["fsc_small"].values)
-    pe_q = quantiles(pe_df["pe"].values)
+    initial_source = opp_top  # data for clusterer
+    final_source = evt_df  # source of final cluster points
+    clust_fsc_pe = None
+    pe_df = pd.DataFrame()
+    fsc_q = np.full(len(q_levels), np.nan)
+    pe_q = np.full(len(q_levels), np.nan)
+    pe_center = None
+    try:
+        clust_fsc_pe = cluster(initial_source, columns, min_cluster_frac=min_cluster_frac)
+        # Get all points inside cluster boundaries
+        idx = points_in_polygon(clust_fsc_pe["hull_points"], final_source[columns].values)
+        if len(idx) == 0:
+            raise errors.ClusterError(f"could not find points for {columns} cluster")
+    except errors.ClusterError as e:
+        msg = str(e)
+    else:
+        pe_df = final_source.iloc[idx]  # beads by pe
+        fsc_q = quantiles(pe_df["fsc_small"].values, q_levels)
+        pe_q = quantiles(pe_df["pe"].values, q_levels)
+        pe_center = centroid(pe_df[columns].values)
 
     # ------------------------------------------
     # Find fsc vs D1 beads as subset of pe beads
     # ------------------------------------------
-    columns = ["fsc_small", "D1"]
-    intial_source = pe_df # data for clusterer
-    final_source = pe_df  # source of final cluster points
-    clust_fsc_d1 = cluster(intial_source, columns, min_cluster_frac=min_cluster_frac)
-    # Get all points inside cluster boundaries
-    idx = points_in_polygon(clust_fsc_d1["hull_points"], final_source[columns].values)
-    d1_df = final_source.iloc[idx]  # beads by D1
-    if len(d1_df) == 0:
-        raise errors.NoClusterError(f"could not find points for {columns} cluster")
-    d1_q = quantiles(d1_df["D1"].values)[::-1]  # reverse to match Francois' results
+    clust_fsc_d1 = None
+    d1_df = pd.DataFrame()
+    d1_q = np.full(len(q_levels), np.nan)
+    d1_center = None
+    if not msg:
+        columns = ["fsc_small", "D1"]
+        intial_source = pe_df  # data for clusterer
+        final_source = pe_df  # source of final cluster points
+        try:
+            clust_fsc_d1 = cluster(intial_source, columns, min_cluster_frac=min_cluster_frac)
+            # Get all points inside cluster boundaries
+            idx = points_in_polygon(clust_fsc_d1["hull_points"], final_source[columns].values)
+            if len(idx) == 0:
+                raise errors.ClusterError(f"could not find points for {columns} cluster")
+        except errors.ClusterError as e:
+            msg = str(e)
+        else:
+            d1_df = final_source.iloc[idx]  # beads by D1
+            d1_q = quantiles(d1_df["D1"].values, q_levels)
+            d1_center = centroid(d1_df[columns].values)
 
     # ------------------------------------------
-    # Find fsc vs D1 beads as subset of pe beads
+    # Find fsc vs D2 beads as subset of pe beads
     # ------------------------------------------
-    columns = ["fsc_small", "D2"]
-    intial_source = pe_df # data for clusterer
-    final_source = pe_df  # source of final cluster points
-    clust_fsc_d2 = cluster(intial_source, columns, min_cluster_frac=min_cluster_frac)
-    # Get all points inside cluster boundaries
-    idx = points_in_polygon(clust_fsc_d2["hull_points"], final_source[columns].values)
-    d2_df = final_source.iloc[idx]  # beads by D2
-    if len(d2_df) == 0:
-        raise errors.NoClusterError(f"could not find points for {columns} cluster")
-    d2_q = quantiles(d2_df["D2"].values)[::-1]  # reverse to match Francois' results
+    clust_fsc_d2 = None
+    d2_df = pd.DataFrame()
+    d2_q = np.full(len(q_levels), np.nan)
+    d2_center = None
+    if not msg:
+        columns = ["fsc_small", "D2"]
+        intial_source = pe_df  # data for clusterer
+        final_source = pe_df  # source of final cluster points
+        try:
+            clust_fsc_d2 = cluster(intial_source, columns, min_cluster_frac=min_cluster_frac)
+            # Get all points inside cluster boundaries
+            idx = points_in_polygon(clust_fsc_d2["hull_points"], final_source[columns].values)
+            if len(idx) == 0:
+                raise errors.ClusterError(f"could not find points for {columns} cluster")
+        except errors.ClusterError as e:
+            msg = str(e)
+        else:
+            d2_df = final_source.iloc[idx]  # beads by D2
+            d2_q = quantiles(d2_df["D2"].values, q_levels)
+            d2_center = centroid(d2_df[columns].values)
 
-    ip = pd.DataFrame({
-        "quantile": [2.5, 50, 97.5],
-        "fsc_small": fsc_q,
-        "pe": pe_q,
-        "D1": d1_q,
-        "D2": d2_q
-    })
-    params = ip2params(ip, serial)
-    particleops.mark_focused(evt, params)
-    final_opp = particleops.select_focused(evt)
+    coords_df = pd.DataFrame({
+        "fsc_small_1Q": fsc_q[0],
+        "fsc_small_2Q": fsc_q[1],
+        "fsc_small_3Q": fsc_q[2],
+        "fsc_small_IQR": fsc_q[2] - fsc_q[0],
+        "fsc_small_count": len(pe_df),
+        "pe_1Q": pe_q[0],
+        "pe_2Q": pe_q[1],
+        "pe_3Q": pe_q[2],
+        "pe_IQR": pe_q[2] - pe_q[0],
+        "pe_count": len(pe_df),
+        "D1_1Q": d1_q[0],
+        "D1_2Q": d1_q[1],
+        "D1_3Q": d1_q[2],
+        "D1_IQR": d1_q[2] - d1_q[0],
+        "D1_count": len(d1_df),
+        "D2_1Q": d2_q[0],
+        "D2_2Q": d2_q[1],
+        "D2_3Q": d2_q[2],
+        "D2_IQR": d2_q[2] - d2_q[0],
+        "D2_count": len(d2_df),
+    }, index=[0])
 
     return {
-        "inflection_point": ip,
+        "bead_coordinates": coords_df,
         "cluster_results": {
             "fsc_pe": clust_fsc_pe,
             "fsc_D1": clust_fsc_d1,
-            "fsc_D2": clust_fsc_d2
+            "fsc_D2": clust_fsc_d2,
         },
         "df": {
-            "evt": evt,
+            "evt": evt_df,
             "rough_opp": opp,
-            "final_opp": final_opp,
             "opp_top": opp_top,
-            "fsc_pe": pe_df,    # points identified as beads by fsc pe
-            "fsc_D1": d1_df,    # points identified as beads by fsc D1
-            "fsc_D2": d2_df     # points identified as beads by fsc D2
+            # These are the actual points that are beads from EVT data
+            "fsc_pe": pe_df,  # points identified as beads by fsc pe
+            "fsc_D1": d1_df,  # points identified as beads by fsc D1
+            "fsc_D2": d2_df,  # points identified as beads by fsc D2
+        },
+        "centers": {  # median centroids
+            "fsc_pe": pe_center,
+            "fsc_D1": d1_center,
+            "fsc_D2": d2_center,
         },
         "pe_min": pe_min,
-        "evt_path": evt_path
+        "fsc_min": fsc_min,
+        "message": msg,
     }
 
 
-def plot(b, plot_file, otherip=None):
+def plot(b, plot_file, file_id=None, otherip=None):
     """
     Create bead finding diagnostic plots.
 
@@ -273,44 +360,39 @@ def plot(b, plot_file, otherip=None):
     ----------
     b: dict
         Results dict returned by find_beads.
+    file_id: str
+        File ID of cluster input EVT file.
     plot_file: str
         Plot file to write to. Any directory prefix will be created if necessary.
     otherip: pandas.DataFrame
          Other inflection point data to be compared against bead finding results.
     """
     plot_dir = os.path.dirname(plot_file)
-    plot_dir_path = pathlib.Path(plot_dir)
-    plot_dir_path.mkdir(parents=True, exist_ok=True)
+    pathlib.Path(plot_dir).mkdir(parents=True, exist_ok=True)
 
-    bead_evt = b["df"]["bead_evt"]
-    evt = b["df"]["evt"]
-    opp = b["df"]["rough_opp"]
-    final_opp = b["df"]["final_opp"]
-    final_opp = final_opp[final_opp["q50"]]
-    final_opp_ratio = len(final_opp) / len(evt)
-    bead_evt_fsc = bead_evt[bead_evt["fsc_small"] > 0]
-    radius = b["radius"]
-    pe_min = b["pe_min"]
-    ip = b["inflection_point"]
+    coords = b["bead_coordinates"]
 
-    nrows, ncols = 3, 3
+    nrows, ncols = 2, 3
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols)
-    fig.suptitle(f"HDBSCAN for {b['bead_evt_path']}")
-    fig.set_size_inches(18.5, 18.5)
 
     # Set axis limits
     for r in range(nrows):
         for c in range(ncols):
-            ax[r, c].set_xlim(0, 2**16)
-            ax[r, c].set_ylim(0, 2**16)
+            ax[r, c].set_xlim(0, 2 ** 16)
+            ax[r, c].set_ylim(0, 2 ** 16)
 
     # -------------------------
     # Common plot options
     # -------------------------
     nbin = 300
-    npoints = 20000
-    dens_opts = {"s": 5, "edgecolors": 'none', "alpha": 0.75, "cmap": plt.get_cmap("viridis")}
-    back_opts = {"s": 10, "color": 'orange', "linewidth": 0, "alpha": 0.1}
+    npoints = 10000
+    dens_opts = {
+        "s": 5,
+        "edgecolors": "none",
+        "alpha": 0.75,
+        "cmap": plt.get_cmap("viridis"),
+    }
+    back_opts = {"s": 10, "color": "orange", "linewidth": 0, "alpha": 0.1}
     linelen = 1500
     linewidth = 2
 
@@ -318,154 +400,259 @@ def plot(b, plot_file, otherip=None):
     # EVT fsc > 0 pe
     # -------------------------
     thisax = ax[0, 0]
-    thisax.set_title(f'EVT with min chl/pe cutoffs')
-    thisax.set_xlabel('FSC > 0')
-    thisax.set_ylabel('PE')
-    x, y = bead_evt_fsc["fsc_small"].head(npoints), bead_evt_fsc["pe"].head(npoints)
-    res = b["cluster_results"]["fsc_pe"] # clustering results
+    thisax.set_title(f"EVT")
+    thisax.set_xlabel("FSC")
+    thisax.set_ylabel("PE")
+    df = b["df"]["evt"]
+    x, y = df["fsc_small"].head(npoints), df["pe"].head(npoints)
+    center = b["centers"]["fsc_pe"]
     plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-    legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
-    if otherip is not None:
-        legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
-    thisax.legend(handles=legend_handles)
+    plot_cutoffs(b["fsc_min"], b["pe_min"], thisax)
+    if coords["fsc_small_count"].sum():
+        legend_handles = []
+        legend_handles.append(
+            plot_bead_coords(
+                thisax,
+                pd.Series([coords["fsc_small_1Q"], coords["fsc_small_2Q"], coords["fsc_small_3Q"]]),
+                center[0],
+                center[1],
+                "north",
+                linewidth,
+                linelen,
+                median_target=True,
+            )
+        )
+        if otherip is not None:
+            legend_handles.append(
+                plot_bead_coords(
+                    thisax,
+                    otherip["fsc_small"],
+                    center[0],
+                    center[1],
+                    "south",
+                    linewidth,
+                    linelen,
+                )
+            )
+        thisax.legend(handles=legend_handles)
+
+    # -------------------------
+    # EVT fsc chl
+    # -------------------------
+    thisax = ax[0, 1]
+    thisax.set_title(f"EVT")
+    thisax.set_xlabel("FSC")
+    thisax.set_ylabel("CHL")
+    df = b["df"]["evt"]
+    x, y = df["fsc_small"].head(npoints), df["chl_small"].head(npoints)
+    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
+    plot_cutoffs(b["fsc_min"], None, thisax)
+
+    if coords["fsc_small_count"].sum():
+        legend_handles = []
+        legend_handles.append(
+            plot_bead_coords(
+                thisax,
+                None,
+                center[0],
+                None,
+                "north",
+                linewidth,
+                linelen,
+                median_target=True,
+            )
+        )
+        thisax.legend(handles=legend_handles)
 
     # -------------------------
     # Rough OPP fsc pe
     # -------------------------
-    thisax = ax[0, 1]
-    thisax.set_title('Rough OPP based on min chl/pe EVT')
-    thisax.set_xlabel('FSC')
-    thisax.set_ylabel('PE')
-    x, y = opp["fsc_small"].head(npoints), opp["pe"].head(npoints)
-    res = b["cluster_results"]["fsc_pe"] # clustering results
-    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-    legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
-    if otherip is not None:
-        legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
-    thisax.legend(handles=legend_handles)
-
-    # -------------------------
-    # Final OPP fsc pe
-    # -------------------------
     thisax = ax[0, 2]
-    thisax.set_title('Final OPP ratio=({:.4f}'.format(final_opp_ratio))
-    thisax.set_xlabel('FSC')
-    thisax.set_ylabel('PE')
-    x, y = final_opp["fsc_small"].head(npoints), final_opp["pe"].head(npoints)
+    thisax.set_title("Rough OPP based on min fsc/pe EVT")
+    thisax.set_xlabel("FSC")
+    thisax.set_ylabel("PE")
+    back = b["df"]["evt"]  # all EVT particles for backdrop
+    thisax.scatter(back["fsc_small"], back["pe"], **back_opts)
+    df = b["df"]["rough_opp"]
+    x, y = df["fsc_small"].head(npoints), df["pe"].head(npoints)
+    center = b["centers"]["fsc_pe"]
     plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-    legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
-    if otherip is not None:
-        legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
-    thisax.legend(handles=legend_handles)
-
-    # -------------------------
-    # Final OPP fsc chl
-    # -------------------------
-    thisax = ax[1, 0]
-    thisax.set_title('Final OPP ratio=({:.4f}'.format(final_opp_ratio))
-    thisax.set_xlabel('FSC')
-    thisax.set_ylabel('CHL')
-    x, y = final_opp["fsc_small"].head(npoints), final_opp["chl_small"].head(npoints)
-    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-
-    # -------------------------
-    # Final OPP chl pe
-    # -------------------------
-    thisax = ax[1, 1]
-    thisax.set_title('Final OPP ratio=({:.4f}'.format(final_opp_ratio))
-    thisax.set_xlabel('CHL')
-    thisax.set_ylabel('PE')
-    x, y = final_opp["chl_small"].head(npoints), final_opp["pe"].head(npoints)
-    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-
-    # -------------------------
-    # Final OPP D1 D2
-    # -------------------------
-    thisax = ax[1, 2]
-    thisax.set_title('Final OPP ratio=({:.4f}'.format(final_opp_ratio))
-    thisax.set_xlabel('D1')
-    thisax.set_ylabel('D2')
-    x, y = final_opp["D1"].head(npoints), final_opp["D2"].head(npoints)
-    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
+    plot_cutoffs(b["fsc_min"], b["pe_min"], thisax)
+    if coords["fsc_small_count"].sum():
+        legend_handles = []
+        legend_handles.append(
+            plot_bead_coords(
+                thisax,
+                pd.Series([coords["fsc_small_1Q"], coords["fsc_small_2Q"], coords["fsc_small_3Q"]]),
+                center[0],
+                center[1],
+                "north",
+                linewidth,
+                linelen,
+                median_target=True,
+            )
+        )
+        if otherip is not None:
+            legend_handles.append(
+                plot_bead_coords(
+                    thisax,
+                    otherip["fsc_small"],
+                    center[0],
+                    center[1],
+                    "south",
+                    linewidth,
+                    linelen,
+                )
+            )
+        thisax.legend(handles=legend_handles)
 
     # -------------------------
     # Plot fsc pe cluster
     # -------------------------
-    thisax = ax[2, 0]
-    thisax.set_xlim(30000, 2**16)
-    thisax.set_ylim(30000, 2**16)
-    res = b["cluster_results"]["fsc_pe"] # clustering results
-    df = res["df"]                       # particles for clustering
-    back = bead_evt_fsc                  # all EVT particles for backdrop
-    columns = res["columns"]
-    thisax.set_title(f'Clustering input (OPP PE > {pe_min})')
-    thisax.set_xlabel('FSC')
-    thisax.set_ylabel('PE')
+    thisax = ax[1, 0]
+    thisax.set_xlim(30000, 2 ** 16)
+    thisax.set_ylim(30000, 2 ** 16)
+    res = b["cluster_results"]["fsc_pe"]  # clustering results
+    center = b["centers"]["fsc_pe"]
+    back = b["df"]["evt"]  # all EVT particles for backdrop
+    thisax.set_title(f"Clustering input (OPP PE > {b['pe_min']}, FSC > {b['fsc_min']})")
+    thisax.set_xlabel("FSC")
+    thisax.set_ylabel("PE")
     # Rough OPP > pe_min fsc pe with EVT backdrop
-    thisax.scatter(back[columns[0]], back[columns[1]], **back_opts)
+    thisax.scatter(back["fsc_small"], back["pe"], **back_opts)
+    plot_cutoffs(b["fsc_min"], b["pe_min"], thisax)
+    df = b["df"]["opp_top"]  # particles for clustering
     x, y = df["fsc_small"].head(npoints), df["pe"].head(npoints)
     plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-    # Plot convex hull of cluster
-    plot_cluster(thisax, res["hull_points"], res["center"], radius)
-    legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["fsc_small"], res["center"], "north", linewidth, linelen, median_target=True))
-    if otherip is not None:
-        legend_handles.append(plot_bead_coords(thisax, otherip["fsc_small"], res["center"], "south", linewidth, linelen))
-    thisax.legend(handles=legend_handles)
+    if res is not None:
+        # Plot convex hull of cluster
+        plot_cluster(thisax, res["hull_points"], center)
+        legend_handles = []
+        legend_handles.append(
+            plot_bead_coords(
+                thisax,
+                pd.Series([coords["fsc_small_1Q"], coords["fsc_small_2Q"], coords["fsc_small_3Q"]]),
+                center[0],
+                center[1],
+                "north",
+                linewidth,
+                linelen,
+                median_target=True,
+            )
+        )
+        if otherip is not None:
+            legend_handles.append(
+                plot_bead_coords(
+                    thisax,
+                    otherip["fsc_small"],
+                    center[0],
+                    center[1],
+                    "south",
+                    linewidth,
+                    linelen,
+                )
+            )
+        thisax.legend(handles=legend_handles)
 
     # -------------------------
     # Plot fsc D1 cluster
     # -------------------------
-    thisax = ax[2, 1]
-    thisax.set_xlim(20000, 2**16)
-    thisax.set_ylim(20000, 2**16)
-    res = b["cluster_results"]["fsc_D1"] # clustering results
-    df = res["df"]                       # particles for clustering
-    back = bead_evt_fsc                  # all EVT particles for backdrop
-    columns = res["columns"]
-    thisax.set_title(f'Clustering input EVT')
-    thisax.set_xlabel('FSC')
-    thisax.set_ylabel('D1')
+    thisax = ax[1, 1]
+    thisax.set_xlim(0, 2 ** 16)
+    thisax.set_ylim(0, 2 ** 16)
+    res = b["cluster_results"]["fsc_D1"]  # clustering results
+    center = b["centers"]["fsc_D1"]
+    back = b["df"]["evt"]  # all EVT particles for backdrop
+    thisax.set_title(f"Clustering input EVT")
+    thisax.set_xlabel("FSC")
+    thisax.set_ylabel("D1")
     # bead particles from previous clustering, with EVT backdrop
-    thisax.scatter(back[columns[0]], back[columns[1]], **back_opts)
-    x, y = df["fsc_small"].head(npoints), df["D1"].head(npoints)
-    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-    # Plot convex hull of cluster
-    plot_cluster(thisax, res["hull_points"], res["center"], radius)
-    legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["D1"], res["center"], "west", linewidth, linelen, median_target=True))
-    if otherip is not None:
-        legend_handles.append(plot_bead_coords(thisax, otherip["D1"], res["center"], "east", linewidth, linelen))
-    thisax.legend(handles=legend_handles)
+    thisax.scatter(back["fsc_small"], back["D1"], **back_opts)
+    df = b["df"]["fsc_pe"]  # particles for clustering
+    if len(df) > 0:
+        x, y = df["fsc_small"].head(npoints), df["D1"].head(npoints)
+        plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
+    if res is not None:
+        # Plot convex hull of cluster
+        plot_cluster(thisax, res["hull_points"], center)
+        legend_handles = []
+        legend_handles.append(
+            plot_bead_coords(
+                thisax,
+                pd.Series([coords["D1_1Q"], coords["D1_2Q"], coords["D1_3Q"]]),
+                center[0],
+                center[1],
+                "west",
+                linewidth,
+                linelen,
+                median_target=True,
+            )
+        )
+        if otherip is not None:
+            legend_handles.append(
+                plot_bead_coords(
+                    thisax,
+                    otherip["D1"],
+                    center[0],
+                    center[1],
+                    "east",
+                    linewidth,
+                    linelen,
+                )
+            )
+        thisax.legend(handles=legend_handles)
 
     # -------------------------
     # Plot fsc D2 cluster
     # -------------------------
-    thisax = ax[2, 2]
-    thisax.set_xlim(20000, 2**16)
-    thisax.set_ylim(20000, 2**16)
-    res = b["cluster_results"]["fsc_D2"] # clustering results
-    df = res["df"]                       # particles for clustering
-    back = bead_evt_fsc                  # all EVT particles for backdrop
-    columns = res["columns"]
-    thisax.set_title(f'Clustering input EVT')
-    thisax.set_xlabel('FSC')
-    thisax.set_ylabel('D2')
+    thisax = ax[1, 2]
+    thisax.set_xlim(0, 2 ** 16)
+    thisax.set_ylim(0, 2 ** 16)
+    res = b["cluster_results"]["fsc_D2"]  # clustering results
+    center = b["centers"]["fsc_D2"]
+    back = b["df"]["evt"]  # all EVT particles for backdrop
+    thisax.set_title(f"Clustering input EVT")
+    thisax.set_xlabel("FSC")
+    thisax.set_ylabel("D2")
     # bead particles from previous clustering, with EVT backdrop
-    thisax.scatter(back[columns[0]], back[columns[1]], **back_opts)
-    x, y = df["fsc_small"].head(npoints), df["D2"].head(npoints)
-    plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
-    # Plot convex hull of cluster
-    plot_cluster(thisax, res["hull_points"], res["center"], radius)
-    legend_handles = []
-    legend_handles.append(plot_bead_coords(thisax, ip["D2"], res["center"], "west", linewidth, linelen, median_target=True))
-    if otherip is not None:
-        legend_handles.append(plot_bead_coords(thisax, otherip["D2"], res["center"], "east", linewidth, linelen))
-    thisax.legend(handles=legend_handles)
+    thisax.scatter(back["fsc_small"], back["D2"], **back_opts)
+    df = b["df"]["fsc_pe"]  # particles for clustering
+    if len(df) > 0:
+        x, y = df["fsc_small"].head(npoints), df["D2"].head(npoints)
+        plot_densities_densCols(thisax, x, y, nbin=nbin, **dens_opts)
+    if res is not None:
+        # Plot convex hull of cluster
+        plot_cluster(thisax, res["hull_points"], center)
+        legend_handles = []
+        legend_handles.append(
+            plot_bead_coords(
+                thisax,
+                pd.Series([coords["D2_1Q"], coords["D2_2Q"], coords["D2_3Q"]]),
+                center[0],
+                center[1],
+                "west",
+                linewidth,
+                linelen,
+                median_target=True,
+            )
+        )
+        if otherip is not None:
+            legend_handles.append(
+                plot_bead_coords(
+                    thisax,
+                    otherip["D2"],
+                    center[0],
+                    center[1],
+                    "east",
+                    linewidth,
+                    linelen,
+                )
+            )
+        thisax.legend(handles=legend_handles)
 
+    #fig.suptitle(f"HDBSCAN for {file_id}")
+    fig.set_size_inches(14, 14)
+    fig.tight_layout()
     fig.savefig(plot_file, dpi=200)
     plt.close(fig)
 
@@ -492,7 +679,7 @@ def plot_densities_densCols(ax, x, y, **kwargs):
     ax.scatter(x, y, c=densities, **kwargs)
 
 
-def plot_cluster(ax, points, center, radius):
+def plot_cluster(ax, points, center):
     """
     Draw a cluster of points.
 
@@ -501,102 +688,141 @@ def plot_cluster(ax, points, center, radius):
     ax: matplotlib.axis.Axis
         Axis to draw on.
     points: 2d numpy array
-        Points defining boundary of the cluster. Does not need to be closed,
-        meaning first point doesn't need to be repeated as last point.
+        Points defining boundary of the cluster. Will be closed in this function
+        before plotting if necessary, meaning first point will be repeated as
+        last point.
     center: list
         Centroid of cluster as [x, y].
-    radius: int
-        Radius of a circle used to expand collection of points in cluster. If
-        this value is None (no circle was used) nothing will be drawn.
     """
+    if len(points) < 3:
+        return
     # Draw the convex hull
-    ax.plot(points[:, 0], points[:, 1], 'k-')
+    # close the polygon
+    if points[0, 0] != points[-1, 1]:
+        points = np.vstack([points, points[0, :]])
+    ax.plot(points[:, 0], points[:, 1], "k-")
     # Plot center of cluster
     centerx, centery = center
-    ax.plot(centerx, centery, 'r+')
-    # Plot expanded circle
-    if radius is not None:
-        beads_circle = plt.Circle(center, radius, color='r', fill=False)
-        ax.add_artist(beads_circle)
+    ax.plot(centerx, centery, "r+")
 
 
-def plot_bead_coords(ax, coords, center, direction, w, l, median_target=False):
+def plot_bead_coords(
+    ax, coords, centerx, centery, direction, w, l, median_target=False
+):
     """
     direction is north, south, east, west on a compass to express if the lines
     should represent positions in x (north/south) or y (east/west), and to
     indicate if the lines should be above (north) or below (south) center, or
-    to the left (west) or right (east) of center.
+    to the left (west) or right (east) of center. To disable one of the lines
+    drawn for the target crosshairs, pass a centerx or centery value of None. To
+    disable IQR lines in coords, pass None as value.
 
     Returns a patch which can be used as a legend handle.
     """
-    blue = "#4242f5"
-    pink = "#f542bc"
-    alpha = 0.40
-    centerx, centery = center
-    median = str(int(coords.iloc[1]))
+    blue = "#1212eb"
+    red = "#eb1212"
+    alpha = 0.75
+    median = "-"
     target_line_width = w * 0.5  # half of quantile lines
     if direction == "west":
-        lines = [
-            [(centerx-l, coords.iloc[0]), (centerx, coords.iloc[0])],
-            [(centerx-l, coords.iloc[1]), (centerx, coords.iloc[1])],
-            [(centerx-l, coords.iloc[2]), (centerx, coords.iloc[2])]
-        ]
-        lc = mpl.collections.LineCollection(lines, colors=pink, linewidths=w, alpha=alpha)
-        ax.add_collection(lc)
+        if coords is not None and centerx is not None:
+            lines = [
+                [(centerx - l, coords.iloc[0]), (centerx, coords.iloc[0])],
+                [(centerx - l, coords.iloc[1]), (centerx, coords.iloc[1])],
+                [(centerx - l, coords.iloc[2]), (centerx, coords.iloc[2])],
+            ]
+            lc = mpl.collections.LineCollection(
+                lines, colors=red, linewidths=w, alpha=alpha
+            )
+            ax.add_collection(lc)
         if median_target:
-            ax.axvline(centerx, color=pink, linewidth=target_line_width)
-            ax.axhline(centery, color=pink, linewidth=target_line_width)
-        return mpl.patches.Patch(color=pink, label="auto median: " + median)
+            if centerx is not None:
+                ax.axvline(centerx, color=red, linewidth=target_line_width)
+            if centery is not None:
+                median = str(centery)
+                ax.axhline(centery, color=red, linewidth=target_line_width)
+        return mpl.patches.Patch(color=red, label="auto median y: " + median)
     elif direction == "east":
-        lines = [
-            [(centerx, coords.iloc[0]), (centerx+l, coords.iloc[0])],
-            [(centerx, coords.iloc[1]), (centerx+l, coords.iloc[1])],
-            [(centerx, coords.iloc[2]), (centerx+l, coords.iloc[2])]
-        ]
-        lc = mpl.collections.LineCollection(lines, colors=blue, linewidths=w, alpha=alpha)
-        ax.add_collection(lc)
+        if coords is not None and centerx is not None:
+            lines = [
+                [(centerx, coords.iloc[0]), (centerx + l, coords.iloc[0])],
+                [(centerx, coords.iloc[1]), (centerx + l, coords.iloc[1])],
+                [(centerx, coords.iloc[2]), (centerx + l, coords.iloc[2])],
+            ]
+            lc = mpl.collections.LineCollection(
+                lines, colors=blue, linewidths=w, alpha=alpha
+            )
+            ax.add_collection(lc)
         if median_target:
-            ax.axvline(centerx, color=pink, linewidth=target_line_width)
-            ax.axhline(centery, color=pink, linewidth=target_line_width)
-        return mpl.patches.Patch(color=blue, label="other median: " + median)
+            if centerx is not None:
+                ax.axvline(centerx, color=red, linewidth=target_line_width)
+            if centery is not None:
+                median = str(centery)
+                ax.axhline(centery, color=red, linewidth=target_line_width)
+        return mpl.patches.Patch(color=blue, label="other median y: " + median)
     elif direction == "north":
-        lines = [
-            [(coords.iloc[0], centery), (coords.iloc[0], centery+l)],
-            [(coords.iloc[1], centery), (coords.iloc[1], centery+l)],
-            [(coords.iloc[2], centery), (coords.iloc[2], centery+l)]
-        ]
-        lc = mpl.collections.LineCollection(lines, colors=pink, linewidths=w, alpha=alpha)
-        ax.add_collection(lc)
+        if coords is not None and centery is not None:
+            lines = [
+                [(coords.iloc[0], centery), (coords.iloc[0], centery + l)],
+                [(coords.iloc[1], centery), (coords.iloc[1], centery + l)],
+                [(coords.iloc[2], centery), (coords.iloc[2], centery + l)],
+            ]
+            lc = mpl.collections.LineCollection(
+                lines, colors=red, linewidths=w, alpha=alpha
+            )
+            ax.add_collection(lc)
         if median_target:
-            ax.axvline(centerx, color=pink, linewidth=target_line_width)
-            ax.axhline(centery, color=pink, linewidth=target_line_width)
-        return mpl.patches.Patch(color=pink, label="auto median: " + median)
+            if centerx is not None:
+                median = str(centerx)
+                ax.axvline(centerx, color=red, linewidth=target_line_width)
+            if centery is not None:
+                ax.axhline(centery, color=red, linewidth=target_line_width)
+        return mpl.patches.Patch(color=red, label="auto median x: " + median)
     elif direction == "south":
-        lines = [
-            [(coords.iloc[0], centery-l), (coords.iloc[0], centery)],
-            [(coords.iloc[1], centery-l), (coords.iloc[1], centery)],
-            [(coords.iloc[2], centery-l), (coords.iloc[2], centery)]
-        ]
-        lc = mpl.collections.LineCollection(lines, colors=blue, linewidths=w, alpha=alpha)
-        ax.add_collection(lc)
+        if coords is not None and centery is not None:
+            lines = [
+                [(coords.iloc[0], centery - l), (coords.iloc[0], centery)],
+                [(coords.iloc[1], centery - l), (coords.iloc[1], centery)],
+                [(coords.iloc[2], centery - l), (coords.iloc[2], centery)],
+            ]
+            lc = mpl.collections.LineCollection(
+                lines, colors=blue, linewidths=w, alpha=alpha
+            )
+            ax.add_collection(lc)
         if median_target:
-            ax.axvline(centerx, color=pink, linewidth=target_line_width)
-            ax.axhline(centery, color=pink, linewidth=target_line_width)
-        return mpl.patches.Patch(color=blue, label="other median: " + median)
+            if centerx is not None:
+                median = str(centerx)
+                ax.axvline(centerx, color=red, linewidth=target_line_width)
+            if centery is not None:
+                ax.axhline(centery, color=red, linewidth=target_line_width)
+        return mpl.patches.Patch(color=blue, label="other median x: " + median)
+
+
+def plot_cutoffs(xcutoff, ycutoff, ax):
+    """
+    Plot black lines for bead clustering cutoffs.
+
+    If xcutoff or ycutoff is None it won't be plotted.
+    """
+    ylow, yhigh = ax.get_ylim()
+    xlow, xhigh = ax.get_xlim()
+
+    lines = []
+    if xcutoff is not None:
+        if ycutoff:
+            ylow = ycutoff
+        lines.append([[xcutoff, ylow], [xcutoff, yhigh]])
+    if ycutoff is not None:
+        if xcutoff:
+            xlow = xcutoff
+        lines.append([[xlow, ycutoff], [xhigh, ycutoff]])
+    lc = mpl.collections.LineCollection(lines, colors="black")
+    ax.add_collection(lc)
 
 
 def centroid(points):
     """Find the median centroid of points in 2d numpy array."""
     return np.median(points[:, 0]), np.median(points[:, 1])
-
-
-def points_in_circle(x, y, r, points):
-    """
-    Find indexes of points within a circle. x, y, and r define the circle center
-    and radius. points is the 2d numpy array of points to test.
-    """
-    condition = (((x-points[:, 0])**2) + ((y-points[:, 1])**2)) <= r**2
-    return np.where(condition)
 
 
 def points_in_polygon(poly_points, points):
@@ -606,6 +832,147 @@ def points_in_polygon(poly_points, points):
     the points to test. The polygon defined by points will automatically close,
     meaning the first point doesn't need to be repeated as the last point.
     """
-    poly = mpl.path.Path(poly_points, closed=True)
+    # close the polygon, may not be necessary but won't hurt
+    if len(poly_points) < 2:
+        return np.array([], dtype=int)
+    if poly_points[0, 0] != poly_points[-1, 1]:
+        poly_points = np.vstack([poly_points, poly_points[0, :]])
+    poly = mpl.path.Path(poly_points)
     # np.where returns a 1-item tuple. Get the one item alone to make it clearer
     return np.where(poly.contains_points(points))[0]
+
+
+def aggregate_evt_files(files, dates=None):
+    """
+    Aggregate EVT file data into one dataframe with dates and file_ids.
+
+    If no EVT files can be read an empty dataframe will be returned.
+    """
+    channels = ["fsc_small", "chl_small", "pe", "D1", "D2"]
+    dfs = []
+    for f in files:
+        try:
+            sff = seaflowfile.SeaFlowFile(f)
+            file_id = sff.file_id
+        except errors.FileError:
+            sff = None
+            file_id = None
+        if dates:
+            try:
+                date = dates[file_id]
+            except KeyError:
+                date = None
+        elif sff:
+            date = sff.date
+        else:
+            date = None
+
+        logging.debug("reading %s with date = %s and file_id = %s", f, date, file_id)
+        try:
+            df = fileio.read_evt_labview(f)[channels]
+        except errors.FileError as e:
+            logging.warning("error reading EVT file %s: %s", f, e)
+            continue
+        df["file_id"] = file_id
+        df["date"] = date
+        dfs.append(df)
+    # Use mergesort for a stable sort
+    if len(dfs) == 0:
+        return pd.DataFrame()
+    out_df = pd.concat(dfs, ignore_index=True).sort_values(
+        by=["date"], kind="mergesort"
+    )
+    out_df["file_id"] = out_df["file_id"].astype("category")
+    return out_df
+
+
+
+def plot_cruise(bead_df, col, outdir, filter_params_path="", cruise="", iqr=None):
+    title = f"Bead position: {col} - IQR cutoff {iqr}"
+    locator = mdates.AutoDateLocator(minticks=3, maxticks=7)
+    formatter = mdates.ConciseDateFormatter(locator)
+    ylims = (0, 2**16)
+
+    pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
+    path = os.path.join(outdir, cruise + "-" + col)
+
+    if filter_params_path:
+        filt_df = pd.read_csv(filter_params_path)
+        filt_df = filt_df.rename(columns={
+            "beads.fsc.small": "fsc_small",
+            "beads.D1": "D1",
+            "beads.D2": "D2",
+        })
+        filt_df = filt_df[filt_df["quantile"] == 50]  # only keep 50th quantile
+    else:
+        filt_df = None
+
+    res_n = len(bead_df["resolution"].values.unique())
+    if res_n != 1:
+        raise ValueError("could not determine bead finding resolution, saw {} values".format(res_n))
+    resolution = bead_df["resolution"].values[0]
+    fig, axs = plt.subplots(nrows=2, ncols=1, gridspec_kw={'height_ratios': [3, 1]}, squeeze=False, figsize=(12, 6))
+    markersize = 3
+    ax = axs.flat[0]
+
+    if filt_df is not None:
+        ax.plot_date(
+            bead_df["date"],
+            np.repeat(filt_df[col].values[0], len(bead_df["date"])),
+            c="orange",
+            markersize=markersize-1,
+            alpha=0.3,
+            label="manual filter params"
+        )
+
+    ax.plot_date(
+        bead_df["date"],
+        bead_df[f"{col}_2Q"],
+        c="deepskyblue",
+        markersize=5,
+        marker=mpl.markers.CARETDOWNBASE,
+        alpha=1,
+        label=f"by-{resolution}"
+    )
+    # Plot a vertical line for each bead coord point showing interquartile range
+    iqr_minys = bead_df[f"{col}_1Q"]
+    iqr_maxys = bead_df[f"{col}_3Q"]
+    iqr_xs = mdates.date2num(bead_df["date"])
+    iqr_colors = []
+    for i, x in enumerate(iqr_xs):
+        if bead_df.loc[i, f"{col}_IQR"] > iqr:
+            iqr_colors.append(mpl.colors.to_rgba("red"))
+        else:
+            iqr_colors.append(mpl.colors.to_rgba("green"))
+    #iqr_colors = [mpl.colors.to_rgba("green") for _ in iqr_xs]
+    lower_points = np.column_stack([iqr_xs, iqr_minys])
+    upper_points = np.column_stack([iqr_xs, iqr_maxys])
+    segs = np.ndarray([len(iqr_xs), 2, 2])
+    segs[:, 0, :] = lower_points
+    segs[:, 1, :] = upper_points
+    lc = LineCollection(segs, colors=iqr_colors, zorder=50)
+    ax.add_collection(lc)
+
+    ax.set_title(cruise)
+    ax.legend()
+    ax.xaxis.set_major_formatter(formatter)
+    ax.set_ylim(ylims)
+    xlims = ax.get_xlim()
+
+    ax = axs.flat[1]
+    ax.set_title(f"{col}_count")
+    ax.plot_date(
+        bead_df["date"],
+        bead_df[f"{col}_count"],
+        c="red",
+        markersize=3,
+        alpha=0.2
+    )
+    ax.xaxis.set_major_formatter(formatter)
+    ax.set_xlim(xlims)
+
+    fig.suptitle(title)
+    fig.tight_layout(pad=3.5)
+    fig.set_size_inches(9.6, 5.4)
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
