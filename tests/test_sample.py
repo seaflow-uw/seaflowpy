@@ -7,6 +7,7 @@ import pytest
 import pytz
 import seaflowpy as sfp
 
+# pylint: disable=redefined-outer-name
 
 @pytest.fixture()
 def tmpout(tmpdir):

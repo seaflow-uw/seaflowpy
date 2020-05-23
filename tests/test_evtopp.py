@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 import seaflowpy as sfp
 
+# pylint: disable=redefined-outer-name
 
 @pytest.fixture()
 def evt_df():
@@ -107,7 +108,7 @@ class TestOpen:
     def test_read_evt_less_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
-    
+
     def test_read_labview_row_count_valid(self):
         n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert n == 40000
@@ -226,8 +227,8 @@ class TestOutput:
             opp_evt_ratio = 0.0
 
         assert sf_file.file_id == sqlitedf["file"][1]
-        assert "UUID" == sqlitedf["filter_id"][1]
-        assert 50 == sqlitedf["quantile"][1]
+        assert sqlitedf["filter_id"][1] == "UUID"
+        assert sqlitedf["quantile"][1] == 50
         npt.assert_array_equal(
             [107, 39928, 40000, opp_evt_ratio],
             sqlitedf[["opp_count", "evt_count", "all_count", "opp_evt_ratio"]].values[1]
@@ -248,8 +249,8 @@ class TestOutput:
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         assert sf_file.file_id == sqlitedf["file"][1]
-        assert "UUID" == sqlitedf["filter_id"][1]
-        assert 50 == sqlitedf["quantile"][1]
+        assert sqlitedf["filter_id"][1] == "UUID"
+        assert sqlitedf["quantile"][1] == 50
         npt.assert_array_equal(
             [0, 0, 0, 0.0],
             sqlitedf[["opp_count", "evt_count", "all_count", "opp_evt_ratio"]].values[1]

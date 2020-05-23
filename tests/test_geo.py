@@ -1,6 +1,7 @@
 import pytest
 import seaflowpy as sfp
 
+# pylint: disable=redefined-outer-name
 
 class TestGGA2DecimalDegrees:
     def test_gga2dd(self):

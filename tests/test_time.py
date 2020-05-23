@@ -1,6 +1,7 @@
 import pytest
 from seaflowpy import time
 
+# pylint: disable=redefined-outer-name
 
 def test_parse_bad_date():
     with pytest.raises(ValueError):

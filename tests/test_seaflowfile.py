@@ -2,6 +2,7 @@ import datetime
 import pytest
 import seaflowpy as sfp
 
+# pylint: disable=redefined-outer-name
 
 def test_invalid_filename():
     with pytest.raises(sfp.errors.FileError):
