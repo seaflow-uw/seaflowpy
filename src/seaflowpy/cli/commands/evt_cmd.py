@@ -116,9 +116,9 @@ def count_evt_cmd(no_header, evt_files):
     help='Maximum event count for bead clustering.')
 @click.option('-f', '--frac', type=float, default=0.33, show_default=True,
     help='min_cluster_frac parameter to hdbscan. Min fraction of data which should be in cluster.')
-@click.option('-F', '--fsc-min', type=int, default=40000, show_default=True,
+@click.option('-F', '--fsc-min', type=int, default=45000, show_default=True,
     help='FSC minimum cutoff to use during bead cluster detection.')
-@click.option("-i", "--iqr", type=int, default=5000, show_default=True,
+@click.option("-i", "--iqr", type=int, default=3000, show_default=True,
     help='Maximum interquartile spread to accept a bead location for fsc_small, D1, D2.')
 @click.option('--min-date', type=str, callback=validate_timestamp,
     help='Minimum date of file to sample as ISO8601 timestamp.')
@@ -128,7 +128,7 @@ def count_evt_cmd(no_header, evt_files):
     help='Directory for output files.')
 @click.option('-O', '--other-params', type=click.Path(exists=True),
     help='Filtering parameter csv file to compare against')
-@click.option('-P', '--pe-min', type=int, default=40000, show_default=True,
+@click.option('-P', '--pe-min', type=int, default=47500, show_default=True,
     help='PE minimum cutoff to use during bead cluster detection.')
 @click.option('-r', '--resolution', type=str, default='1H', show_default=True,
     help='Time resolution for bead detection. Follows Pandas offset aliases.')
@@ -146,7 +146,19 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
         loglevel = logging.INFO
     else:
         loglevel = logging.DEBUG
-    logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
+    logging.basicConfig(format="%(asctime)s:%(levelname)s: %(message)s", level=loglevel)
+
+    logging.info("finding beads in cruise %s", cruise)
+    logging.info(
+        "resolution=%s event-limit=%d frac=%f fsc-min=%d pe-min=%d iqr=%d",
+        resolution,
+        event_limit,
+        frac,
+        fsc_min,
+        pe_min,
+        iqr
+    )
+    logging.info("writing results to %s", out_dir)
 
     if other_params:
         logging.info("other filter parameter file: %s", other_params)
@@ -165,22 +177,23 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
         evt_df = evt_df.reset_index()  # maybe it's the index
     if "date" not in evt_df.columns:
         raise click.ClickException("no date column in EVT dataframe")
+    logging.info("%d particles in %s", len(evt_df), particle_file)
 
     # Apply any date filters
-    date_bool = np.full(len(evt_df), True, dtype=bool)
-    logging.info("apply date range %s to %s", min_date, max_date)
-    logging.info("%s rows before date filter", len(evt_df))
-    if min_date is not None:
-        date_bool = evt_df["date"] >= min_date
-        logging.info("%s after min_date filter", np.sum(date_bool))
-    if max_date is not None:
-        date_bool = date_bool & (evt_df["date"] <= max_date)
-        logging.info("%s after max_date filter", np.sum(date_bool))
-    evt_df = evt_df[date_bool]
-    logging.info(
-        "%s rows between %s and %s after date filter",
-        len(evt_df), evt_df["date"].min(), evt_df["date"].max()
-    )
+    if min_date or max_date:
+        date_bool = np.full(len(evt_df), True, dtype=bool)
+        logging.info("apply date filter, %s to %s", min_date, max_date)
+        if min_date is not None:
+            date_bool = evt_df["date"] >= min_date
+            logging.info("%s after min_date filter", np.sum(date_bool))
+        if max_date is not None:
+            date_bool = date_bool & (evt_df["date"] <= max_date)
+            logging.info("%s after max_date filter", np.sum(date_bool))
+        evt_df = evt_df[date_bool]
+        logging.info(
+            "%s rows between %s and %s after date filter",
+            len(evt_df), evt_df["date"].min(), evt_df["date"].max()
+        )
 
     pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
     cyto_plot_dir = os.path.join(out_dir, "cytogram_plots")
@@ -190,12 +203,12 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
     for name, group in evt_df.set_index("date").resample(resolution):
         if len(group) == 0:
             continue
-        logging.info("finding beads for %s", str(name))
         if len(group) <= event_limit:
             tmp_df = group.reset_index(drop=True)
+            logging.info("clustering %s (%d events)", str(name), len(group))
         else:
-            tmp_df = group.reset_index(drop=True).sample(n=event_limit)
-        tmp_df = tmp_df.copy()
+            tmp_df = group.reset_index(drop=True).sample(n=event_limit, random_state=12345)
+            logging.info("clustering %s (%d events reduced to %d)", str(name), len(group), len(tmp_df))
         try:
             results = beads.find_beads(tmp_df, fsc_min=fsc_min, pe_min=pe_min, min_cluster_frac=frac)
         except Exception as e:
@@ -210,7 +223,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
             all_dfs.append(df)
 
         if cytograms:
-            logging.info("plotting %s", str(name))
+            logging.info("plotting   %s", str(name))  # space intentional to line up with "clustering ...."
 
             pathlib.Path(cyto_plot_dir).mkdir(parents=True, exist_ok=True)
             cyto_plot_path = os.path.join(cyto_plot_dir, name.isoformat().replace(":", "-"))
@@ -224,17 +237,14 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
         out_df = pd.concat(all_dfs, ignore_index=True)
         out_df["resolution"] = resolution
         out_df["resolution"] = out_df["resolution"].astype("category")
-        logging.info("creating summary plots")
-        pathlib.Path(summary_plot_dir).mkdir(parents=True, exist_ok=True)
-        for col in ["fsc_small", "D1", "D2"]:
-            beads.plot_cruise(
-                out_df,
-                col,
-                summary_plot_dir,
-                filter_params_path=other_params,
-                cruise=cruise,
-                iqr=iqr
-            )
+        logging.info("creating summary plot")
+        beads.plot_cruise(
+            out_df,
+            summary_plot_dir,
+            filter_params_path=other_params,
+            cruise=cruise,
+            iqr=iqr
+        )
         parquet_path = os.path.join(out_dir, cruise + f".beads-by-{resolution}" + ".parquet")
         out_df.to_parquet(parquet_path)
         logging.info("done")
@@ -334,6 +344,9 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
         chosen_files = sample.random_select(time_files, file_fraction, seed)
     else:
         chosen_files = time_files
+
+    outdir = os.path.dirname(outpath)
+    pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
 
     results, errs = sample.sample(
         chosen_files,
