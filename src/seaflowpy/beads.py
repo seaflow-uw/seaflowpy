@@ -397,10 +397,10 @@ def plot(b, plot_file, file_id=None, otherip=None):
     linewidth = 2
 
     # -------------------------
-    # EVT fsc > 0 pe
+    # EVT
     # -------------------------
     thisax = ax[0, 0]
-    thisax.set_title(f"EVT")
+    thisax.set_title(f"EVT ({len(b['df']['evt'])} events)")
     thisax.set_xlabel("FSC")
     thisax.set_ylabel("PE")
     df = b["df"]["evt"]
@@ -440,7 +440,7 @@ def plot(b, plot_file, file_id=None, otherip=None):
     # EVT fsc chl
     # -------------------------
     thisax = ax[0, 1]
-    thisax.set_title(f"EVT")
+    thisax.set_title(f"EVT ({len(b['df']['evt'])} events)")
     thisax.set_xlabel("FSC")
     thisax.set_ylabel("CHL")
     df = b["df"]["evt"]
@@ -468,11 +468,11 @@ def plot(b, plot_file, file_id=None, otherip=None):
     # Rough OPP fsc pe
     # -------------------------
     thisax = ax[0, 2]
-    thisax.set_title("Rough OPP based on min fsc/pe EVT")
+    thisax.set_title(f"Rough OPP ({len(b['df']['rough_opp'])} events)")
     thisax.set_xlabel("FSC")
     thisax.set_ylabel("PE")
     back = b["df"]["evt"]  # all EVT particles for backdrop
-    thisax.scatter(back["fsc_small"], back["pe"], **back_opts)
+    thisax.scatter(back["fsc_small"].head(npoints), back["pe"].head(npoints), **back_opts)
     df = b["df"]["rough_opp"]
     x, y = df["fsc_small"].head(npoints), df["pe"].head(npoints)
     center = b["centers"]["fsc_pe"]
@@ -515,11 +515,11 @@ def plot(b, plot_file, file_id=None, otherip=None):
     res = b["cluster_results"]["fsc_pe"]  # clustering results
     center = b["centers"]["fsc_pe"]
     back = b["df"]["evt"]  # all EVT particles for backdrop
-    thisax.set_title(f"Clustering input (OPP PE > {b['pe_min']}, FSC > {b['fsc_min']})")
+    thisax.set_title(f"Clustered input OPP (PE > {b['pe_min']}, FSC > {b['fsc_min']})")
     thisax.set_xlabel("FSC")
     thisax.set_ylabel("PE")
     # Rough OPP > pe_min fsc pe with EVT backdrop
-    thisax.scatter(back["fsc_small"], back["pe"], **back_opts)
+    thisax.scatter(back["fsc_small"].head(npoints), back["pe"].head(npoints), **back_opts)
     plot_cutoffs(b["fsc_min"], b["pe_min"], thisax)
     df = b["df"]["opp_top"]  # particles for clustering
     x, y = df["fsc_small"].head(npoints), df["pe"].head(npoints)
@@ -563,11 +563,11 @@ def plot(b, plot_file, file_id=None, otherip=None):
     res = b["cluster_results"]["fsc_D1"]  # clustering results
     center = b["centers"]["fsc_D1"]
     back = b["df"]["evt"]  # all EVT particles for backdrop
-    thisax.set_title(f"Clustering input EVT")
+    thisax.set_title(f"Clustered input EVT")
     thisax.set_xlabel("FSC")
     thisax.set_ylabel("D1")
     # bead particles from previous clustering, with EVT backdrop
-    thisax.scatter(back["fsc_small"], back["D1"], **back_opts)
+    thisax.scatter(back["fsc_small"].head(npoints), back["D1"].head(npoints), **back_opts)
     df = b["df"]["fsc_pe"]  # particles for clustering
     if len(df) > 0:
         x, y = df["fsc_small"].head(npoints), df["D1"].head(npoints)
@@ -611,11 +611,11 @@ def plot(b, plot_file, file_id=None, otherip=None):
     res = b["cluster_results"]["fsc_D2"]  # clustering results
     center = b["centers"]["fsc_D2"]
     back = b["df"]["evt"]  # all EVT particles for backdrop
-    thisax.set_title(f"Clustering input EVT")
+    thisax.set_title(f"Clustered input EVT")
     thisax.set_xlabel("FSC")
     thisax.set_ylabel("D2")
     # bead particles from previous clustering, with EVT backdrop
-    thisax.scatter(back["fsc_small"], back["D2"], **back_opts)
+    thisax.scatter(back["fsc_small"].head(npoints), back["D2"].head(npoints), **back_opts)
     df = b["df"]["fsc_pe"]  # particles for clustering
     if len(df) > 0:
         x, y = df["fsc_small"].head(npoints), df["D2"].head(npoints)
@@ -674,6 +674,14 @@ def plot_densities_densCols(ax, x, y, **kwargs):
 
     Other keyword arguments will be passed to matplotlib.axis.Axis.scatter.
     """
+    # The line in densCols at this location
+    # https://github.com/AlexanderButyaev/kern_smooth/blob/bcf0b6dea616b920102c25db35f7d45870b416a6/kern_smooth/ks.py#L48
+    # can produce this error if array length is 1
+    #
+    # kern_smooth/ks.py:48: RuntimeWarning: invalid value encountered in true_divide
+    # cols[select] = colpal / (len(dens) - 1.) if len(dens) > 0 else colpal
+    if (len(x) < 2) or (len(y) < 2):
+        return
     densities = densCols(x, y, nbin=kwargs["nbin"])
     del kwargs["nbin"]
     ax.scatter(x, y, c=densities, **kwargs)
@@ -887,14 +895,9 @@ def aggregate_evt_files(files, dates=None):
 
 
 
-def plot_cruise(bead_df, col, outdir, filter_params_path="", cruise="", iqr=None):
-    title = f"Bead position: {col} - IQR cutoff {iqr}"
-    locator = mdates.AutoDateLocator(minticks=3, maxticks=7)
-    formatter = mdates.ConciseDateFormatter(locator)
-    ylims = (0, 2**16)
-
+def plot_cruise(bead_df, outdir, filter_params_path="", cruise="", iqr=None):
     pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
-    path = os.path.join(outdir, cruise + "-" + col)
+    outpath = os.path.join(outdir, cruise)
 
     if filter_params_path:
         filt_df = pd.read_csv(filter_params_path)
@@ -907,13 +910,29 @@ def plot_cruise(bead_df, col, outdir, filter_params_path="", cruise="", iqr=None
     else:
         filt_df = None
 
+    fig, axs = plt.subplots(nrows=3, ncols=1, gridspec_kw={'height_ratios': [1, 1, 1]}, squeeze=False, figsize=(12, 18))
+    fig.suptitle(f"{cruise} bead positions - IQR cutoff (green to red) {iqr}")
+    fig.set_size_inches(9, 12)
+
+    for ax, col in zip(axs.flat, ["fsc_small", "D1", "D2"]):
+        plot_column(ax, bead_df, col, filt_df, iqr=iqr)
+
+    fig.tight_layout()
+    plt.subplots_adjust(top=0.93)
+    fig.savefig(outpath, dpi=200)
+    plt.close(fig)
+
+
+def plot_column(ax, bead_df, col, filt_df=None, cruise="", iqr=None):
+    locator = mdates.AutoDateLocator(minticks=3, maxticks=7)
+    formatter = mdates.ConciseDateFormatter(locator)
+    ylims = (0, 2**16)
+    markersize = 3
+
     res_n = len(bead_df["resolution"].values.unique())
     if res_n != 1:
         raise ValueError("could not determine bead finding resolution, saw {} values".format(res_n))
     resolution = bead_df["resolution"].values[0]
-    fig, axs = plt.subplots(nrows=2, ncols=1, gridspec_kw={'height_ratios': [3, 1]}, squeeze=False, figsize=(12, 6))
-    markersize = 3
-    ax = axs.flat[0]
 
     if filt_df is not None:
         ax.plot_date(
@@ -940,7 +959,7 @@ def plot_cruise(bead_df, col, outdir, filter_params_path="", cruise="", iqr=None
     iqr_xs = mdates.date2num(bead_df["date"])
     iqr_colors = []
     for i, x in enumerate(iqr_xs):
-        if bead_df.loc[i, f"{col}_IQR"] > iqr:
+        if iqr and bead_df.loc[i, f"{col}_IQR"] > iqr:
             iqr_colors.append(mpl.colors.to_rgba("red"))
         else:
             iqr_colors.append(mpl.colors.to_rgba("green"))
@@ -953,26 +972,7 @@ def plot_cruise(bead_df, col, outdir, filter_params_path="", cruise="", iqr=None
     lc = LineCollection(segs, colors=iqr_colors, zorder=50)
     ax.add_collection(lc)
 
-    ax.set_title(cruise)
+    ax.set_title(col)
     ax.legend()
     ax.xaxis.set_major_formatter(formatter)
     ax.set_ylim(ylims)
-    xlims = ax.get_xlim()
-
-    ax = axs.flat[1]
-    ax.set_title(f"{col}_count")
-    ax.plot_date(
-        bead_df["date"],
-        bead_df[f"{col}_count"],
-        c="red",
-        markersize=3,
-        alpha=0.2
-    )
-    ax.xaxis.set_major_formatter(formatter)
-    ax.set_xlim(xlims)
-
-    fig.suptitle(title)
-    fig.tight_layout(pad=3.5)
-    fig.set_size_inches(9.6, 5.4)
-    fig.savefig(path, dpi=200)
-    plt.close(fig)
