@@ -5,7 +5,7 @@
 
 # Based on use of --user when installing packages in Docker image, manually
 # set site-packages location here.
-sitepackages=/root/.local/lib/python3.7/site-packages
+sitepackages=/usr/local/seaflowpy/lib/python3.7/site-packages
 pyinstaller --onefile --additional-hooks-dir '../hooks' \
   --add-data "$sitepackages/seaflowpy/data/popcycle.sql:seaflowpy/data" \
   "$(which seaflowpy)"
