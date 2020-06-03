@@ -370,13 +370,16 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
 
     printed = False
     if verbose:
-        print("\t".join(["file_ID", "events", "postfilter_events", "sampled_events", "message"]), file=sys.stderr)
+        if len(results):
+            print("\t".join(["file_ID", "events", "postfilter_events", "sampled_events", "message"]), file=sys.stderr)
         for r in results:
             vals = [r["file_id"], r["events"], r["events_postfilter"], r["events_postsampling"], r["msg"]]
             print("\t".join([str(v) for v in vals]), file=sys.stderr)
         printed = True
     else:
         # Print only files that couldn't be read
+        if len(results):
+            print("\t".join(["file_ID", "events", "postfilter_events", "sampled_events", "message"]), file=sys.stderr)
         for r in results:
             if r["msg"]:
                 print("\t".join([r["file_id"], r["msg"]]), file=sys.stderr)
