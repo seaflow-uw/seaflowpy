@@ -116,27 +116,28 @@ def count_evt_cmd(no_header, evt_files):
     help='Maximum event count for bead clustering.')
 @click.option('-f', '--frac', type=float, default=0.33, show_default=True,
     help='min_cluster_frac parameter to hdbscan. Min fraction of data which should be in cluster.')
-@click.option('-F', '--fsc-min', type=int, default=45000, show_default=True,
-    help='FSC minimum cutoff to use during bead cluster detection.')
 @click.option("-i", "--iqr", type=int, default=3000, show_default=True,
     help='Maximum interquartile spread to accept a bead location for fsc_small, D1, D2.')
 @click.option('--min-date', type=str, callback=validate_timestamp,
     help='Minimum date of file to sample as ISO8601 timestamp.')
 @click.option('--max-date', type=str, callback=validate_timestamp,
     help='Maximum date of file to sample as ISO8601 timestamp.')
+@click.option('--min-fsc', type=int, default=45000, show_default=True,
+    help='FSC minimum cutoff to use during bead cluster detection.')
+@click.option('--min-pe', type=int, default=47500, show_default=True,
+    help='PE minimum cutoff to use during bead cluster detection.')
 @click.option('-o', '--out-dir', type=click.Path(), required=True,
     help='Directory for output files.')
 @click.option('-O', '--other-params', type=click.Path(exists=True),
     help='Filtering parameter csv file to compare against')
-@click.option('-P', '--pe-min', type=int, default=47500, show_default=True,
-    help='PE minimum cutoff to use during bead cluster detection.')
 @click.option('-r', '--resolution', type=str, default='1H', show_default=True,
     help='Time resolution for bead detection. Follows Pandas offset aliases.')
 @click.option('-v', '--verbose', count=True,
     help='Print progress info.')
 @click.argument('particle-file', nargs=1, type=click.Path(exists=True))
-def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
-    max_date, out_dir, other_params, pe_min, resolution, verbose, particle_file):
+def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
+    max_date, min_fsc, min_pe, out_dir, other_params, resolution, verbose,
+    particle_file):
     """
     Find bead location and generate filtering parameters.
     """
@@ -154,8 +155,8 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
         resolution,
         event_limit,
         frac,
-        fsc_min,
-        pe_min,
+        min_fsc,
+        min_pe,
         iqr
     )
     logging.info("writing results to %s", out_dir)
@@ -210,7 +211,12 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, fsc_min, iqr, min_date,
             tmp_df = group.reset_index(drop=True).sample(n=event_limit, random_state=12345)
             logging.info("clustering %s (%d events reduced to %d)", str(name), len(group), len(tmp_df))
         try:
-            results = beads.find_beads(tmp_df, fsc_min=fsc_min, pe_min=pe_min, min_cluster_frac=frac)
+            results = beads.find_beads(
+                tmp_df,
+                min_cluster_frac=frac,
+                min_fsc=min_fsc,
+                min_pe=min_pe
+            )
         except Exception as e:
             logging.warning("%s: %s: %s", name, type(e).__name__, str(e))
             if type(e).__name__ != "ClusterError":

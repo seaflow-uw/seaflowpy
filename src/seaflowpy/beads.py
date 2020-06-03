@@ -189,7 +189,7 @@ def round_(x, prec=0):
     return float("{1:.{0}f}".format(prec, x))
 
 
-def find_beads(evt_df, pe_min=45000, fsc_min=40000, min_cluster_frac=0.33):
+def find_beads(evt_df, min_cluster_frac=0.33, min_fsc=40000, min_pe=45000):
     """
     Find bead coordinates with DBSCAN clustering.
 
@@ -197,14 +197,14 @@ def find_beads(evt_df, pe_min=45000, fsc_min=40000, min_cluster_frac=0.33):
     ----------
     evt_df: pandas.DataFrame
         EVT particle data.
-    pe_min: int, default 45000
-        PE minimum cutoff to use when identifying beads clusters. This number
-        should be large enough to eliminate other common large clusters.
-    fsc_min: int, default 40000
-        FSC minimum cutoff to use when identifying beads clusters. This number
-        should be large enough to eliminate other common large clusters.
     min_cluster_frac: float, default 0.33
         Minimum fraction of points that should be in  the cluster.
+    min_fsc: int, default 40000
+        FSC minimum cutoff to use when identifying beads clusters. This number
+        should be large enough to eliminate other common large clusters.
+    min_pe: int, default 45000
+        PE minimum cutoff to use when identifying beads clusters. This number
+        should be large enough to eliminate other common large clusters.
 
     Returns
     -------
@@ -221,10 +221,10 @@ def find_beads(evt_df, pe_min=45000, fsc_min=40000, min_cluster_frac=0.33):
     # Min value filter
     # Start with a condition that's True for every row
     min_indexer = opp["fsc_small"] >= 0
-    if pe_min:
-        min_indexer = min_indexer & (opp["pe"] >= pe_min)
-    if fsc_min:
-        min_indexer = min_indexer & (opp["fsc_small"] >= fsc_min)
+    if min_pe:
+        min_indexer = min_indexer & (opp["pe"] >= min_pe)
+    if min_fsc:
+        min_indexer = min_indexer & (opp["fsc_small"] >= min_fsc)
     opp_top = opp[min_indexer]
 
     msg = ""  # any error message encountered during clustering
@@ -346,8 +346,8 @@ def find_beads(evt_df, pe_min=45000, fsc_min=40000, min_cluster_frac=0.33):
             "fsc_D1": d1_center,
             "fsc_D2": d2_center,
         },
-        "pe_min": pe_min,
-        "fsc_min": fsc_min,
+        "pe_min": min_pe,
+        "fsc_min": min_fsc,
         "message": msg,
     }
 
