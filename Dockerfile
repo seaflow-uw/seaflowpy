@@ -22,6 +22,7 @@ RUN pip3 install --prefix /usr/local/seaflowpy --no-cache-dir -r /wheels/require
 FROM python:${PYTHON_VERSION} AS runtime_image
 
 COPY --from=build_image /usr/local/seaflowpy /usr/local/seaflowpy
+ENV PYTHONUNBUFFERED 1
 ENV PATH=/usr/local/seaflowpy/bin:$PATH
 ENV PYTHONPATH /usr/local/seaflowpy/lib/python3.7/site-packages/
 
