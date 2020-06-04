@@ -510,8 +510,8 @@ def plot(b, plot_file, file_id=None, otherip=None):
     # Plot fsc pe cluster
     # -------------------------
     thisax = ax[1, 0]
-    thisax.set_xlim(30000, 2 ** 16)
-    thisax.set_ylim(30000, 2 ** 16)
+    thisax.set_xlim(25000, 2 ** 16)
+    thisax.set_ylim(25000, 2 ** 16)
     res = b["cluster_results"]["fsc_pe"]  # clustering results
     center = b["centers"]["fsc_pe"]
     back = b["df"]["evt"]  # all EVT particles for backdrop
@@ -895,10 +895,7 @@ def aggregate_evt_files(files, dates=None):
 
 
 
-def plot_cruise(bead_df, outdir, filter_params_path="", cruise="", iqr=None):
-    pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
-    outpath = os.path.join(outdir, cruise)
-
+def plot_cruise(bead_df, outpath, filter_params_path="", cruise="", iqr=None):
     if filter_params_path:
         filt_df = pd.read_csv(filter_params_path)
         filt_df = filt_df.rename(columns={

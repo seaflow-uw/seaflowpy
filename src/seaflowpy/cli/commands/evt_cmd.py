@@ -6,6 +6,7 @@ import sys
 import click
 import numpy as np
 import pandas as pd
+import pkg_resources
 from seaflowpy import beads
 from seaflowpy import errors
 from seaflowpy import seaflowfile
@@ -151,7 +152,8 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
 
     logging.info("finding beads in cruise %s", cruise)
     logging.info(
-        "resolution=%s event-limit=%d frac=%f fsc-min=%d pe-min=%d iqr=%d",
+        "version=%s resolution=%s event-limit=%d frac=%f fsc-min=%d pe-min=%d iqr=%d",
+        pkg_resources.get_distribution("seaflowpy").version,
         resolution,
         event_limit,
         frac,
@@ -198,7 +200,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
 
     pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
     cyto_plot_dir = os.path.join(out_dir, "cytogram_plots")
-    summary_plot_dir = os.path.join(out_dir, "summary_plots")
+    summary_plot_path = os.path.join(out_dir, f"{cruise}.summary.png")
 
     all_dfs = []
     for name, group in evt_df.set_index("date").resample(resolution):
@@ -237,7 +239,6 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
                 beads.plot(results, cyto_plot_path, file_id=name, otherip=otherip)
             except Exception as e:
                 logging.warning("%s: %s: %s", type(e).__name__, e.args, str(e))
-                raise e
 
     if all_dfs:
         out_df = pd.concat(all_dfs, ignore_index=True)
@@ -246,7 +247,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
         logging.info("creating summary plot")
         beads.plot_cruise(
             out_df,
-            summary_plot_dir,
+            summary_plot_path,
             filter_params_path=other_params,
             cruise=cruise,
             iqr=iqr
