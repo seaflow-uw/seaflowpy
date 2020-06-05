@@ -220,12 +220,12 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
                 min_pe=min_pe
             )
         except Exception as e:
-            logging.warning("%s: %s: %s", name, type(e).__name__, str(e))
+            logging.warning("%s: %s", type(e).__name__, str(e))
             if type(e).__name__ != "ClusterError":
                 continue
         else:
             if results["message"]:
-                logging.warning("%s: %s", name, results["message"])
+                logging.warning("%s", results["message"])
             df = results["bead_coordinates"]
             df["date"] = name
             all_dfs.append(df)
@@ -238,7 +238,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
             try:
                 beads.plot(results, cyto_plot_path, file_id=name, otherip=otherip)
             except Exception as e:
-                logging.warning("%s: %s: %s", type(e).__name__, e.args, str(e))
+                logging.warning("%s: %s", type(e).__name__, str(e))
 
     if all_dfs:
         out_df = pd.concat(all_dfs, ignore_index=True)
