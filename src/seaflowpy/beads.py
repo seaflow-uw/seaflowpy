@@ -682,9 +682,16 @@ def plot_densities_densCols(ax, x, y, **kwargs):
     # cols[select] = colpal / (len(dens) - 1.) if len(dens) > 0 else colpal
     if (len(x) < 2) or (len(y) < 2):
         return
-    densities = densCols(x, y, nbin=kwargs["nbin"])
+    try:
+        colors = densCols(x, y, nbin=kwargs["nbin"])
+    except ValueError as e:
+        # Might be something like this
+        # ValueError: Binning grid too coarse for current (small) bandwidth: consider increasing 'gridsize'
+        # Fallback to normal scatterplot
+        logging.warning("plotting as single color scatter after error from kern_smooth.densCols: %s", str(e))
+        colors = "mediumseagreen"
     del kwargs["nbin"]
-    ax.scatter(x, y, c=densities, **kwargs)
+    ax.scatter(x, y, c=colors, **kwargs)
 
 
 def plot_cluster(ax, points, center):
