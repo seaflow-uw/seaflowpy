@@ -21,6 +21,7 @@ setup(
         'kern-smooth',
         'matplotlib',
         'pandas',
+        'pyarrow',
         'fabric3'
     ],
     entry_points={
