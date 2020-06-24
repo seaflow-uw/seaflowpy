@@ -1,29 +1,40 @@
-ARG PYTHON_VERSION=3.7-slim-stretch
+ARG ARG_PYTHON_VERSION=3.8
+ARG ARG_BASE_IMAGE=${ARG_PYTHON_VERSION}-slim-buster
+ARG ARG_INSTALL_PREFIX=/seaflowpy
 
-FROM python:${PYTHON_VERSION} AS build_image
-ENV PYTHONUNBUFFERED 1
-ENV PATH=/usr/local/seaflowpy/bin:$PATH
-ENV PYTHONPATH /usr/local/seaflowpy/lib/python3.7/site-packages/
+FROM python:${ARG_BASE_IMAGE} AS build_image
+ARG ARG_PYTHON_VERSION
+ARG ARG_INSTALL_PREFIX
+ENV PYTHONUNBUFFERED=1 \
+    PATH=${ARG_INSTALL_PREFIX}/bin:${PATH} \
+    PYTHONPATH=${ARG_INSTALL_PREFIX}/lib/python${ARG_PYTHON_VERSION}/site-packages
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
+RUN apt-get update -qq \
+    && apt-get install -qq -y build-essential git \
     && rm -rf /var/lib/apt/lists/*
+COPY  . /seaflowpy-src/
+WORKDIR /seaflowpy-src
+RUN git clean -qfdx \
+    && python setup.py sdist bdist_wheel \
+    && pip3 install --prefix ${ARG_INSTALL_PREFIX} --no-cache-dir -r ./requirements-test.txt \
+    && pip3 install --prefix ${ARG_INSTALL_PREFIX} --no-cache-dir --no-index --no-deps . \
+    && mkdir ${ARG_INSTALL_PREFIX}-dist \
+    && cp ./dist/*.tar.gz ./dist/*.whl ${ARG_INSTALL_PREFIX}-dist/ \
+    && mkdir ${ARG_INSTALL_PREFIX}-tests/ \
+    && cp -r ./tests ${ARG_INSTALL_PREFIX}-tests/
 
-RUN mkdir /wheels
 
-COPY dist/*.whl requirements.txt /wheels/
+FROM python:${ARG_BASE_IMAGE} AS runtime_image
+ARG ARG_PYTHON_VERSION
+ARG ARG_INSTALL_PREFIX
+ENV PYTHONUNBUFFERED=1 \
+    PATH=${ARG_INSTALL_PREFIX}/bin:${PATH} \
+    PYTHONPATH=${ARG_INSTALL_PREFIX}/lib/python${ARG_PYTHON_VERSION}/site-packages
 
-# Install with --prefix to keep everything in one place, make it easier to
-# copy to the final image.
-RUN pip3 install --prefix /usr/local/seaflowpy --no-cache-dir -r /wheels/requirements.txt \
-    && pip3 install --prefix /usr/local/seaflowpy --no-cache-dir --no-index -f /wheels seaflowpy \
-    && rm -rf /wheels
-
-FROM python:${PYTHON_VERSION} AS runtime_image
-
-COPY --from=build_image /usr/local/seaflowpy /usr/local/seaflowpy
-ENV PYTHONUNBUFFERED 1
-ENV PATH=/usr/local/seaflowpy/bin:$PATH
-ENV PYTHONPATH /usr/local/seaflowpy/lib/python3.7/site-packages/
+RUN adduser --quiet --disabled-password --gecos '' seaflow
+COPY --from=build_image --chown=seaflow:seaflow ${ARG_INSTALL_PREFIX} ${ARG_INSTALL_PREFIX}/
+COPY --from=build_image --chown=seaflow:seaflow ${ARG_INSTALL_PREFIX}-tests ${ARG_INSTALL_PREFIX}-tests/
+COPY --from=build_image --chown=seaflow:seaflow ${ARG_INSTALL_PREFIX}-dist ${ARG_INSTALL_PREFIX}-dist/
+USER seaflow
 
 CMD ["bash"]
