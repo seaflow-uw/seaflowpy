@@ -155,12 +155,30 @@ class TestFilter:
 
     @pytest.mark.benchmark(group="evt-filter")
     def test_mark_focused_with_set_params(self, evt_df, params, benchmark):
-        evt_df = benchmark(sfp.particleops.mark_focused, evt_df, params)
-        assert len(evt_df.index) == 40000
-        assert len(evt_df[evt_df["q2.5"]].index) == 423
-        assert len(evt_df[evt_df["q50"]].index) == 107
-        assert len(evt_df[evt_df["q97.5"]].index) == 85
-        assert len(sfp.particleops.select_focused(evt_df).index) == 426
+        orig_df = evt_df.copy()  # make a copy before any possible modifications
+
+        # Should not modify original
+        new_evt_df = benchmark(sfp.particleops.mark_focused, evt_df, params)
+        assert not (new_evt_df is evt_df)  # returned a new dataframe
+        assert orig_df.equals(evt_df)  # original dataframe is the unmodified
+        assert len(new_evt_df.index) == 40000
+        assert len(new_evt_df[new_evt_df["q2.5"]].index) == 423
+        assert len(new_evt_df[new_evt_df["q50"]].index) == 107
+        assert len(new_evt_df[new_evt_df["q97.5"]].index) == 85
+        assert len(sfp.particleops.select_focused(new_evt_df).index) == 426
+
+    def test_mark_focused_with_set_params_inplace(self, evt_df, params, benchmark):
+        orig_df = evt_df.copy()  # make a copy before any possible modifications
+
+        # Should modify original
+        new_evt_df = benchmark(sfp.particleops.mark_focused, evt_df, params, inplace=True)
+        assert new_evt_df is evt_df  # returned the same dataframe
+        assert not orig_df.equals(evt_df)  # original dataframe is the modified
+        assert len(new_evt_df.index) == 40000
+        assert len(new_evt_df[new_evt_df["q2.5"]].index) == 423
+        assert len(new_evt_df[new_evt_df["q50"]].index) == 107
+        assert len(new_evt_df[new_evt_df["q97.5"]].index) == 85
+        assert len(sfp.particleops.select_focused(new_evt_df).index) == 426
 
     def test_noise_filter(self, evt_df):
         """Events with zeroes in all of D1, D2, and fsc_small are noise"""
@@ -168,8 +186,9 @@ class TestFilter:
         # D1, D2, or fsc_small
         assert np.any((evt_df["D1"] == 0) & (evt_df["D2"] == 0) & (evt_df["fsc_small"] == 0)) == True
 
-        sfp.particleops.mark_noise(evt_df)
-        signal_df = evt_df[~evt_df["noise"]]
+        noise = sfp.particleops.mark_noise(evt_df)
+        assert noise.sum() == 72
+        signal_df = evt_df[~noise]
 
         # Correct event count
         assert len(signal_df.index) == 39928
@@ -179,8 +198,12 @@ class TestFilter:
 
     def test_saturation_filter(self, evt_df):
         """Events with max D1 or max D2"""
-        sfp.particleops.mark_saturated(evt_df)
-        assert sum(evt_df["saturated"]) == 211
+        sat = sfp.particleops.mark_saturated(evt_df)
+        assert sat.sum() == 211
+
+        d1_max = evt_df["D1"] == evt_df["D1"].max()
+        d2_max = evt_df["D2"] == evt_df["D2"].max()
+        assert len(evt_df[~(d1_max | d2_max)]) == 39789
 
 
 class TestTransform:
@@ -211,7 +234,7 @@ class TestOutput:
     def test_sqlite3_opp_counts_and_params(self, tmpout, params):
         sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         df = tmpout["evt_df"]
-        df = sfp.particleops.mark_focused(df, params)
+        df = sfp.particleops.mark_focused(df, params, inplace=True)
 
         raw_count = len(df.index)
         signal_count = len(df[df["noise"] == False].index)
@@ -238,7 +261,7 @@ class TestOutput:
     def test_sqlite3_opp_counts_and_params_empty(self, tmpout, params):
         sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         df = sfp.particleops.empty_df()
-        df = sfp.particleops.mark_focused(df, params)
+        df = sfp.particleops.mark_focused(df, params, inplace=True)
 
         raw_count = len(df.index)
         signal_count = len(df[df["noise"] == False].index)
@@ -302,7 +325,7 @@ class TestOutput:
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
 
         df = tmpout["evt_df"]
-        df = sfp.particleops.mark_focused(df, params)
+        df = sfp.particleops.mark_focused(df, params, inplace=True)
         # df should now have 5 new columns for noise, saturated, and 3 quantiles
         # Write an opp file
         df = sfp.particleops.select_focused(df)
@@ -320,7 +343,7 @@ class TestOutput:
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
 
         df = tmpout["evt_df"]
-        df = sfp.particleops.mark_focused(df, params)
+        df = sfp.particleops.mark_focused(df, params, inplace=True)
         # df should now have 5 new columns for noise, saturated, and 3 quantiles
         # Write an opp file
         df = sfp.particleops.select_focused(df)

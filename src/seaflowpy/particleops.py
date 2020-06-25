@@ -87,7 +87,7 @@ def encode_bit_flags(df):
     return df
 
 
-def mark_focused(df, params):
+def mark_focused(df, params, inplace=False):
     """
     Mark focused particle data.
 
@@ -99,11 +99,15 @@ def mark_focused(df, params):
         SeaFlow raw event DataFrame.
     params: pandas.DataFrame
         Filtering parameters as pandas DataFrame.
+    inplace: bool, default False
+        Add new booleans columns to and return input DataFrame. If False,
+        add new columns to and return a copy of the input DataFrame, leaving the
+        original unmodified.
 
     Returns
     -------
     pandas.DataFrame
-        Reference to input DataFrame with new boolean columns.
+        Reference to or copy of input DataFrame with new boolean columns.
     """
     # Check parameters
     param_keys = [
@@ -117,9 +121,12 @@ def mark_focused(df, params):
         if not k in params.columns:
             raise ValueError(f"Missing filter parameter {k} in mark_focused")
 
+    if not inplace:
+        df = df.copy()
+
     # Apply noise filter and saturation filter for D1 and D2
-    mark_noise(df)
-    mark_saturated(df)
+    df["noise"] = mark_noise(df)
+    df["saturated"] = mark_saturated(df)
 
     # Filter for aligned/focused particles
     #
@@ -153,39 +160,39 @@ def mark_noise(df):
     """
     Mark data below noise threshold.
 
-    This function adds a new boolean column "noise" to the particle DataFrame,
-    marking events where none of D1, D2, or fsc_small are > 1.
+    This function returns a boolean Series marking events where none of
+    D1, D2, or fsc_small are > 1.
 
     Parameters
     ----------
-    df: pandas.DataFrame
-        SeaFlow raw event data.
+    pandas.Series
+        Boolean array of noise events.
     """
     if len(set(list(df)).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
         raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
 
     # Mark noise events in new column "noise"
-    df["noise"] = ~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1))
+    return pd.Series(~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1)))
 
 
 def mark_saturated(df):
     """
     Mark data that saturates D1 or D2.
 
-    This function adds a new boolean column "saturated" to the particle DataFrame,
-    marking events where none of D1 == max(D1) or D2 == max(D2).
+    This function returns a boolean Series marking events where none of
+    D1 == max(D1) or D2 == max(D2).
 
     Parameters
     ----------
-    df: pandas.DataFrame
-        SeaFlow raw event data.
+    pandas.Series
+        Boolean array of saturated events.
     """
     if len(set(list(df)).intersection(set(["D1", "D2"]))) < 2:
         raise ValueError("Can't apply saturation filter without D1 and D2")
     if len(df.index) == 0:
-        df["saturated"] = False
+        return pd.Series(np.full(len(df.index), False))
     else:
-        df["saturated"] = (df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max())
+        return pd.Series((df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max()))
 
 
 def merge_opp_vct(oppdf, vctdf):
@@ -270,10 +277,10 @@ def roughfilter(df, width=5000):
         return empty_df()
 
     # Mark noise and saturated particles
-    mark_noise(df)
-    mark_saturated(df)
+    noise = mark_noise(df)
+    sat = mark_saturated(df)
 
-    if np.sum(~df["noise"] & ~df["saturated"]) == 0:
+    if np.sum(~noise & ~sat) == 0:
         # All data is noise/saturation filtered
         return empty_df()
 
@@ -352,4 +359,3 @@ def transform_particles(df, columns=None):
     if len(events.index) > 0:
         events[columns] = 10**((events[columns] / 2**16) * 3.5)
     return events
-

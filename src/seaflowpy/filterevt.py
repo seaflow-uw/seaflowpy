@@ -141,7 +141,7 @@ def do_filter(work_q, opps_q):
             evt_df = particleops.empty_df()
 
         try:
-            evt_df = particleops.mark_focused(evt_df, work["filter_params"])
+            evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)
             work["all_count"] = len(evt_df.index)
             work["noise_count"] = len(evt_df[evt_df["noise"]].index)
             work["saturated_count"] = len(evt_df[evt_df["saturated"]].index)

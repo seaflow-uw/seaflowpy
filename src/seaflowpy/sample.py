@@ -296,8 +296,8 @@ def sample_one(df, n, noise_filter=True, min_chl=0, min_fsc=0, min_pe=0, seed=No
     fsc = df["fsc_small"].values >= min_fsc
     pe = df["pe"].values >= min_pe
     if noise_filter:
-        particleops.mark_noise(df)
-        df = df[(~df["noise"]) & chl & fsc & pe].drop(columns=["noise"])
+        noise = particleops.mark_noise(df)
+        df = df[(~noise) & chl & fsc & pe]
     else:
         df = df[chl & fsc & pe]
     events_postfilter = len(df.index)
