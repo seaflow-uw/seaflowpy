@@ -102,13 +102,6 @@ def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count
     print(json.dumps(v, indent=2))
     print('')
 
-    # Get list of files in sfl table.
-    try:
-        sfl_df = db.get_sfl_table(dbpath)
-    except errors.SeaFlowpyError as e:
-        raise click.ClickException(str(e))
-    sfl_files = sfl_df["file"].tolist()
-
     # Find EVT files
     print('Getting lists of files to filter')
     if evt_dir:
@@ -121,7 +114,7 @@ def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count
         # launching child processes.
         try:
             evt_files = cloud.get_files(cruise)
-            evt_files = seaflowfile.keep_evt_files(evt_files)  # Only keep EVT files
+            evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(evt_files))  # Only keep EVT files
         except botocore.exceptions.NoCredentialsError as e:
             print('Please configure aws first:', file=sys.stderr)
             print('  $ conda install aws', file=sys.stderr)
@@ -132,23 +125,36 @@ def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count
             raise click.Abort()
 
     # Check for duplicates, exit with message if any exist
+    # This could be caused by gzipped and uncompressed files in the same location
     uniques = {seaflowfile.SeaFlowFile(f).file_id for f in evt_files}
     if len(uniques) < len(evt_files):
         raise click.ClickException('Duplicate EVT file(s) detected')
 
+    # Get DataFrame of file IDs, paths, dates in common between discovered
+    # EVT file paths and SFL files.
+    try:
+        sfl_df = db.get_sfl_table(dbpath)
+    except (errors.SeaFlowpyError, KeyError, ValueError) as e:
+        raise click.ClickException(str(e))
+    files_df = seaflowfile.date_evt_files(evt_files, sfl_df)
+
     # Find intersection of SFL files and EVT files
-    files = seaflowfile.filtered_file_list(evt_files, sfl_files)
-    print('sfl={} evt={} intersection={}'.format(len(sfl_files), len(evt_files), len(files)))
+    print('sfl={} evt={} intersection={}'.format(len(sfl_df), len(evt_files), len(files_df)))
 
     # Restrict length of file list with --limit
     if (limit is not None) and (limit > 0):
-        files = files[:limit]
+        files_df = files_df.head(limit)
 
     # Filter
     try:
-        filterevt.filter_evt_files(files, dbpath, opp_dir, s3=s3_flag,
-                                   worker_count=process_count,
-                                   every=resolution)
+        filterevt.filter_evt_files(
+            files_df,
+            dbpath,
+            opp_dir,
+            s3=s3_flag,
+            worker_count=process_count,
+            every=resolution
+        )
     except errors.SeaFlowpyError as e:
         raise click.ClickException(str(e))
 

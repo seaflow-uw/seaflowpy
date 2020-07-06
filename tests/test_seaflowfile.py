@@ -1,8 +1,11 @@
 import datetime
+
+import pandas as pd
 import pytest
 import seaflowpy as sfp
 
 # pylint: disable=redefined-outer-name
+
 
 def test_invalid_filename():
     with pytest.raises(sfp.errors.FileError):
@@ -514,3 +517,51 @@ def test_timeselect_evt_files():
     answer = ["tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00"]
     selected = [f.path for f in selected]
     assert selected == answer
+
+
+def test_date_evt_files():
+    evt_files = [
+        "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00",
+        "tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00"
+    ]
+    sfl_df = pd.read_parquet("tests/sfl.parquet")
+    files_df = sfp.seaflowfile.date_evt_files(evt_files, sfl_df)
+    answer_df = pd.DataFrame({
+        'date': {
+            0: pd.Timestamp('2014-07-04 00:00:02+0000', tz='UTC'),
+            1: pd.Timestamp('2014-07-04 00:03:02+0000', tz='UTC'),
+            2: pd.Timestamp('2014-07-04 00:06:02+0000', tz='UTC'),
+            3: pd.Timestamp('2014-07-04 00:09:02+0000', tz='UTC'),
+            4: pd.Timestamp('2014-07-04 00:12:02+0000', tz='UTC'),
+            5: pd.Timestamp('2014-07-04 00:15:02+0000', tz='UTC'),
+            6: pd.Timestamp('2014-07-04 00:17:02+0000', tz='UTC')
+        },
+        'file_id': {
+            0: '2014_185/2014-07-04T00-00-02+00-00',
+            1: '2014_185/2014-07-04T00-03-02+00-00',
+            2: '2014_185/2014-07-04T00-06-02+00-00',
+            3: '2014_185/2014-07-04T00-09-02+00-00',
+            4: '2014_185/2014-07-04T00-12-02+00-00',
+            5: '2014_185/2014-07-04T00-15-02+00-00',
+            6: '2014_185/2014-07-04T00-17-02+00-00'
+        },
+        'path': {
+            0: 'tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00',
+            1: 'tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz',
+            2: 'tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00',
+            3: 'tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00',
+            4: 'tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00',
+            5: 'tests/testcruise_evt/2014_185/2014-07-04T00-15-02+00-00.gz',
+            6: 'tests/testcruise_evt/2014_185/2014-07-04T00-17-02+00-00.gz'}
+        }
+    )
+    hash_result = pd.util.hash_pandas_object(files_df, index=False).sum()
+    hash_answer = pd.util.hash_pandas_object(answer_df, index=False).sum()
+    assert hash_result == hash_answer

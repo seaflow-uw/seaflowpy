@@ -1,5 +1,7 @@
 import os
 import re
+
+import pandas as pd
 from . import errors
 from . import time
 from . import util
@@ -250,3 +252,43 @@ def timeselect_evt_files(sfiles, tstart, tend):
     if tend is not None:
         sfiles = [f for f in sfiles if f.date <= tend]
     return sfiles
+
+
+def date_evt_files(evt_paths, sfl_df):
+    """
+    Create a DataFrame of file IDs, paths, timestamps.
+
+    Only files in evt_paths and sfl_df["file"] that share file IDs will be
+    included.
+
+    Parameters
+    -----------
+    evt_paths: list of str
+        EVT file paths.
+    sfl_df: pandas.DataFrame
+        DataFrame for SFL data, with "file" column for file IDs and "date" column
+        with RFC3339 timestamp strings or datetime objects.
+
+    Raises
+    ------
+    ValueError if dates can't be parsed.
+    KeyError if "file" or "date" is missing from sfl_df.
+    seaflowpy.errors.SeaFlowpyError if a filename can't be parsed.
+
+    Returns
+    -------
+    pandas.DataFrame
+        "file_id" column has file IDs, "path" has file paths, "date" has
+        timestamp objects.
+    """
+    if not pd.api.types.is_datetime64_ns_dtype(sfl_df["date"]):
+        sfl_df["date"] = sfl_df["date"].map(time.parse_date)
+    sfl_dates_by_file = dict(zip(sfl_df["file"].tolist(), sfl_df["date"].tolist()))
+    data = {"date": [], "file_id": [], "path": []}
+    for path in evt_paths:
+        file_id = SeaFlowFile(path).file_id
+        if file_id in sfl_dates_by_file:
+            data["file_id"].append(file_id)
+            data["path"].append(path)
+            data["date"].append(sfl_dates_by_file[file_id])
+    return pd.DataFrame(data)[["date", "file_id", "path"]]

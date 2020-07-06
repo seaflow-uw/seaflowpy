@@ -422,3 +422,46 @@ def write_opp_labview(df, path, outdir, gz=True, require_all=True):
             outpath = outpath + ".gz"
         # Only keep columns we intend to write to file
         write_labview(df[particleops.COLUMNS + ["bitflags"]], outpath)
+
+
+def write_opp_parquet(df, date, window_size, outdir):
+    """
+    Write an OPP Parquet file.
+
+    Use snappy compression.
+
+    Parameters
+    -----------
+    df: pandas.DataFrame
+        SeaFlow focused particle DataFrame with file_id and date.
+    date: pandas.Timestamp or datetime.datetime object
+        Start timestamp for data in df.
+    window_size: pandas offset alias for time window covered by this file. Time
+        covered by this file is date + time_window.
+    outdir: str
+        Output directory.
+    """
+    if df is None:
+        return
+
+    # Make sure directory necessary directory tree exists
+    util.mkdir_p(outdir)
+    outpath = os.path.join(outdir, date.isoformat().replace(":", "-")) + f".{window_size}.opp.parquet"
+    # Make sure date is a column not an index
+    df = df.reset_index()  # don't drop
+    # Make sure file_id is a categorical column
+    df["file_id"] = df["file_id"].astype("category")
+    # Only keep columns we intend to write to file, reorder
+    columns = [
+        "date",
+        "file_id",
+        "D1",
+        "D2",
+        "fsc_small",
+        "pe",
+        "chl_small",
+        "q2.5",
+        "q50",
+        "q97.5",
+    ]
+    df[columns].to_parquet(outpath, compression="snappy", index=False)

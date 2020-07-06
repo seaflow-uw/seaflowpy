@@ -1,7 +1,6 @@
 from builtins import str
 from builtins import object
 import gzip
-import hashlib
 import io
 import os
 import shutil
@@ -40,6 +39,38 @@ def params():
 
 
 @pytest.fixture()
+def parquetdf():
+    return {
+        "columns": [
+            "date",
+            "file_id",
+            "D1",
+            "D2",
+            "fsc_small",
+            "pe",
+            "chl_small",
+            "q2.5",
+            "q50",
+            "q97.5",
+        ],
+        "df": pd.DataFrame({  # Has extra column, wrong order, file_id not category
+            "D1": np.arange(0, 3, dtype="float64"),
+            "date": np.repeat(pd.Timestamp("2014-07-04 00:00:02+0000", tz="UTC"), 3),
+            "file_id": np.repeat("2014_185/2014-07-04T00-00-02+00-00", 3),
+            "D2": np.arange(1, 4, dtype="float64"),
+            "fsc_small": np.arange(2, 5, dtype="float64"),
+            "pe": np.arange(3, 6, dtype="float64"),
+            "chl_small": np.arange(4, 7, dtype="float64"),
+            "q2.5": [True, False, True],
+            "q50": [False, True, False],
+            "q97.5": [True, True, True],
+            "extra": np.arange(3)
+        }, index=[3, 2, 1]),
+        "file_date": pd.Timestamp("2014-07-04 00:00:02+0000", tz="UTC")
+    }
+
+
+@pytest.fixture()
 def tmpout(tmpdir):
     """Setup to test complete filter workflow"""
     # Copy db with filtering params
@@ -52,7 +83,8 @@ def tmpout(tmpdir):
         "oppdir": str(tmpdir.join("oppdir")),
         "tmpdir": str(tmpdir),
         "evt_df": sfp.fileio.read_evt_labview(str(evt_path)),
-        "evt_path": evt_path
+        "evt_path": evt_path,
+        "file_dates": pd.read_parquet("tests/file_dates.parquet")
     }
 
 
@@ -205,6 +237,27 @@ class TestFilter:
         d2_max = evt_df["D2"] == evt_df["D2"].max()
         assert len(evt_df[~(d1_max | d2_max)]) == 39789
 
+    def test_all_quantiles(self):
+        df = pd.DataFrame(
+            {
+                "x": [True, True, True],
+                "q2.5": [True, False, True],
+                "q50": [True, True, True],
+                "q97.5": [False, True, False]
+            }
+        )
+        assert sfp.particleops.all_quantiles(df) == True
+
+        df = pd.DataFrame(
+            {
+                "x": [True, True, True],
+                "q2.5": [True, False, True],
+                "q50": [True, True, True],
+                "q97.5": [False, False, False]
+            }
+        )
+        assert sfp.particleops.all_quantiles(df) == False
+
 
 class TestTransform:
     def test_transform_four_values(self):
@@ -239,8 +292,8 @@ class TestOutput:
         raw_count = len(df.index)
         signal_count = len(df[df["noise"] == False].index)
 
-        sfp.db.save_opp_to_db(sf_file.file_id, df, raw_count, signal_count,
-            "UUID", tmpout["db"])
+        vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
+        sfp.db.save_opp_to_db(vals, tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
@@ -266,8 +319,8 @@ class TestOutput:
         raw_count = len(df.index)
         signal_count = len(df[df["noise"] == False].index)
 
-        sfp.db.save_opp_to_db(sf_file.file_id, df, raw_count, signal_count,
-            "UUID", tmpout["db"])
+        vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
+        sfp.db.save_opp_to_db(vals, tmpout["db"])
         con = sqlite3.connect(tmpout["db"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
@@ -357,6 +410,28 @@ class TestOutput:
             reread_opp_df
         )
 
+    def test_parquet_opp_output(self, tmpout, parquetdf):
+        # Create dataframe we expected to read back
+        df_expected = parquetdf["df"].copy()
+        df_expected["file_id"] = df_expected["file_id"].astype("category")  # fix file_id dtype
+        df_expected = df_expected[parquetdf["columns"]]  # fix column order and set
+        df_expected = df_expected.reset_index(drop=True)  # fix index
+
+        out_path = os.path.join(
+            tmpout["oppdir"],
+            parquetdf["file_date"].isoformat().replace(":", "-")
+        ) + ".1H.opp.parquet"
+
+        sfp.fileio.write_opp_parquet(
+            parquetdf["df"],
+            parquetdf["file_date"],
+            "1H",
+            tmpout["oppdir"]
+        )
+        out_df = pd.read_parquet(out_path)
+        hash_got = pd.util.hash_pandas_object(out_df).sum()
+        hash_expected = pd.util.hash_pandas_object(df_expected).sum()
+        assert hash_got == hash_expected
 
 
 class TestMultiFileFilter(object):
@@ -364,14 +439,12 @@ class TestMultiFileFilter(object):
         """Test multi-file filtering and ensure output can be read back OK"""
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
-        files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
-        sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
-        files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
-            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
+            tmpout["file_dates"],
+            dbpath=tmpout["db"],
+            opp_dir=str(tmpout["oppdir"]),
             worker_count=1
         )
-
         multi_file_asserts(tmpout)
 
     @pytest.mark.s3
@@ -382,15 +455,18 @@ class TestMultiFileFilter(object):
         files = cloud.get_files("testcruise_evt")
         files = sfp.seaflowfile.keep_evt_files(files)
 
+        # modify file paths to match S3 paths (remove leading "tests/")
+        files_df = tmpout["file_dates"]
+        files_df["path"] = files_df["path"].map(lambda x: x.split("/", 1)[1])
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
-        sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
-        files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
         sfp.filterevt.filter_evt_files(
-            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            worker_count=1, s3=True
+            files_df,
+            dbpath=tmpout["db"],
+            opp_dir=str(tmpout["oppdir"]),
+            worker_count=1,
+            s3=True
         )
-
         multi_file_asserts(tmpout)
 
     @pytest.mark.popcycle
@@ -429,15 +505,16 @@ class TestMultiFileFilter(object):
             npt.assert_array_equal(opps_py[i], opps_R[i])
 
 def multi_file_asserts(tmpout):
-    # Check MD5 checksums of uncompressed OPP files
+    # pandas.util.hash_pandas_object(..., index=False).sum() for OPP outputs by file_id
     hashes = {
-        "2014_185/2014-07-04T00-00-02+00-00.opp.gz": "31584d9d80284fcbc66fe9dc5ed83e03",
-        "2014_185/2014-07-04T00-03-02+00-00.opp.gz": "24677d10502a48f136098329d1f0da41"
+        "2014_185/2014-07-04T00-00-02+00-00": 2454323143108433719,
+        "2014_185/2014-07-04T00-03-02+00-00": -5397905324690945884
     }
-    for f in ["2014_185/2014-07-04T00-00-02+00-00.opp.gz", "2014_185/2014-07-04T00-03-02+00-00.opp.gz"]:
-        f_path = os.path.join(tmpout["oppdir"], f)
-        f_md5 = hashlib.md5(gzip.open(f_path).read()).hexdigest()
-        assert f_md5 == hashes[f]
+    opp_df = pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet"))
+    for file_id, group in opp_df.groupby("file_id"):
+        print(file_id)
+        assert file_id in hashes
+        assert pd.util.hash_pandas_object(group, index=False).sum() == hashes[file_id]
 
     # Check numbers stored in opp table are correct
     filter_params = sfp.db.get_latest_filter(tmpout["db"])

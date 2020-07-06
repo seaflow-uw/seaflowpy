@@ -60,9 +60,39 @@ def save_metadata(dbpath, vals):
     executemany(dbpath, sql_insert, vals)
 
 
-def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
+def save_opp_to_db(vals, dbpath):
     """
     Save aggregate statistics for filtered particle data to SQLite.
+
+    Parameters
+    ----------
+    vals: list of dicts
+        Values array to be saved to opp table, created by prep_opp().
+    dbpath: str
+        Path to SQLite DB file.
+    """
+    # NOTE: values inserted must be in the same order as fields in opp
+    # table. Defining that order in a list here makes it easier to verify
+    # that the right order is used.
+    field_order = [
+        "file",
+        "all_count",
+        "opp_count",
+        "evt_count",
+        "opp_evt_ratio",
+        "filter_id",
+        "quantile"
+    ]
+    values_str = ", ".join([":" + f for f in field_order])
+    sql_insert = "INSERT OR REPLACE INTO opp VALUES ({})".format(values_str)
+    executemany(dbpath, sql_insert, vals)
+
+
+def prep_opp(file, df, all_count, evt_count, filter_id):
+    """
+    Prepare aggregate statistic values for filtered particle data to SQLite.
+
+    The array returned by this function can be passed to save_opp_to_db.
 
     Parameters
     ----------
@@ -80,21 +110,11 @@ def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
         Events above noise floor in raw file.
     filter_id: str
         DB ID for filtering parameters used to create OPP.
-    dbpath: str
-        Path to SQLite DB file.
+
+    Returns
+    -------
+    Array of values for save_opp_to_db().
     """
-    # NOTE: values inserted must be in the same order as fields in opp
-    # table. Defining that order in a list here makes it easier to verify
-    # that the right order is used.
-    field_order = [
-        "file",
-        "all_count",
-        "opp_count",
-        "evt_count",
-        "opp_evt_ratio",
-        "filter_id",
-        "quantile"
-    ]
     vals = []
     for _q_col, q, _q_str, q_df in particleops.quantiles_in_df(df):
         opp_count = len(q_df.index)
@@ -111,15 +131,29 @@ def save_opp_to_db(file, df, all_count, evt_count, filter_id, dbpath):
             "filter_id": filter_id,
             "quantile": q
         })
-    # Construct values string with named placeholders
+    return vals
+
+
+def save_outlier(vals, dbpath):
+    """
+    Save entries in outlier table.
+
+    Parameters
+    ----------
+    vals: list of dicts
+        Values array to be saved to outlier table, created by prep_outlier().
+    dbpath: str
+        Path to SQLite DB file.
+    """
+    field_order = ["file", "flag"]
     values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT OR REPLACE INTO opp VALUES ({})".format(values_str)
+    sql_insert = "INSERT OR REPLACE INTO outlier VALUES ({})".format(values_str)
     executemany(dbpath, sql_insert, vals)
 
 
-def save_outlier(file, flag, dbpath):
+def prep_outlier(file, flag):
     """
-    Save a entry in outlier table for this file.
+    Prepare an outlier entry for this file.
 
     Parameters
     ----------
@@ -130,16 +164,12 @@ def save_outlier(file, flag, dbpath):
         2014_185/2014-07-04T00-00-02+00-00.
     flag: int
         Outlier table value, 0 for OK.
-    dbpath: str
-        Path to SQLite DB file.
+
+    Returns
+    -------
+    A single item array of values for save_outlier().
     """
-    field_order = ["file", "flag"]
-    vals = []
-    vals.append({"file": SeaFlowFile(file).file_id, "flag": flag})
-    # Construct values string with named placeholders
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT OR REPLACE INTO outlier VALUES ({})".format(values_str)
-    executemany(dbpath, sql_insert, vals)
+    return [{"file": SeaFlowFile(file).file_id, "flag": flag}]
 
 
 def save_sfl(dbpath, vals):

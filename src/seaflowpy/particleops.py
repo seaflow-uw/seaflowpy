@@ -21,6 +21,28 @@ flags = {
 }
 
 
+def all_quantiles(df):
+    """
+    Are there particles in all quantiles?
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow particle data with focused particles marked by mark_focused().
+        Focused particles should be marked with a boolean column for each
+        quantile, where column names are q<quantile>, e.g. q2.5 for 2.5%
+        quantile.
+
+    Returns
+    ------
+    bool
+    """
+    for q_col in [c for c in df.columns if c.startswith("q")]:
+        if not df[q_col].any():
+            return False
+    return True
+
+
 def decode_bit_flags(df):
     """
     Convert "bitflags" column to per-quantile focused particles booleans.

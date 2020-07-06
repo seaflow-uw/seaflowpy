@@ -18,19 +18,19 @@ from seaflowpy import time
 
 def validate_file_fraction(ctx, param, value):
     if value <= 0 or value > 1:
-        raise click.BadParameter(f'must be a number > 0 and <= 1.')
+        raise click.BadParameter('must be a number > 0 and <= 1.')
     return value
 
 
 def validate_positive(ctx, param, value):
     if value is not None and value <= 0:
-        raise click.BadParameter(f'must be a number > 0.')
+        raise click.BadParameter('must be a number > 0.')
     return value
 
 
 def validate_seed(ctx, param, value):
     if value is not None and (value < 0 or value > (2**32 - 1)):
-        raise click.BadParameter(f'must be between 0 and 2**32 - 1.')
+        raise click.BadParameter('must be between 0 and 2**32 - 1.')
     return value
 
 
@@ -39,7 +39,7 @@ def validate_timestamp(ctx, param, value):
         try:
             value = time.parse_date(value, assume_utc=False)
         except ValueError:
-            raise click.BadParameter(f'unable to parse timestamp.')
+            raise click.BadParameter('unable to parse timestamp.')
     return value
 
 
@@ -177,7 +177,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
     if len(evt_df) == 0:
         raise click.ClickException("no EVT data for bead finding")
     if "date" not in evt_df.columns:
-        evt_df = evt_df.reset_index()  # maybe it's the index
+        evt_df = evt_df.reset_index()  # maybe it's the index, don't drop
     if "date" not in evt_df.columns:
         raise click.ClickException("no date column in EVT dataframe")
     logging.info("%d particles in %s", len(evt_df), particle_file)
@@ -416,6 +416,9 @@ def validate_evt_cmd(report_all, files):
     directories will be recursively found and examined. Prints file validation
     report to STDOUT. Print summary of files passing validation to STDERR.
     """
+    # TODO: expand to calculate hash for binary EVT and binary OPP (all columns, only OPP columns)
+    # and OPP parquet files with an extra flag. OPP parquet should produce hashes for
+    # each file_id in the whole file (e.g. by group_by)
     if not files:
         return
 

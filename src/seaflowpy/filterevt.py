@@ -3,6 +3,9 @@ import sys
 import time
 import multiprocessing as mp
 import queue
+
+import pandas as pd
+
 from . import clouds
 from .conf import get_aws_config
 from . import db
@@ -24,13 +27,15 @@ quantiles = [2.5, 50, 97.5]
 # Max OPP in queue, for backpressure if writing is slow
 max_opp = 100
 
+
 @util.quiet_keyboardinterrupt
-def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
-                     every=10.0):
+def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
+                     every=10.0, window_size="1H"):
     """Filter a list of EVT files.
 
     Positional arguments:
-        files - paths to EVT files to filter
+        files_df - DataFrame of "file_id", "path", "date" as file ID string,
+            file path, and pandas.Timestamp for the file.
         dbpath = SQLite3 db path
         opp_dir = Directory for output binary OPP files
 
@@ -38,14 +43,20 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
         s3 - Get EVT data from S3
         worker_count - number of worker processes to use
         every - Percent progress output resolution
+        window_size - Time window for grouping filtering EVT file sets,
+            expressed as pandas time offsets.
     """
     work = {
-        "file": None,  # fill in later
+        "files_df": None,  # fill in later
         "s3": s3,
         "cloud_config_items": None,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
-        "filter_params": None  # fill in later from db
+        "filter_params": None,  # fill in later from db,
+        "window_size": window_size,
+        "window_start_date": None,
+        "errors": [],  # global errors outside of processing single files
+        "results": []
     }
 
     if not dbpath:
@@ -55,7 +66,10 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
     if every <= 0 or every > 100:
         raise ValueError("resolution must be > 0 and <= 100")
 
-    worker_count = min(len(files), worker_count)
+    # Group by window_size
+    grouped = files_df.set_index("date").resample(window_size)
+
+    worker_count = min(len(grouped), worker_count)
 
     work["filter_params"] = db.get_latest_filter(dbpath)
 
@@ -80,21 +94,22 @@ def filter_evt_files(files, dbpath, opp_dir, s3=False, worker_count=1,
     # Create db output process
     saver = mp.Process(
         target=do_save,
-        args=(opps_q, stats_q, len(files))
+        args=(opps_q, stats_q, len(files_df))
     )
     saver.start()
 
     # Create reporting process
     reporter = mp.Process(
         target=do_reporting,
-        args=(stats_q, done_q, len(files), every)
+        args=(stats_q, done_q, len(files_df), every)
     )
     reporter.start()
 
-    # Add work to the work queue
-    for f in files:
-        work_copy = copy.copy(work)
-        work_copy["file"] = f
+    # Add work to the work queue, binned by hour
+    for name, group in grouped:
+        work_copy = copy.deepcopy(work)
+        work_copy["files_df"] = group.copy()
+        work_copy["window_start_date"] = name
         work_q.put(work_copy)
     # Put sentinel stop values on the input queue, one for each consumer process
     for _ in range(worker_count):
@@ -120,42 +135,42 @@ def do_filter(work_q, opps_q):
     """Filter one EVT file, save to sqlite3, return filter stats"""
     work = work_q.get()
     while work != stop:
-        work["error"] = ""
-        work["all_count"] = 0
-        work["evt_count"] = 0
-        work["opp"] = None
+        for date, row in work["files_df"].iterrows():
+            result = {
+                "error": "",
+                "all_count": 0,
+                "evt_count": 0,
+                "saturated_count": 0,
+                "opp": None,
+                "file_id": row["file_id"],
+                "path": row["path"]
+            }
 
-        evt_file = work["file"]
-        fileobj = None
+            try:
+                fileobj = None
+                if work["s3"]:
+                    cloud = clouds.AWS(work["cloud_config_items"])
+                    fileobj = cloud.download_file_memory(row["path"])
+                evt_df = fileio.read_evt_labview(path=row["path"], fileobj=fileobj)
+            except errors.FileError as e:
+                result["error"] = f"Could not parse file {row['path']}: {e}"
+                evt_df = particleops.empty_df()
+            except Exception as e:
+                result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
+                evt_df = particleops.empty_df()
 
-        try:
-            if work["s3"]:
-                cloud = clouds.AWS(work["cloud_config_items"])
-                fileobj = cloud.download_file_memory(evt_file)
-            evt_df = fileio.read_evt_labview(path=evt_file, fileobj=fileobj)
-        except errors.FileError as e:
-            work["error"] = f"Could not parse file {evt_file}: {e}"
-            evt_df = particleops.empty_df()
-        except Exception as e:
-            work["error"] = f"Unexpected error when parsing file {evt_file}: {e}"
-            evt_df = particleops.empty_df()
+            try:
+                evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)
+                result["all_count"] = len(evt_df.index)
+                result["noise_count"] = len(evt_df[evt_df["noise"]].index)
+                result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
+                result["opp"] = particleops.select_focused(evt_df)
+                result["opp"]["date"] = date
+                result["opp"]["file_id"] = row["file_id"]
+            except Exception as e:
+                result["error"] = f"Unexpected error when selecting focused partiles in file {row['path']}: {e}"
 
-        try:
-            evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)
-            work["all_count"] = len(evt_df.index)
-            work["noise_count"] = len(evt_df[evt_df["noise"]].index)
-            work["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
-            work["opp"] = particleops.select_focused(evt_df)
-        except Exception as e:
-            work["error"] = f"Unexpected error when selecting focused partiles in file {evt_file}: {e}"
-        # Write to OPP file if all quantiles have focused data. Would like to
-        # write in a different process (do_save) but this quickly becomes a
-        # significant bottleneck.
-        try:
-            if work["opp_dir"]:
-                fileio.write_opp_labview(work["opp"], work["file"], work["opp_dir"])
-        except Exception as e:
-            work["error"] = f"Unexpected error when saving file {evt_file}: {e}"
+            work["results"].append(result)
 
         opps_q.put(work)
         work = work_q.get()
@@ -165,7 +180,7 @@ def do_filter(work_q, opps_q):
 def do_save(opps_q, stats_q, files_left):
     while files_left > 0:
         try:
-            work = opps_q.get(True, 60)  # We should get one file every minute at least
+            work = opps_q.get(True, 600)  # We should get one hour of data every ten minutes at least
         except queue.Empty as e:
             stats_q.put("EMPTY QUEUE")
             break
@@ -173,18 +188,47 @@ def do_save(opps_q, stats_q, files_left):
             stats_q.put("QUEUE ERROR")
             break
 
-        files_left -= 1
+        files_left -= len(work["files_df"])
 
+        # Save to DB
         try:
-            # Save to DB
             if work["dbpath"]:
                 filter_id = work["filter_params"]["id"].unique().tolist()[0]
-                db.save_opp_to_db(work["file"], work["opp"], work["all_count"],
-                                  work["all_count"] - work["noise_count"],
-                                  filter_id, work["dbpath"])
-                db.save_outlier(work["file"], 0, work["dbpath"])
+                opp_vals, outlier_vals = [], []
+                for r in work["results"]:
+                    opp_vals.extend(
+                        db.prep_opp(
+                            r["file_id"],
+                            r["opp"],
+                            r["all_count"],
+                            r["all_count"] - r["noise_count"],
+                            filter_id
+                        )
+                    )
+                    outlier_vals.extend(db.prep_outlier(r["file_id"], 0))
+                db.save_opp_to_db(opp_vals, work["dbpath"])
+                db.save_outlier(outlier_vals, work["dbpath"])
         except Exception as e:
-            work["error"] = "Unexpected error when saving file {} to db: {}".format(work["file"], e)
+            work["errors"].append("Unexpected error when saving file {} to db: {}".format(work["file"], e))
+
+        # Save OPP file
+        # Only include OPP files with data in all quantiles
+        good_opps = []
+        for r in work["results"]:
+            if particleops.all_quantiles(r["opp"]):
+                good_opps.append(r["opp"])
+        opp_df = pd.concat(good_opps, ignore_index=True)
+        try:
+            if work["opp_dir"]:
+                fileio.write_opp_parquet(
+                    opp_df,
+                    work["window_start_date"],
+                    work["window_size"],
+                    work["opp_dir"]
+                )
+        except Exception as e:
+            work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
+            pass
 
         stats_q.put(work)
 
@@ -210,62 +254,70 @@ def do_reporting(stats_q, done_q, file_count, every):
     saturated_count_block = 0  # particles saturating D1 or D2
     opp_count_block = 0  # OPP particles in this block
     files_seen = 0
+    files_left = file_count
 
     # Filter particles in parallel with process pool
-    for i in range(file_count):
-        work = stats_q.get()  # get next result
+    while files_left > 0:
+        work = stats_q.get()  # get next result group
 
         if work in ("EMPTY QUEUE", "QUEUE ERROR"):
             # Something went wrong upstream, exit with an error message
             done_q.put(f"A fatal error occurred after filtering {files_seen}/{file_count} files: {work}")
             sys.exit(1)
 
-        files_seen += 1
+        files_left -= len(work["files_df"])
 
-        if work["error"]:
-            print(work["error"], file=sys.stderr)
-        else:
-            files_ok += 1
+        if work["errors"]:
+            for e in work["errors"]:
+                print(e, file=sys.stderr)
 
-        opp = work["opp"]
-        # only consider 50% quantile for reporting
-        opp = opp[opp["q50"]]
-        event_count_block += work["all_count"]
-        noise_count_block += work["noise_count"]
-        signal_count_block = event_count_block - noise_count_block
-        saturated_count_block += work["saturated_count"]
-        opp_count_block += len(opp.index)
+        for r in work["results"]:
+            files_seen += 1
 
-        # Print progress periodically
-        perc = float(i + 1) / file_count * 100  # Percent completed
-        # Round down to closest every%
-        milestone = int(perc / every) * every
-        if milestone > last:
-            event_count += event_count_block
-            noise_count += noise_count_block
-            signal_count += signal_count_block
-            saturated_count += saturated_count_block
-            opp_count += opp_count_block
-            ratio_noise_block = util.zerodiv(noise_count_block, event_count_block)
-            ratio_saturated_block = util.zerodiv(saturated_count_block, event_count_block)
-            ratio_evtopp_block = util.zerodiv(opp_count_block, signal_count_block)
-            msg = f"File: {i + 1}/{file_count} {perc:5.4}%"
-            msg += " events: %d noise: %d (%.04f) sat: %d (%.04f) opp: %d (%.04f) t: %.2fs" % \
-                (
-                    event_count_block,
-                    noise_count_block, ratio_noise_block,
-                    saturated_count_block, ratio_saturated_block,
-                    opp_count_block, ratio_evtopp_block,
-                    time.time() - t0
-                )
-            print(msg)
-            sys.stdout.flush()
-            last = milestone
-            event_count_block = 0
-            noise_count_block = 0
-            signal_count_block = 0
-            saturated_count_block = 0
-            opp_count_block = 0
+            if r["error"]:
+                print(r["error"], file=sys.stderr)
+            else:
+                files_ok += 1
+
+            opp = r["opp"]
+            # only consider 50% quantile for reporting
+            opp = opp[opp["q50"]]
+            event_count_block += r["all_count"]
+            noise_count_block += r["noise_count"]
+            signal_count_block = event_count_block - noise_count_block
+            saturated_count_block += r["saturated_count"]
+            opp_count_block += len(opp.index)
+
+            # Print progress periodically
+            perc = float(files_seen) / file_count * 100  # Percent completed
+            # Round down to closest every%
+            milestone = int(perc / every) * every
+            if milestone > last:
+                event_count += event_count_block
+                noise_count += noise_count_block
+                signal_count += signal_count_block
+                saturated_count += saturated_count_block
+                opp_count += opp_count_block
+                ratio_noise_block = util.zerodiv(noise_count_block, event_count_block)
+                ratio_saturated_block = util.zerodiv(saturated_count_block, event_count_block)
+                ratio_evtopp_block = util.zerodiv(opp_count_block, signal_count_block)
+                msg = f"File: {files_seen}/{file_count} {perc:5.4}%"
+                msg += " events: %d noise: %d (%.04f) sat: %d (%.04f) opp: %d (%.04f) t: %.2fs" % \
+                    (
+                        event_count_block,
+                        noise_count_block, ratio_noise_block,
+                        saturated_count_block, ratio_saturated_block,
+                        opp_count_block, ratio_evtopp_block,
+                        time.time() - t0
+                    )
+                print(msg)
+                sys.stdout.flush()
+                last = milestone
+                event_count_block = 0
+                noise_count_block = 0
+                signal_count_block = 0
+                saturated_count_block = 0
+                opp_count_block = 0
 
     # If any particle count data is left, add it to totals
     event_count += event_count_block
