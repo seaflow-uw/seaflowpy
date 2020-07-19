@@ -424,7 +424,7 @@ def write_opp_labview(df, path, outdir, gz=True, require_all=True):
         write_labview(df[particleops.COLUMNS + ["bitflags"]], outpath)
 
 
-def write_opp_parquet(df, date, window_size, outdir):
+def write_opp_parquet(opp_dfs, date, window_size, outdir):
     """
     Write an OPP Parquet file.
 
@@ -432,8 +432,9 @@ def write_opp_parquet(df, date, window_size, outdir):
 
     Parameters
     -----------
-    df: pandas.DataFrame
-        SeaFlow focused particle DataFrame with file_id and date.
+    opp_dfs: pandas.DataFrame
+        SeaFlow focused particle DataFrames with file_id, date, and index reflecting
+        positions in original EVT DataFrames.
     date: pandas.Timestamp or datetime.datetime object
         Start timestamp for data in df.
     window_size: pandas offset alias for time window covered by this file. Time
@@ -441,18 +442,21 @@ def write_opp_parquet(df, date, window_size, outdir):
     outdir: str
         Output directory.
     """
-    if df is None:
+    if not opp_dfs:
         return
 
     # Make sure directory necessary directory tree exists
     util.mkdir_p(outdir)
     outpath = os.path.join(outdir, date.isoformat().replace(":", "-")) + f".{window_size}.opp.parquet"
-    # Make sure date is a column not an index
-    df = df.reset_index()  # don't drop
+    df = pd.concat(opp_dfs)
+    df.reset_index(drop=False, inplace=True)  # drop False to keep index into EVT
+    df.rename({"index": "evt_index"}, axis="columns", inplace=True)
     # Make sure file_id is a categorical column
-    df["file_id"] = df["file_id"].astype("category")
+    if df["file_id"].dtype.name != "category":
+        df["file_id"] = df["file_id"].astype("category")
     # Only keep columns we intend to write to file, reorder
     columns = [
+        "evt_index",
         "date",
         "file_id",
         "D1",

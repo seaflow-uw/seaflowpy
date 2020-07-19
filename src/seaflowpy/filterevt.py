@@ -4,8 +4,6 @@ import time
 import multiprocessing as mp
 import queue
 
-import pandas as pd
-
 from . import clouds
 from .conf import get_aws_config
 from . import db
@@ -217,19 +215,20 @@ def do_save(opps_q, stats_q, files_left):
         for r in work["results"]:
             if particleops.all_quantiles(r["opp"]):
                 good_opps.append(r["opp"])
-        opp_df = pd.concat(good_opps, ignore_index=True)
-        try:
-            if work["opp_dir"]:
-                fileio.write_opp_parquet(
-                    opp_df,
-                    work["window_start_date"],
-                    work["window_size"],
-                    work["opp_dir"]
-                )
-        except Exception as e:
-            work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
-            pass
-
+        if (len(good_opps)):
+            try:
+                if work["opp_dir"]:
+                    fileio.write_opp_parquet(
+                        good_opps,
+                        work["window_start_date"],
+                        work["window_size"],
+                        work["opp_dir"]
+                    )
+            except Exception as e:
+                work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
+                pass
+        else:
+            work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
         stats_q.put(work)
 
 

@@ -39,38 +39,6 @@ def params():
 
 
 @pytest.fixture()
-def parquetdf():
-    return {
-        "columns": [
-            "date",
-            "file_id",
-            "D1",
-            "D2",
-            "fsc_small",
-            "pe",
-            "chl_small",
-            "q2.5",
-            "q50",
-            "q97.5",
-        ],
-        "df": pd.DataFrame({  # Has extra column, wrong order, file_id not category
-            "D1": np.arange(0, 3, dtype="float64"),
-            "date": np.repeat(pd.Timestamp("2014-07-04 00:00:02+0000", tz="UTC"), 3),
-            "file_id": np.repeat("2014_185/2014-07-04T00-00-02+00-00", 3),
-            "D2": np.arange(1, 4, dtype="float64"),
-            "fsc_small": np.arange(2, 5, dtype="float64"),
-            "pe": np.arange(3, 6, dtype="float64"),
-            "chl_small": np.arange(4, 7, dtype="float64"),
-            "q2.5": [True, False, True],
-            "q50": [False, True, False],
-            "q97.5": [True, True, True],
-            "extra": np.arange(3)
-        }, index=[3, 2, 1]),
-        "file_date": pd.Timestamp("2014-07-04 00:00:02+0000", tz="UTC")
-    }
-
-
-@pytest.fixture()
 def tmpout(tmpdir):
     """Setup to test complete filter workflow"""
     # Copy db with filtering params
@@ -410,29 +378,6 @@ class TestOutput:
             reread_opp_df
         )
 
-    def test_parquet_opp_output(self, tmpout, parquetdf):
-        # Create dataframe we expected to read back
-        df_expected = parquetdf["df"].copy()
-        df_expected["file_id"] = df_expected["file_id"].astype("category")  # fix file_id dtype
-        df_expected = df_expected[parquetdf["columns"]]  # fix column order and set
-        df_expected = df_expected.reset_index(drop=True)  # fix index
-
-        out_path = os.path.join(
-            tmpout["oppdir"],
-            parquetdf["file_date"].isoformat().replace(":", "-")
-        ) + ".1H.opp.parquet"
-
-        sfp.fileio.write_opp_parquet(
-            parquetdf["df"],
-            parquetdf["file_date"],
-            "1H",
-            tmpout["oppdir"]
-        )
-        out_df = pd.read_parquet(out_path)
-        hash_got = pd.util.hash_pandas_object(out_df).sum()
-        hash_expected = pd.util.hash_pandas_object(df_expected).sum()
-        assert hash_got == hash_expected
-
 
 class TestMultiFileFilter(object):
     def test_multi_file_filter_local(self, tmpout):
@@ -507,8 +452,8 @@ class TestMultiFileFilter(object):
 def multi_file_asserts(tmpout):
     # pandas.util.hash_pandas_object(..., index=False).sum() for OPP outputs by file_id
     hashes = {
-        "2014_185/2014-07-04T00-00-02+00-00": 2454323143108433719,
-        "2014_185/2014-07-04T00-03-02+00-00": -5397905324690945884
+        "2014_185/2014-07-04T00-00-02+00-00": -6492894890520290986,
+        "2014_185/2014-07-04T00-03-02+00-00": -251652131919160997
     }
     opp_df = pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet"))
     for file_id, group in opp_df.groupby("file_id"):
