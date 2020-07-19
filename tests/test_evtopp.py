@@ -452,8 +452,8 @@ class TestMultiFileFilter(object):
 def multi_file_asserts(tmpout):
     # pandas.util.hash_pandas_object(..., index=False).sum() for OPP outputs by file_id
     hashes = {
-        "2014_185/2014-07-04T00-00-02+00-00": -6492894890520290986,
-        "2014_185/2014-07-04T00-03-02+00-00": -251652131919160997
+        "2014_185/2014-07-04T00-00-02+00-00": 2454323143108433719,
+        "2014_185/2014-07-04T00-03-02+00-00": -5397905324690945884
     }
     opp_df = pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet"))
     for file_id, group in opp_df.groupby("file_id"):
