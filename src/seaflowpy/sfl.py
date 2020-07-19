@@ -3,6 +3,7 @@ from collections import OrderedDict
 import json
 import os
 import re
+import numpy as np
 import pandas as pd
 import pytz
 from . import db
@@ -208,7 +209,7 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         numbers = pd.to_numeric(notnas[colname], errors="coerce")
         # Create boolean index for values in acceptable range
         # Start by selecting everything, then select by minval/maxval
-        good_selector = pd.np.ones(len(numbers), dtype=bool)
+        good_selector = np.ones(len(numbers), dtype=bool)
         if minval is not None:
             good_selector = good_selector & (numbers >= minval)
         if maxval is not None:
@@ -378,8 +379,8 @@ def has_gga(df):
 
 def make_json_serializable(v):
     """Make sure v is JSON serializable if it's numpy type or plain object"""
-    if isinstance(v, pd.np.generic):
-        return pd.np.asscalar(v)
+    if isinstance(v, np.generic):
+        return np.asscalar(v)
     return v
 
 

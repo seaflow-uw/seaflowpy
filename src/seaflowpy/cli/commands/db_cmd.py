@@ -52,7 +52,7 @@ def db_create_cmd(db_file, cruise, serial):
     help='Report errors as JSON.')
 @click.option('-v', '--verbose', is_flag=True,
     help='Report all errors.')
-@click.argument('sfl-file', nargs=1, type=click.File())
+@click.argument('sfl-file', nargs=1, type=click.Path(exists=True))
 @click.argument('db-file', nargs=1, type=click.Path(writable=True))
 def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
     """
@@ -60,33 +60,33 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
 
     Writes processed SFL-FILE data to SQLite3 database file. Data will be
     checked before inserting. If any errors are found the first of each type
-    will be reported and no data will be written. To read from STDIN use '-'
-    for SFL-FILE. SFL-FILE may have the <cruise name> and <instrument serial>
+    will be reported and no data will be written. SFL-FILE may have the 
+    <cruise name> and <instrument serial>
     embedded in the filename as '<cruise name>_<instrument serial>.sfl'. If not,
-    it's expected that information is already in the database. If a database
+    it's expected that information is already in the database. Databae cruise and
+    serial overrides values in filename. If a database
     file does not exist a new one will be created. Any SFL data in the database
     will be erased before importing new data. Errors or warnings are output to
     STDOUT.
     """
     cruise, serial = None, None
-    if sfl_file is not sys.stdin:
-        # Try to read cruise and serial from filename
-        results = sfl.parse_sfl_filename(sfl_file.name)
+
+    # Try to read cruise and serial from database
+    try:
+        cruise = db.get_cruise(db_file)
+    except SeaFlowpyError as e:
+        pass
+    try:
+        serial = db.get_serial(db_file)
+    except SeaFlowpyError as e:
+        pass
+
+    # Try to read cruise and serial from filename if not already defined
+    if cruise is None or serial is None:
+        results = sfl.parse_sfl_filename(sfl_file)
         if results:
             cruise = results[0]
             serial = results[1]
-
-    # Try to read cruise and serial from database if not already defined
-    if cruise is None:
-        try:
-            cruise = db.get_cruise(db_file)
-        except SeaFlowpyError as e:
-            pass
-    if serial is None:
-        try:
-            serial = db.get_serial(db_file)
-        except SeaFlowpyError as e:
-            pass
 
     # Make sure cruise and serial are defined somewhere
     if cruise is None or serial is None:
@@ -99,9 +99,9 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
 
     if len(errors) > 0:
         if json:
-            sfl.print_json_errors(errors, sys.stdout, print_all=verbose)
+            sfl.print_json_errors(errors, sys.stdout, sfl_file, print_all=verbose)
         else:
-            sfl.print_tsv_errors(errors, sys.stdout, print_all=verbose)
+            sfl.print_tsv_errors(errors, sys.stdout, sfl_file, print_all=verbose)
         if not force and len([e for e in errors if e["level"] == "error"]) > 0:
             sys.exit(1)
     sfl.save_to_db(df, db_file, cruise, serial)
@@ -122,6 +122,7 @@ def db_import_filter_params_cmd(cruise, filter_file, db_file):
     if cruise is None:
         try:
             cruise = db.get_cruise(db_file)
+            print("using cruise={} from db".format(cruise))
         except SeaFlowpyError:
             pass
 
