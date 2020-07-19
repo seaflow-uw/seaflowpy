@@ -21,7 +21,8 @@ RUN git clean -qfdx \
     && mkdir ${ARG_INSTALL_PREFIX}-dist \
     && cp ./dist/*.tar.gz ./dist/*.whl ${ARG_INSTALL_PREFIX}-dist/ \
     && mkdir ${ARG_INSTALL_PREFIX}-tests/ \
-    && cp -r ./tests ${ARG_INSTALL_PREFIX}-tests/
+    && cp -r ./tests ${ARG_INSTALL_PREFIX}-tests/ \
+    && cp -r ./pytest.ini ${ARG_INSTALL_PREFIX}-tests/
 
 
 FROM python:${ARG_BASE_IMAGE} AS runtime_image

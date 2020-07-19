@@ -38,7 +38,7 @@ fi
 echo "using version string $verstr"
 
 # --------------------------------------------------------------------------- #
-# Build a docker image
+# Build a Docker image
 # --------------------------------------------------------------------------- #
 docker build -t seaflowpy:"$verstr" .
 buildrc=$?
@@ -48,7 +48,7 @@ if [ $buildrc -ne 0 ]; then
 fi
 
 # --------------------------------------------------------------------------- #
-# Test the new docker image
+# Test the new Docker image
 # --------------------------------------------------------------------------- #
 if [[ "$skiptests" -eq 0 ]]; then
     docker run -it --rm seaflowpy:"$verstr" bash -c 'cd /seaflowpy-tests && pytest'
@@ -58,6 +58,13 @@ if [[ "$skiptests" -eq 0 ]]; then
         exit $?
     fi
 fi
+
+# --------------------------------------------------------------------------- #
+# Grab the universal wheel and source tarball from the new Docker image
+# Will create directory seaflowpy-dist
+# --------------------------------------------------------------------------- #
+[[ -d seaflowpy-dist ]] || mkdir seaflowpy-dist
+docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/app seaflowpy:"$verstr" sh -c 'cp /seaflowpy-dist/* /app/'
 
 # --------------------------------------------------------------------------- #
 # Misc docker tasks
