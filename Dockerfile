@@ -17,7 +17,7 @@ WORKDIR /seaflowpy-src
 RUN git clean -qfdx \
     && python setup.py sdist bdist_wheel \
     && pip3 install --prefix ${ARG_INSTALL_PREFIX} --no-cache-dir -r ./requirements-test.txt \
-    && pip3 install --prefix ${ARG_INSTALL_PREFIX} --no-cache-dir --no-index --no-deps . \
+    && pip3 install --prefix ${ARG_INSTALL_PREFIX} --no-cache-dir --no-index --no-deps dist/*.whl \
     && mkdir ${ARG_INSTALL_PREFIX}-dist \
     && cp ./dist/*.tar.gz ./dist/*.whl ${ARG_INSTALL_PREFIX}-dist/ \
     && mkdir ${ARG_INSTALL_PREFIX}-tests/ \
