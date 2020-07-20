@@ -17,12 +17,13 @@ setup(
     install_requires=[
         'boto3',
         'click',
+        'fabric3',
+        'fastparquet',
         'hdbscan',
         'kern-smooth',
         'matplotlib',
         'pandas',
-        'pyarrow',
-        'fabric3'
+        'python-snappy'
     ],
     entry_points={
         'console_scripts': [

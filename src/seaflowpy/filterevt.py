@@ -1,4 +1,6 @@
 import copy
+#import datetime
+#import os
 import sys
 import time
 import multiprocessing as mp
@@ -12,18 +14,11 @@ from . import fileio
 from . import particleops
 from . import util
 
-try:
-    import mkl
-    mkl.set_num_threads(1)
-except ImportError:
-    pass
 
 # Stop sentinel value for queues
 stop = 'STOP'
 # Quantile list
 quantiles = [2.5, 50, 97.5]
-# Max OPP in queue, for backpressure if writing is slow
-max_opp = 100
 
 
 @util.quiet_keyboardinterrupt
@@ -79,7 +74,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
     work_q = mp.Queue()
     # Create output queues
     stats_q = mp.Queue()  # result stats
-    opps_q = mp.Queue(max_opp)   # OPP data
+    opps_q = mp.Queue()   # OPP data
     done_q = mp.Queue()   # signal we're done to main thread
 
     # Create worker processes
@@ -105,10 +100,11 @@ def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
 
     # Add work to the work queue, binned by hour
     for name, group in grouped:
-        work_copy = copy.deepcopy(work)
-        work_copy["files_df"] = group.copy()
-        work_copy["window_start_date"] = name
-        work_q.put(work_copy)
+        if len(group) > 0:
+            work_copy = copy.deepcopy(work)
+            work_copy["files_df"] = group.copy()
+            work_copy["window_start_date"] = name
+            work_q.put(work_copy)
     # Put sentinel stop values on the input queue, one for each consumer process
     for _ in range(worker_count):
         work_q.put(stop)
@@ -133,6 +129,7 @@ def do_filter(work_q, opps_q):
     """Filter one EVT file, save to sqlite3, return filter stats"""
     work = work_q.get()
     while work != stop:
+        #print("{} {} starting {} at {}".format(work["window_start_date"], os.getpid(), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
         for date, row in work["files_df"].iterrows():
             result = {
                 "error": "",
@@ -159,19 +156,66 @@ def do_filter(work_q, opps_q):
 
             try:
                 evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)
+                opp_df = particleops.select_focused(evt_df)
+                result["opp"] = opp_df
+                result["opp"]["date"] = date
+                result["opp"]["file_id"] = row["file_id"]
                 result["all_count"] = len(evt_df.index)
                 result["noise_count"] = len(evt_df[evt_df["noise"]].index)
                 result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
-                result["opp"] = particleops.select_focused(evt_df)
-                result["opp"]["date"] = date
-                result["opp"]["file_id"] = row["file_id"]
+                result["opp_count"] = len(opp_df[opp_df["q50"]])
             except Exception as e:
                 result["error"] = f"Unexpected error when selecting focused partiles in file {row['path']}: {e}"
 
             work["results"].append(result)
 
+        # Prep db data
+        filter_id = work["filter_params"]["id"].unique().tolist()[0]
+        work["opp_vals"], work["outlier_vals"] = [], []
+        for r in work["results"]:
+            work["opp_vals"].extend(
+                db.prep_opp(
+                    r["file_id"],
+                    r["opp"],
+                    r["all_count"],
+                    r["all_count"] - r["noise_count"],
+                    filter_id
+                )
+            )
+            work["outlier_vals"].extend(db.prep_outlier(r["file_id"], 0))
+        # Save OPP file
+        # Only include OPP files with data in all quantiles
+        good_opps = []
+        for r in work["results"]:
+            if particleops.all_quantiles(r["opp"]):
+                good_opps.append(r["opp"])
+        if (len(good_opps)):
+            #print("{} {} saving parquet at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
+            try:
+                if work["opp_dir"]:
+                    fileio.write_opp_parquet(
+                        good_opps,
+                        work["window_start_date"],
+                        work["window_size"],
+                        work["opp_dir"]
+                    )
+            except Exception as e:
+                work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
+        else:
+            work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
+
+        # Erase OPP from payload
+        for r in work["results"]:
+            del r["opp"]
+
+        #print("{} {} sending {}/{} results at {}".format(work["window_start_date"], os.getpid(), len(work["results"]), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
         opps_q.put(work)
+        #print("{} {} sent {}/{} results at {}".format(work["window_start_date"], os.getpid(), len(work["results"]), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
         work = work_q.get()
+        # if work != stop:
+        #     print("{} {} got more work {} at {}".format(work["window_start_date"], os.getpid(), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
+        # else:
+        #     print("{} got stop {}".format(os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
 
 
 @util.quiet_keyboardinterrupt
@@ -179,6 +223,7 @@ def do_save(opps_q, stats_q, files_left):
     while files_left > 0:
         try:
             work = opps_q.get(True, 600)  # We should get one hour of data every ten minutes at least
+            #print("{} {} received {}/{} results at {}".format(work["window_start_date"], os.getpid(), len(work["results"]), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
         except queue.Empty as e:
             stats_q.put("EMPTY QUEUE")
             break
@@ -191,44 +236,15 @@ def do_save(opps_q, stats_q, files_left):
         # Save to DB
         try:
             if work["dbpath"]:
-                filter_id = work["filter_params"]["id"].unique().tolist()[0]
-                opp_vals, outlier_vals = [], []
-                for r in work["results"]:
-                    opp_vals.extend(
-                        db.prep_opp(
-                            r["file_id"],
-                            r["opp"],
-                            r["all_count"],
-                            r["all_count"] - r["noise_count"],
-                            filter_id
-                        )
-                    )
-                    outlier_vals.extend(db.prep_outlier(r["file_id"], 0))
-                db.save_opp_to_db(opp_vals, work["dbpath"])
-                db.save_outlier(outlier_vals, work["dbpath"])
+                if work["opp_vals"]:
+                    db.save_opp_to_db(work["opp_vals"], work["dbpath"])
+                if work["outlier_vals"]:
+                    db.save_outlier(work["outlier_vals"], work["dbpath"])
+                #print("{} {} db saved at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
         except Exception as e:
             work["errors"].append("Unexpected error when saving file {} to db: {}".format(work["file"], e))
 
-        # Save OPP file
-        # Only include OPP files with data in all quantiles
-        good_opps = []
-        for r in work["results"]:
-            if particleops.all_quantiles(r["opp"]):
-                good_opps.append(r["opp"])
-        if (len(good_opps)):
-            try:
-                if work["opp_dir"]:
-                    fileio.write_opp_parquet(
-                        good_opps,
-                        work["window_start_date"],
-                        work["window_size"],
-                        work["opp_dir"]
-                    )
-            except Exception as e:
-                work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
-                pass
-        else:
-            work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
+        #print("{} {} sent stats at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
         stats_q.put(work)
 
 
@@ -264,6 +280,8 @@ def do_reporting(stats_q, done_q, file_count, every):
             done_q.put(f"A fatal error occurred after filtering {files_seen}/{file_count} files: {work}")
             sys.exit(1)
 
+        #print("{} {} received stats at {}".format(work["window_start_date"], os.getpid(), time.time()), file=sys.stderr)
+
         files_left -= len(work["files_df"])
 
         if work["errors"]:
@@ -278,14 +296,11 @@ def do_reporting(stats_q, done_q, file_count, every):
             else:
                 files_ok += 1
 
-            opp = r["opp"]
-            # only consider 50% quantile for reporting
-            opp = opp[opp["q50"]]
             event_count_block += r["all_count"]
             noise_count_block += r["noise_count"]
             signal_count_block = event_count_block - noise_count_block
             saturated_count_block += r["saturated_count"]
-            opp_count_block += len(opp.index)
+            opp_count_block += r["opp_count"]
 
             # Print progress periodically
             perc = float(files_seen) / file_count * 100  # Percent completed

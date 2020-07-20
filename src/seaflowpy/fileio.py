@@ -465,4 +465,4 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
         "q50",
         "q97.5",
     ]
-    df[columns].to_parquet(outpath, compression="snappy", index=False)
+    df[columns].to_parquet(outpath, compression="snappy", index=False, engine="fastparquet")
