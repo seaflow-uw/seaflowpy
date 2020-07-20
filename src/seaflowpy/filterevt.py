@@ -169,45 +169,6 @@ def do_filter(work_q, opps_q):
 
             work["results"].append(result)
 
-        # Prep db data
-        filter_id = work["filter_params"]["id"].unique().tolist()[0]
-        work["opp_vals"], work["outlier_vals"] = [], []
-        for r in work["results"]:
-            work["opp_vals"].extend(
-                db.prep_opp(
-                    r["file_id"],
-                    r["opp"],
-                    r["all_count"],
-                    r["all_count"] - r["noise_count"],
-                    filter_id
-                )
-            )
-            work["outlier_vals"].extend(db.prep_outlier(r["file_id"], 0))
-        # Save OPP file
-        # Only include OPP files with data in all quantiles
-        good_opps = []
-        for r in work["results"]:
-            if particleops.all_quantiles(r["opp"]):
-                good_opps.append(r["opp"])
-        if (len(good_opps)):
-            #print("{} {} saving parquet at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
-            try:
-                if work["opp_dir"]:
-                    fileio.write_opp_parquet(
-                        good_opps,
-                        work["window_start_date"],
-                        work["window_size"],
-                        work["opp_dir"]
-                    )
-            except Exception as e:
-                work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
-        else:
-            work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
-
-        # Erase OPP from payload
-        for r in work["results"]:
-            del r["opp"]
-
         #print("{} {} sending {}/{} results at {}".format(work["window_start_date"], os.getpid(), len(work["results"]), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
         opps_q.put(work)
         #print("{} {} sent {}/{} results at {}".format(work["window_start_date"], os.getpid(), len(work["results"]), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
@@ -236,13 +197,45 @@ def do_save(opps_q, stats_q, files_left):
         # Save to DB
         try:
             if work["dbpath"]:
-                if work["opp_vals"]:
-                    db.save_opp_to_db(work["opp_vals"], work["dbpath"])
-                if work["outlier_vals"]:
-                    db.save_outlier(work["outlier_vals"], work["dbpath"])
+                filter_id = work["filter_params"]["id"].unique().tolist()[0]
+                opp_vals, outlier_vals = [], []
+                for r in work["results"]:
+                    opp_vals.extend(
+                        db.prep_opp(
+                            r["file_id"],
+                            r["opp"],
+                            r["all_count"],
+                            r["all_count"] - r["noise_count"],
+                            filter_id
+                        )
+                    )
+                    outlier_vals.extend(db.prep_outlier(r["file_id"], 0))
+                db.save_opp_to_db(opp_vals, work["dbpath"])
+                db.save_outlier(outlier_vals, work["dbpath"])
                 #print("{} {} db saved at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
         except Exception as e:
             work["errors"].append("Unexpected error when saving file {} to db: {}".format(work["file"], e))
+
+        # Save OPP file
+        # Only include OPP files with data in all quantiles
+        good_opps = []
+        for r in work["results"]:
+            if particleops.all_quantiles(r["opp"]):
+                good_opps.append(r["opp"])
+        if (len(good_opps)):
+            try:
+                if work["opp_dir"]:
+                    fileio.write_opp_parquet(
+                        good_opps,
+                        work["window_start_date"],
+                        work["window_size"],
+                        work["opp_dir"]
+                    )
+            except Exception as e:
+                work["errors"].append(f"Unexpected error when saving OPP for {work['window_start_date']}: {e}")
+                pass
+        else:
+            work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
 
         #print("{} {} sent stats at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
         stats_q.put(work)
