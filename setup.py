@@ -18,12 +18,11 @@ setup(
         'boto3',
         'click',
         'fabric3',
-        'fastparquet',
         'hdbscan',
         'kern-smooth',
         'matplotlib',
         'pandas',
-        'python-snappy'
+        'pyarrow'
     ],
     entry_points={
         'console_scripts': [

@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=${ARG_INSTALL_PREFIX}/lib/python${ARG_PYTHON_VERSION}/site-packages
 
 RUN apt-get update -qq \
-    && apt-get install -qq -y build-essential git libsnappy-dev \
+    && apt-get install -qq -y build-essential git \
     && rm -rf /var/lib/apt/lists/*
 COPY  . /seaflowpy-src/
 WORKDIR /seaflowpy-src
@@ -32,10 +32,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH=${ARG_INSTALL_PREFIX}/bin:${PATH} \
     PYTHONPATH=${ARG_INSTALL_PREFIX}/lib/python${ARG_PYTHON_VERSION}/site-packages
 
-RUN apt-get update -qq \
-    && apt-get install -qq libsnappy-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && adduser --quiet --disabled-password --gecos '' seaflow
+RUN adduser --quiet --disabled-password --gecos '' seaflow
 COPY --from=build_image --chown=seaflow:seaflow ${ARG_INSTALL_PREFIX} ${ARG_INSTALL_PREFIX}/
 COPY --from=build_image --chown=seaflow:seaflow ${ARG_INSTALL_PREFIX}-tests ${ARG_INSTALL_PREFIX}-tests/
 COPY --from=build_image --chown=seaflow:seaflow ${ARG_INSTALL_PREFIX}-dist ${ARG_INSTALL_PREFIX}-dist/
