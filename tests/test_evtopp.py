@@ -450,16 +450,32 @@ class TestMultiFileFilter(object):
             npt.assert_array_equal(opps_py[i], opps_R[i])
 
 def multi_file_asserts(tmpout):
-    # pandas.util.hash_pandas_object(..., index=False).sum() for OPP outputs by file_id
-    hashes = {
-        "2014_185/2014-07-04T00-00-02+00-00": 2454323143108433719,
-        "2014_185/2014-07-04T00-03-02+00-00": -5397905324690945884
+    # pandas.util.hash_pandas_object(df, index=False).sum() for OPP outputs by file_id
+    opp_answers = {
+        "2014_185/2014-07-04T00-00-02+00-00": {
+            "hash": -4859851545039191295,
+            "sums": [1114848, 945376, 1804048, 1395742, 3485061],
+            "n": 426
+        },
+        "2014_185/2014-07-04T00-03-02+00-00": {
+            "hash": 7424829463801822127,
+            "sums": [1601376, 1399856, 2824592, 2277108, 4914006],
+            "n": 495
+        }
     }
+
     opp_df = pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet"))
     for file_id, group in opp_df.groupby("file_id"):
-        print(file_id)
-        assert file_id in hashes
-        assert pd.util.hash_pandas_object(group, index=False).sum() == hashes[file_id]
+        assert file_id in opp_answers
+        expected_filter_id = "2414efe1-a4ff-46da-a393-9180d6eab149"
+        got_filter_id = group["filter_id"].unique()[0]
+        assert got_filter_id == expected_filter_id
+        assert len(group["filter_id"].unique()) == 1
+        assert len(group) == opp_answers[file_id]["n"]
+        # Weaker test for dataframe equality (not including types)
+        assert list(group.sum()[["D1", "D2", "fsc_small", "pe", "chl_small"]].astype(int)) == opp_answers[file_id]["sums"]
+        # Strong test for dataframe equality (including types)
+        assert pd.util.hash_pandas_object(group, index=False).sum() == opp_answers[file_id]["hash"]
 
     # Check numbers stored in opp table are correct
     filter_params = sfp.db.get_latest_filter(tmpout["db"])

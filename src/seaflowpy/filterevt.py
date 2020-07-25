@@ -157,9 +157,10 @@ def do_filter(work_q, opps_q):
             try:
                 evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)
                 opp_df = particleops.select_focused(evt_df)
+                opp_df["date"] = date
+                opp_df["file_id"] = row["file_id"]
+                opp_df["filter_id"] = work["filter_params"]["id"][0]
                 result["opp"] = opp_df
-                result["opp"]["date"] = date
-                result["opp"]["file_id"] = row["file_id"]
                 result["all_count"] = len(evt_df.index)
                 result["noise_count"] = len(evt_df[evt_df["noise"]].index)
                 result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
@@ -187,7 +188,7 @@ def do_filter(work_q, opps_q):
         # Only include OPP files with data in all quantiles
         good_opps = []
         for r in work["results"]:
-            if particleops.all_quantiles(r["opp"]):
+            if (not r["error"]) and particleops.all_quantiles(r["opp"]):
                 good_opps.append(r["opp"])
         if (len(good_opps)):
             #print("{} {} saving parquet at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)

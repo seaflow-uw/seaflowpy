@@ -449,9 +449,11 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
     util.mkdir_p(outdir)
     outpath = os.path.join(outdir, date.isoformat().replace(":", "-")) + f".{window_size}.opp.parquet"
     df = pd.concat(opp_dfs, ignore_index=True)
-    # Make sure file_id is a categorical column
+    # Make sure file_id and filter_id are categorical columns
     if df["file_id"].dtype.name != "category":
         df["file_id"] = df["file_id"].astype("category")
+    if df["filter_id"].dtype.name != "category":
+        df["filter_id"] = df["filter_id"].astype("category")
     # Only keep columns we intend to write to file, reorder
     columns = [
         "date",
@@ -464,5 +466,6 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
         "q2.5",
         "q50",
         "q97.5",
+        "filter_id"
     ]
     df[columns].to_parquet(outpath, compression="snappy", index=False, engine="pyarrow")
