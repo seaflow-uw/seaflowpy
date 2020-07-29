@@ -222,7 +222,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
         except Exception as e:
             logging.warning("%s: %s", type(e).__name__, str(e))
             if type(e).__name__ != "ClusterError":
-                continue
+                raise e
         else:
             if results["message"]:
                 logging.warning("%s", results["message"])
@@ -253,8 +253,9 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
             iqr=iqr
         )
         parquet_path = os.path.join(out_dir, cruise + f".beads-by-{resolution}" + ".parquet")
+        logging.info("writing bead position parquet " + parquet_path)
         out_df.to_parquet(parquet_path)
-        logging.info("done")
+    logging.info("done")
 
 
 @evt_cmd.command('sample')

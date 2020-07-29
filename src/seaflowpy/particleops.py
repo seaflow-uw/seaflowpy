@@ -313,7 +313,7 @@ def roughfilter(df, width=5000):
     # sensitivity difference.
     alignedD1 = (df["D1"] + origin) < (df["D2"] + width)
     alignedD2 = df["D2"] < (df["D1"] + origin + width)
-    aligned = df[~df["noise"] & ~df["saturated"] & alignedD1 & alignedD2]
+    aligned = df[~noise & ~sat & alignedD1 & alignedD2]
 
     # Find fsc/d ratio (slope) for best large fsc particle
     fsc_small_max = aligned["fsc_small"].max()
