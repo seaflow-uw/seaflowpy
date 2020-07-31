@@ -130,7 +130,7 @@ class TestOpen:
 
 class TestVCT:
     def test_merge_vct(self):
-        # Normally OPP data used with VCT would be transformed, but for tests
+        # Normally OPP data used with VCT would be linearized, but for tests
         # just leave it as is
         opp = sfp.fileio.read_opp_labview("tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz")
         vct = sfp.fileio.read_vct_csv("tests/testcruise_vct/50/2014_185/2014-07-04T00-00-02+00-00.vct.gz")
@@ -228,7 +228,7 @@ class TestFilter:
 
 
 class TestTransform:
-    def test_transform_four_values(self):
+    def test_linearize_four_values(self):
         input_df = pd.DataFrame({
             "fsc_small": [32768, 65536],
             "D1": [0, 1]
@@ -238,14 +238,37 @@ class TestTransform:
             "D1": [1, 1.0001229789]
         })
         npt.assert_array_almost_equal(
-            sfp.particleops.transform_particles(input_df, columns=["fsc_small", "D1"]),
+            sfp.particleops.linearize_particles(input_df, columns=["fsc_small", "D1"]),
             output_df
         )
 
-    def test_transform_copy(self, evt_df):
+    def test_linearize_copy(self, evt_df):
         orig_df = evt_df.copy()
         npt.assert_array_equal(orig_df, evt_df)
-        t_df = sfp.particleops.transform_particles(evt_df)
+        t_df = sfp.particleops.linearize_particles(evt_df)
+        assert t_df is not evt_df
+        with pytest.raises(AssertionError):
+            npt.assert_array_equal(orig_df, t_df)
+
+    def test_log_four_values(self):
+        input_df = pd.DataFrame({
+            "fsc_small": [56.234132519, 3162.2776601684],
+            "D1": [1, 1.0001229789]
+        })
+        output_df = pd.DataFrame({
+            "fsc_small": [32768, 65536],
+            "D1": [0, 1]
+        })
+        npt.assert_array_almost_equal(
+            sfp.particleops.log_particles(input_df, columns=["fsc_small", "D1"]),
+            output_df
+        )
+
+    def test_log_copy(self, evt_df):
+        evt_df = sfp.particleops.linearize_particles(evt_df)
+        orig_df = evt_df.copy()
+        npt.assert_array_equal(orig_df, evt_df)
+        t_df = sfp.particleops.log_particles(evt_df)
         assert t_df is not evt_df
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
@@ -464,7 +487,9 @@ def multi_file_asserts(tmpout):
         }
     }
 
+    data_cols = ["D1", "D2", "fsc_small", "pe", "chl_small"]
     opp_df = pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet"))
+    opp_df = sfp.particleops.log_particles(opp_df, data_cols)
     for file_id, group in opp_df.groupby("file_id"):
         assert file_id in opp_answers
         expected_filter_id = "2414efe1-a4ff-46da-a393-9180d6eab149"

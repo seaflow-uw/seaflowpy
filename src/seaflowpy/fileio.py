@@ -454,6 +454,8 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
         df["file_id"] = df["file_id"].astype("category")
     if df["filter_id"].dtype.name != "category":
         df["filter_id"] = df["filter_id"].astype("category")
+    # Linearize data columns
+    df = particleops.linearize_particles(df, columns=["D1", "D2", "fsc_small", "pe", "chl_small"])
     # Only keep columns we intend to write to file, reorder
     columns = [
         "date",

@@ -353,9 +353,9 @@ def select_focused(df):
     return df[selector].copy()
 
 
-def transform_particles(df, columns=None):
+def linearize_particles(df, columns=None):
     """
-    Exponentiate logged SeaFlow data.
+    Linearize logged SeaFlow data.
 
     SeaFlow data is stored as log values over 3.5 decades on a 16-bit linear
     scale. This functions exponentiates those values onto a linear scale from 1
@@ -368,16 +368,41 @@ def transform_particles(df, columns=None):
     df: pandas.DataFrame
         SeaFlow event data.
     columns: list of str, default seaflowpy.particleops.channel_columns
-        Names of columns to transform.
+        Names of columns to linearize.
 
     Returns
     -------
     pandas.DataFrame
-        Copy of df with transformed values.
+        Copy of df with linearized values.
     """
     if not columns:
         columns = CHANNEL_COLUMNS
     events = df.copy()
     if len(events.index) > 0:
         events[columns] = 10**((events[columns] / 2**16) * 3.5)
+    return events
+
+
+def log_particles(df, columns=None):
+    """
+    Opposite of linearize_particles().
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow event data.
+    columns: list of str, default seaflowpy.particleops.channel_columns
+        Names of columns to log.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy of df with logged values.
+    """
+    if not columns:
+        columns = CHANNEL_COLUMNS
+    events = df.copy()
+    if len(events.index) > 0:
+        events[columns] = (np.log10(events[columns]) / 3.5) * 2**16
+        events[columns] = events[columns].round(0)
     return events
