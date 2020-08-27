@@ -29,8 +29,13 @@ def validate_positive(ctx, param, value):
 
 
 def validate_seed(ctx, param, value):
-    if value is not None and (value < 0 or value > (2**32 - 1)):
-        raise click.BadParameter('must be between 0 and 2**32 - 1.')
+    if value is not None:
+        try:
+            value = int(value)
+        except ValueError as e:
+            raise click.BadParameter('must be an integer: {}.'.format(e))
+        if (value < 0 or value > (2**32 - 1)):
+            raise click.BadParameter('must be between 0 and 2**32 - 1.')
     return value
 
 
@@ -281,7 +286,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
     help='Apply noise filter before subsampling.')
 @click.option('-p', '--process-count', type=int, default=1, show_default=True, callback=validate_positive,
     help='Number of processes to use.')
-@click.option('-s', '--seed', type=int, callback=validate_seed,
+@click.option('-s', '--seed', callback=validate_seed,
     help='Integer seed for PRNG, otherwise system-dependent source of randomness is used to seed the PRNG.')
 @click.option('-S', '--sfl', 'sfl_path', type=click.Path(),
     help="""SFL file that can be used to associate dates with EVT files. Useful when

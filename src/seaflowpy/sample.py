@@ -28,8 +28,8 @@ def random_select(things, fraction, seed=None):
     list
         Chosen things.
     """
-    if not isinstance(seed, int):
-        raise ValueError("seed must be an int")
+    if (seed is not None) and not isinstance(seed, int):
+        raise ValueError("seed must be an None or an int")
     if fraction < 0 or fraction > 1:
         raise ValueError("fraction must be between 0 and 1")
 
@@ -286,8 +286,8 @@ def sample_one(df, n, noise_filter=True, min_chl=0, min_fsc=0, min_pe=0, seed=No
             "events_postsampling": event count after subsampling
         }
     """
-    if not isinstance(seed, int):
-        raise ValueError("seed must be an int")
+    if (seed is not None) and not isinstance(seed, int):
+        raise ValueError("seed must be an None or an int")
     if n <= 0:
         raise ValueError("n must be > 0")
 
