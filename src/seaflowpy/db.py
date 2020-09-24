@@ -241,8 +241,11 @@ def get_latest_filter(dbpath):
     return df[df["id"] == _id]
 
 
-def get_opp_table(dbpath, filter_id):
-    sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
+def get_opp_table(dbpath, filter_id=""):
+    if filter_id == "":
+        sql = "SELECT * FROM opp ORDER BY file ASC, quantile ASC"
+    else:
+        sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
     with sqlite3.connect(dbpath) as dbcon:
         oppdf = safe_read_sql(sql, dbcon)
     return oppdf

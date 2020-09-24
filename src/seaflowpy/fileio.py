@@ -449,11 +449,6 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
     util.mkdir_p(outdir)
     outpath = os.path.join(outdir, date.isoformat().replace(":", "-")) + f".{window_size}.opp.parquet"
     df = pd.concat(opp_dfs, ignore_index=True)
-    # Make sure file_id and filter_id are categorical columns
-    if df["file_id"].dtype.name != "category":
-        df["file_id"] = df["file_id"].astype("category")
-    if df["filter_id"].dtype.name != "category":
-        df["filter_id"] = df["filter_id"].astype("category")
     # Linearize data columns
     df = particleops.linearize_particles(df, columns=["D1", "D2", "fsc_small", "pe", "chl_small"])
     # Only keep columns we intend to write to file, reorder
@@ -470,4 +465,25 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
         "q97.5",
         "filter_id"
     ]
-    df[columns].to_parquet(outpath, compression="snappy", index=False, engine="pyarrow")
+    df = df[columns]
+    # Check for an existing file. Merge, overwriting matching existing entries.
+    try:
+        old_df = pd.read_parquet(outpath)
+    except FileNotFoundError:
+        pass
+    else:
+        if not all(old_df.columns == df.columns):
+            raise ValueError("existing OPP parquet file has incompatible column names")
+        new_files = list(df["file_id"].unique())
+        old_df = old_df[~old_df["file_id"].isin(new_files)]  # drop rows in old_df that are in new data
+        df = pd.concat([old_df, df], ignore_index=True)
+        df.sort_values(by="file_id", kind="mergesort", inplace=True)  # mergesort is stable
+
+    # Make sure file_id and filter_id are categorical columns
+    if df["file_id"].dtype.name != "category":
+        df["file_id"] = df["file_id"].astype("category")
+    if df["filter_id"].dtype.name != "category":
+        df["filter_id"] = df["filter_id"].astype("category")
+
+    # Write parquet
+    df.to_parquet(outpath, compression="snappy", index=False, engine="pyarrow")

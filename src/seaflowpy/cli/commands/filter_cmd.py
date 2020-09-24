@@ -9,6 +9,7 @@ import time
 import urllib
 import botocore
 import click
+import pandas as pd
 import pkg_resources
 from fabric.api import (cd, env, execute, hide, local, parallel, put, puts,
     quiet, run, settings, show, sudo, task)
@@ -47,6 +48,8 @@ def validate_resolution(ctx, param, value):
 
 
 @filter_cmd.command('local')
+@click.option('-D', '--delta', is_flag=True,
+    help='Filter EVT files which are not already present in the opp table.')
 @click.option('-e', '--evt-dir', metavar='DIR', type=click.Path(exists=True),
     help='EVT directory path (required unless --s3)')
 @click.option('-s', '--s3', 's3_flag', is_flag=True,
@@ -62,7 +65,7 @@ def validate_resolution(ctx, param, value):
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
 @util.quiet_keyboardinterrupt
-def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
+def local_filter_evt_cmd(delta, evt_dir, s3_flag, dbpath, limit, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Validate args
     if not evt_dir and not s3_flag:
@@ -83,6 +86,7 @@ def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count
 
     # Capture run parameters and information
     v = {
+        'delta': delta,
         'evt_dir': evt_dir,
         's3': s3_flag,
         'limit': limit,
@@ -140,6 +144,19 @@ def local_filter_evt_cmd(evt_dir, s3_flag, dbpath, limit, opp_dir, process_count
 
     # Find intersection of SFL files and EVT files
     print('sfl={} evt={} intersection={}'.format(len(sfl_df), len(evt_files), len(files_df)))
+
+    if delta:
+        # Limit files to those not present in the opp table
+        try:
+            opp_df = db.get_opp_table(dbpath)
+            opp_df = opp_df.rename(columns={"file": "file_id"}).loc[:, "file_id"]
+        except (errors.SeaFlowpyError, KeyError, ValueError) as e:
+            raise click.ClickException(str(e))
+        # Find files in common
+        merged = pd.merge(files_df, opp_df, how='left', on=["file_id"], indicator=True)
+        evt_n = len(files_df)
+        files_df = merged[merged["_merge"] == "left_only"]
+        print('opp={} evt={} evt_not_in_opp={}'.format(len(opp_df), evt_n, len(files_df)))
 
     # Restrict length of file list with --limit
     if (limit is not None) and (limit > 0):
