@@ -928,6 +928,8 @@ def plot_cruise(bead_df, outpath, filter_params_path="", cruise="", iqr=None):
 
 
 def plot_column(ax, bead_df, col, filt_df=None, cruise="", iqr=None):
+    bead_df = bead_df.copy()
+    bead_df["date"] = mdates.date2num(bead_df["date"])  # for better matplotlib compat
     locator = mdates.AutoDateLocator(minticks=3, maxticks=7)
     formatter = mdates.ConciseDateFormatter(locator)
     ylims = (0, 2**16)
@@ -960,9 +962,9 @@ def plot_column(ax, bead_df, col, filt_df=None, cruise="", iqr=None):
     # Plot a vertical line for each bead coord point showing interquartile range
     iqr_minys = bead_df[f"{col}_1Q"]
     iqr_maxys = bead_df[f"{col}_3Q"]
-    iqr_xs = mdates.date2num(bead_df["date"])
+    iqr_xs = bead_df["date"]
     iqr_colors = []
-    for i, x in enumerate(iqr_xs):
+    for i, _ in enumerate(iqr_xs):
         if iqr and bead_df.loc[i, f"{col}_IQR"] > iqr:
             iqr_colors.append(mpl.colors.to_rgba("red"))
         else:

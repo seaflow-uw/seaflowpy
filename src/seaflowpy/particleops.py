@@ -187,14 +187,14 @@ def mark_noise(df):
 
     Parameters
     ----------
-    pandas.Series
+    numpy.ndarray
         Boolean array of noise events.
     """
     if len(set(list(df)).intersection(set(["D1", "D2", "fsc_small"]))) < 3:
         raise ValueError("Can't apply noise filter without D1, D2, and fsc_small")
 
     # Mark noise events in new column "noise"
-    return pd.Series(~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1)))
+    return ~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1))
 
 
 def mark_saturated(df):
@@ -206,15 +206,15 @@ def mark_saturated(df):
 
     Parameters
     ----------
-    pandas.Series
+    numpy.ndarray
         Boolean array of saturated events.
     """
     if len(set(list(df)).intersection(set(["D1", "D2"]))) < 2:
         raise ValueError("Can't apply saturation filter without D1 and D2")
     if len(df.index) == 0:
-        return pd.Series(np.full(len(df.index), False))
+        return np.full(len(df.index), False)
     else:
-        return pd.Series((df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max()))
+        return (df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max())
 
 
 def merge_opp_vct(oppdf, vctdf):

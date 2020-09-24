@@ -215,7 +215,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
             tmp_df = group.reset_index(drop=True)
             logging.info("clustering %s (%d events)", str(name), len(group))
         else:
-            tmp_df = group.reset_index(drop=True).sample(n=event_limit, random_state=12345)
+            tmp_df = group.reset_index(drop=True).sample(n=event_limit, random_state=12345).reset_index(drop=True)
             logging.info("clustering %s (%d events reduced to %d)", str(name), len(group), len(tmp_df))
         try:
             results = beads.find_beads(
@@ -249,6 +249,10 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
         out_df = pd.concat(all_dfs, ignore_index=True)
         out_df["resolution"] = resolution
         out_df["resolution"] = out_df["resolution"].astype("category")
+        parquet_path = os.path.join(out_dir, cruise + f".beads-by-{resolution}" + ".parquet")
+
+        logging.info("writing bead position parquet %s", parquet_path)
+        out_df.to_parquet(parquet_path)
         logging.info("creating summary plot")
         beads.plot_cruise(
             out_df,
@@ -257,9 +261,6 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
             cruise=cruise,
             iqr=iqr
         )
-        parquet_path = os.path.join(out_dir, cruise + f".beads-by-{resolution}" + ".parquet")
-        logging.info("writing bead position parquet " + parquet_path)
-        out_df.to_parquet(parquet_path)
     logging.info("done")
 
 
