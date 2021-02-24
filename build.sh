@@ -82,11 +82,12 @@ docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/app seaflowpy:"$verstr" sh -c 'c
 # --------------------------------------------------------------------------- #
 # Optional, upload wheel and source tarball to PyPI
 # --------------------------------------------------------------------------- #
-# Copy from docker image
+# Source tarball and wheel should be seaflowpy-dist after Docker build
+# If not, copy from docker image
 # mkdir dist
-# docker run -it --rm -v $(pwd)/dist:/app seaflowpy:$verstr bash -c 'cp /seaflowpy-dist/* /app'
+# docker run -it --rm -v $(pwd)/seaflowpy-dist:/app seaflowpy:$verstr bash -c 'cp /seaflowpy-dist/* /app'
 # Test against test PyPI repo
-# twine upload --repository-url https://test.pypi.org/legacy/ dist/seaflowpy-*
+# twine upload --repository-url https://test.pypi.org/legacy/ seaflowpy-dist/seaflowpy-<version>*
 
 # Create a virtualenv and test install from test.pypi.org
 # python -m venv pypi-test
@@ -95,4 +96,4 @@ docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/app seaflowpy:"$verstr" sh -c 'c
 # pypi-test/bin/seaflowpy version
 
 # Then upload to the real PyPI
-# twine upload dist/seaflowpy-*
+# twine upload seaflowpy-dist/seaflowpy-<version>*
