@@ -79,21 +79,13 @@ Read an EVT file
 evt = sfp.fileio.read_evt_labview(evt_filepath)
 ```
 
-Read an OPP file,
-select the 50th quantile data using pandas.DataFrame boolean indexing,
-then keep only columns you're interested in.
+Read an OPP file as an Apache Arrow Parquet file, select the 50% quantile, and subset columns.
+VCT files created with `popcycle` are also standard Parquet files and can be read in a similar fashion.
 
 ```python
-opp = sfp.fileio.read_opp_labview(opp_filepath)
+opp = pd.read_parquet(opp_filepath)
 opp50 = opp[opp["q50"]]
 opp50 = opp50[['fsc_small', 'chl_small', 'pe']]
-```
-
-Read a VCT file and attach to an OPP DataFrame.
-
-```python
-vct50 = sfp.fileio.read_vct_csv(vct_filepath)  # <-- vct_filepath is for one quantile
-df = sfp.particleops.merge_opp_vct(opp50, vct50)
 ```
 
 <a name="cli"></a>
@@ -185,24 +177,16 @@ the source into a temporary virtual environment for testing.
 
 This project follows the [Git feature branch workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow).
 Active development happens on the `develop` branch and on feature branches which are eventually merged into `develop`.
-Commits on the `master` branch represent stable release snapshots with version tags and build products,
-merged from `develop` with `--no-ff` to create a single commit in `master`
-while keeping the complete commit history in develop.
 
 ### Build
 
-To build source tarball, wheel, PyInstaller files, and Docker image, run `./build.sh`.
-This will
+To build source tarball, wheel, and Docker image, run `./build.sh`. This will
 
-* create `dist` with source tarball and wheel file
-
-* executable files in `./pyinstaller/macos/dist/seaflowpy` and `./pyinstaller/linux64/dist/seaflowpy`
+* create `seaflowpy-dist` with source tarball and wheel file (created during Docker build)
 
 * Docker image named `seaflowpy:<version>`
 
-To remove all build files, run `git clean -fd`.
-
-PyInstaller files and Docker image create depend on the wheel file located in `dist`.
+To remove all build files, run `rm -rf ./seaflowpy-dist`.
 
 ### Updating requirements files
 
