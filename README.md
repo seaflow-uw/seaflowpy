@@ -12,35 +12,11 @@ A Python package for SeaFlow flow cytometer data.
 1. [Testing](#testing)
 1. [Development](#development)
 
-
 <a name="install"></a>
 
 ## Install
 
-This package is compatible with Python 3.7.
-
-### Command-line tool as single-file download
-
-Single file executables of the `seaflowpy` command-line tool
-for MacOS and Linux can be downloaded from the project's github
-[releases page](https://github.com/armbrustlab/seaflowpy/releases).
-This is the recommended method if only the command-line tool is required.
-
-### Docker
-
-Docker image are available from Docker Hub at `ctberthiaume/seaflowpy`.
-
-```
-docker run -it ctberthiaume/seaflowpy seaflowpy version
-```
-
-The Docker build file is in this repo at `/Dockerfile`.
-
-### PyPI
-
-```
-pip3 install seaflowpy
-```
+This package is compatible with Python 3.7 and 3.8.
 
 ### Source
 
@@ -50,14 +26,36 @@ This will clone the repo and create a new virtual environment `seaflowpy`.
 ```sh
 git clone https://github.com/armbrustlab/seaflowpy
 cd seaflowpy
-python3 -m venv seaflowpy
+[[ -d ~/venvs ]] || mkdir ~/venvs
+python3 -m venv ~/venvs/seaflowpy
 source seaflowpy/bin/activate
-pip3 install -r requirements.txt
+pip3 install -U pip setuptools wheel
+pip3 install -r requirements-test.txt
 pip3 install .
 # Confirm the seaflowpy command-line tool is accessible
 seaflowpy version
+# Make sure basic tests pass
+pytest
+# Leave the new virtual environment
 deactivate
 ```
+
+### PyPI
+
+```sh
+pip3 install seaflowpy
+```
+
+### Docker
+
+Docker images are available from Docker Hub at `ctberthiaume/seaflowpy`.
+
+```sh
+docker pull ctberthiaume/seaflowpy
+docker run -it ctberthiaume/seaflowpy seaflowpy version
+```
+
+The Docker build file is in this repo at `/Dockerfile`. The build process for the Docker image is detailed in `/build.sh`.
 
 <a name="evtoppvct"></a>
 
@@ -215,6 +213,12 @@ python3 -m venv newenv
 source newenv/bin/activate
 ```
 
+Update pip, wheel, setuptools
+
+```sh
+pip3 install -U pip wheel setuptools
+```
+
 And install `seaflowpy`
 
 ```sh
@@ -227,14 +231,23 @@ Then freeze the requirements
 pip3 freeze | grep -v seaflowpy >requirements.txt
 ```
 
-Then install dev dependencies and freeze
+Then install test dependencies, test, and freeze
 
 ```sh
-pip3 install pylint pytest pytest-benchmark tox twine
+pip3 install pytest pytest-benchmark
+pytest
+pip3 freeze | grep -v seaflowpy >requirements-test.txt
+```
+
+Then install dev dependencies, test, and freeze
+
+```sh
+pip3 install pylint twine
+pytest
 pip3 freeze | grep -v seaflowpy >requirements-dev.txt
 ```
 
-Do some testing, then leave this temporary virtual environment
+Leave the virtual environment
 
 ```sh
 deactivate
