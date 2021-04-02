@@ -28,7 +28,7 @@ git clone https://github.com/armbrustlab/seaflowpy
 cd seaflowpy
 [[ -d ~/venvs ]] || mkdir ~/venvs
 python3 -m venv ~/venvs/seaflowpy
-source seaflowpy/bin/activate
+source ~/venvs/seaflowpy/bin/activate
 pip3 install -U pip setuptools wheel
 pip3 install -r requirements-test.txt
 pip3 install .
