@@ -37,4 +37,4 @@ scipy==1.6.1
 six==1.15.0
 threadpoolctl==2.1.0
 toml==0.10.2
-urllib3==1.26.4
+urllib3==1.26.5
