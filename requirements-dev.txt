@@ -30,7 +30,7 @@ numpy==1.20.1
 packaging==20.9
 pandas==1.2.2
 paramiko==2.7.2
-Pillow==8.1.1
+Pillow==8.2.0
 pkginfo==1.7.0
 pluggy==0.13.1
 py==1.10.0
