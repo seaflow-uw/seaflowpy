@@ -22,7 +22,6 @@ COPY --chown=seaflow:seaflow . /seaflowpy/
 RUN git clean -qfdx \
     && python3 setup.py sdist bdist_wheel \
     && pip3 install --user --no-index --no-deps dist/*.whl \
-    && mkdir seaflowpy-dist \
-    && cp ./dist/*.tar.gz ./dist/*.whl seaflowpy-dist/
+    && rm -rf __pycache__ build/
 
 CMD ["bash"]

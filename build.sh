@@ -51,7 +51,7 @@ fi
 # Test the new Docker image
 # --------------------------------------------------------------------------- #
 if [[ "$skiptests" -eq 0 ]]; then
-    docker run -it --rm seaflowpy:"$verstr" bash -c 'cd /seaflowpy-tests && pytest'
+    docker run -it --rm seaflowpy:"$verstr" pytest
     dockertestrc=$?
     if [ $dockertestrc -ne 0 ]; then
         echo "docker image failed tests" >&2
@@ -64,7 +64,7 @@ fi
 # Will create directory seaflowpy-dist
 # --------------------------------------------------------------------------- #
 [[ -d seaflowpy-dist ]] || mkdir seaflowpy-dist
-docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/app seaflowpy:"$verstr" sh -c 'cp /seaflowpy-dist/* /app/'
+docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/dist seaflowpy:"$verstr" bash -c 'cp /seaflowpy/dist/* /dist/'
 
 # --------------------------------------------------------------------------- #
 # Misc docker tasks
