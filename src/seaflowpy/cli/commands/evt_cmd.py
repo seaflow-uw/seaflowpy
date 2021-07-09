@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import pathlib
@@ -45,6 +46,12 @@ def validate_timestamp(ctx, param, value):
             value = time.parse_date(value, assume_utc=False)
         except ValueError:
             raise click.BadParameter('unable to parse timestamp.')
+    return value
+
+def validate_hours(ctx, param, value):
+    if value is not None:
+        if value <= 0:
+            raise click.BadParameter('hours must be > 0.')
     return value
 
 
@@ -281,6 +288,8 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
     help='Minimum date of file to sample as ISO8601 timestamp.')
 @click.option('--max-date', type=str, callback=validate_timestamp,
     help='Maximum date of file to sample as ISO8601 timestamp.')
+@click.option('--tail-hours', type=int, metavar='N', callback=validate_hours,
+    help='Only subsample the most recent N hours of data. Overrides --min-date and --max-date.')
 @click.option('--multi', is_flag=True, default=False, show_default=True,
     help='Sample --count events from each input file separately, rather than --count events overall.')
 @click.option('-n', '--noise-filter', is_flag=True, default=False, show_default=True,
@@ -296,7 +305,7 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
-                   min_date, max_date, multi, noise_filter, process_count, seed,
+                   min_date, max_date, tail_hours, multi, noise_filter, process_count, seed,
                    sfl_path, verbose, files):
     """
     Sample a subset of events in EVT files.
@@ -325,6 +334,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
 
     # dirs to file paths, only keep EVT/OPP files
     files = seaflowfile.keep_evt_files(expand_file_list(files))
+    files = seaflowfile.sorted_files(files)
     # Parse file names, adding dates from SFL data if needed
     sfiles = []
     for f in files:
@@ -351,6 +361,11 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     # Select by time.
     # If paths don't have timestamps and SFL not provided, this step will always
     # filter out all files.
+    if tail_hours is not None and len(sfiles):
+        latest = sfiles[-1].date
+        delta = datetime.timedelta(hours=tail_hours)
+        min_date = latest - delta
+        max_date = None
     time_files = seaflowfile.timeselect_evt_files(sfiles, min_date, max_date)
     time_files = [sf.path for sf in time_files]
     # Select fraction of files
