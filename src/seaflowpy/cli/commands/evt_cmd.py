@@ -289,7 +289,9 @@ def beads_evt_cmd(cruise, cytograms, event_limit, frac, iqr, min_date,
 @click.option('--max-date', type=str, callback=validate_timestamp,
     help='Maximum date of file to sample as ISO8601 timestamp.')
 @click.option('--tail-hours', type=int, metavar='N', callback=validate_hours,
-    help='Only subsample the most recent N hours of data. Overrides --min-date and --max-date.')
+    help="""Only subsample the most recent N hours of data. Unsets --max-date.
+            If --min-date is also provided it will be used if it is more recent
+            than <last date - N hours>.""")
 @click.option('--multi', is_flag=True, default=False, show_default=True,
     help='Sample --count events from each input file separately, rather than --count events overall.')
 @click.option('-n', '--noise-filter', is_flag=True, default=False, show_default=True,
@@ -363,8 +365,9 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     # filter out all files.
     if tail_hours is not None and len(sfiles):
         latest = sfiles[-1].date
-        delta = datetime.timedelta(hours=tail_hours)
-        min_date = latest - delta
+        tail_min_date = latest - datetime.timedelta(hours=tail_hours)
+        if min_date is None or min_date < tail_min_date:
+            min_date = tail_min_date
         max_date = None
     time_files = seaflowfile.timeselect_evt_files(sfiles, min_date, max_date)
     time_files = [sf.path for sf in time_files]
