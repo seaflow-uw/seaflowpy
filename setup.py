@@ -23,7 +23,8 @@ setup(
         'kern-smooth',
         'matplotlib',
         'pandas',
-        'pyarrow'
+        'pyarrow',
+        'tsdataformat'
     ],
     entry_points={
         'console_scripts': [

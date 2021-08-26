@@ -12,7 +12,7 @@ from . import util
 
 
 @contextmanager
-def file_open_r(path, fileobj=None):
+def file_open_r(path, fileobj=None, as_text=False):
     """
     Open path or fileobj for reading as a context manager.
 
@@ -30,10 +30,12 @@ def file_open_r(path, fileobj=None):
         File path.
     fileobj: io.BytesIO, optional
         Open file object.
+    as_text: bool, default False
+        Return a file-like object of strings rather than bytes
 
     Returns
     -------
-    Context manager for file-like object of Bytes.
+    Context manager for file-like object of bytes or strings.
     """
     # zlib is faster than gzip for decompression of EVT data on MacOS, and
     # comparable on Linux.
@@ -42,19 +44,32 @@ def file_open_r(path, fileobj=None):
             gzdata = fileobj.read()
             zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
             data = zobj.decompress(gzdata)
-            yield io.BytesIO(data)
+            if not as_text:
+                yield io.BytesIO(data)
+            else:
+                yield io.TextIOWrapper(io.BytesIO(data))
         else:
-            yield fileobj
+            if not as_text:
+                yield fileobj
+            else:
+                yield io.TextIOWrapper(fileobj)
     else:
         if path.endswith('.gz'):
             with io.open(path, 'rb') as fileobj:
                 gzdata = fileobj.read()
                 zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
                 data = zobj.decompress(gzdata)
-                yield io.BytesIO(data)
+                if not as_text:
+                    yield io.BytesIO(data)
+                else:
+                    yield io.TextIOWrapper(io.BytesIO(data))
         else:
-            with io.open(path, 'rb') as fh:
-                yield fh
+            if not as_text:
+                with io.open(path, 'rb') as fh:
+                    yield fh
+            else:
+                with io.open(path, 'r') as fh:
+                    yield fh
 
 
 @contextmanager

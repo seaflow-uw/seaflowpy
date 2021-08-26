@@ -1,12 +1,17 @@
+import json
 import os
 import sys
+from glob import glob
 import botocore
 import click
+import tsdataformat
 from seaflowpy import clouds
 from seaflowpy import db
 from seaflowpy import errors as sfperrors
+from seaflowpy import fileio
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
+
 
 
 @click.group()
@@ -92,6 +97,58 @@ def sfl_fix_event_rate_cmd(sfl_file, events_file):
         event_counts = {seaflowfile.SeaFlowFile(x[0]).file_id: int(x[-1]) for x in lines}
 
     df = sfl.fix_event_rate(df, event_counts)
+    sfl.save_to_file(df, sys.stdout)
+
+
+
+@sfl_cmd.command('fix-underway')
+@click.argument('sfl-file', nargs=1, type=click.Path(exists=True, readable=True))
+@click.argument('cruisemic-dir', nargs=1, type=click.Path(exists=True, readable=True))
+def sfl_fix_underway_cmd(sfl_file, cruisemic_dir):
+    """
+    Replace SFL underway data with data from cruisemic.
+
+    A version of SFL_FILE with updated underway columns based on data from the
+    cruisemic output directory CRUISEMIC_DIR will be printed to STDOUT.
+    """
+    df_sfl = sfl.read_file(sfl_file)
+    df_sfl = sfl.fix(df_sfl)
+
+    # Read cruisemic metadata file to find underway data
+    meta_glob = glob(os.path.join(cruisemic_dir, "metadata*"))
+    if len(meta_glob) != 1:
+        raise click.ClickException("could not find geo-file")
+    with fileio.file_open_r(meta_glob[0], as_text=True) as metafh:
+        meta = json.load(metafh)
+
+    geo_filename = meta['GeoFeed']
+    thermo_filename = meta['ThermoFeed']
+    lat_col = meta['LatitudeCol']
+    lon_col = meta['LongitudeCol']
+    temp_col = meta['TemperatureCol']
+    sal_col = meta['SalinityCol']
+    cond_col = meta['ConductivityCol']
+
+    # Read underway data
+    geo_glob = glob(os.path.join(cruisemic_dir, geo_filename) + "*")
+    thermo_glob = glob(os.path.join(cruisemic_dir, thermo_filename) + "*")
+    if len(geo_glob) != 1:
+        raise click.ClickException("could not find cruisemic geo data file")
+    if len(thermo_glob) != 1:
+        raise click.ClickException("could not find cruisemic thermosalinograph file")
+    with fileio.file_open_r(geo_glob[0], as_text=True) as geo_fh:
+        geo_df = tsdataformat.read_tsdata(geo_fh, convert="time")
+        geo_df["lat"] = geo_df[lat_col].astype(float)
+        geo_df["lon"] = geo_df[lon_col].astype(float)
+        geo_df = geo_df[["time", "lat", "lon"]]
+    with fileio.file_open_r(thermo_glob[0], as_text=True) as thermo_fh:
+        thermo_df = tsdataformat.read_tsdata(thermo_fh, convert="time")
+        thermo_df["ocean_tmp"] = thermo_df[temp_col].astype(float)
+        thermo_df["salinity"] = thermo_df[sal_col].astype(float)
+        thermo_df["conductivity"] = thermo_df[cond_col].astype(float)
+        thermo_df = thermo_df[["time", "ocean_tmp", "salinity", "conductivity"]]
+
+    df = sfl.fix_underway(df_sfl, geo_df, thermo_df)
     sfl.save_to_file(df, sys.stdout)
 
 

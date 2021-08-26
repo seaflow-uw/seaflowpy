@@ -370,6 +370,59 @@ def fix_event_rate(df, event_counts):
     return newdf
 
 
+def fix_underway(sfl_df, geo_df, thermo_df):
+    """
+    Update sfl_df underway columns based on data in geo_df and thermo_df. geo_df
+    and thermo_df will be resampled down to 1 minute time frequency before
+    merging into sfl_df by matching datetime to the minute.
+
+    Parameters
+    -----------
+    sfl_df: pandas DataFrame
+        SFL DataFrame, based on a "fixed" file
+    geo_df: pandas DataFrame
+        Should have columns [datetime "time", float "lat", "lon"]
+    thermo_df: pandas DataFrame
+        Should have columns [datetime "time", float "ocean_tmp", "salinity", "conductivity"]
+
+    Returns
+    -------
+    df: pandas DataFrame
+        Copy of sfl_df with updated underway columns.
+    """
+    # Copy everything first
+    sfl_df, geo_df, thermo_df = sfl_df.copy(), geo_df.copy(), thermo_df.copy()
+    
+    offset = "1min"  # resampling target frequency
+    # Resample geo
+    # Special case handling of longitude around the international date line
+    idx = geo_df["lon"] <= -175 # assuming a ship won't go 5 degrees in 1 minute
+    geo_df.loc[idx, "lon"] = geo_df.loc[idx, "lon"] + 360
+    geo_df2 = geo_df.resample(offset, on="time").mean()
+    idx = geo_df2["lon"] > 180
+    geo_df2.loc[idx, "lon"] = geo_df2.loc[idx, "lon"] - 360
+    # Resample thermo
+    thermo_df2 = thermo_df.resample(offset, on="time").mean()
+
+    # Merge into SFL by matching minutes
+    sfl_df["time"] = pd.to_datetime(sfl_df["date"]).dt.floor("1min") # remove later
+    merged = sfl_df.merge(geo_df2, how="left", on="time")
+    merged = merged.merge(thermo_df2, how="left", on="time")
+    for col in ["lat", "lon", "ocean_tmp", "salinity", "conductivity"]:
+        notna = merged[col + "_y"].notna()
+        print("merging {:d} rows".format(len(notna)))
+        merged.loc[notna, col + "_x"] = merged.loc[notna, col + "_y"]
+    # Remove temporary "time" column
+    merged = merged.drop(["time"], axis=1)
+    # Remove columns from other dataframes
+    to_drop = [col for col in merged.columns if col.endswith("_y")]
+    merged = merged.drop(to_drop, axis=1)
+    # Remove _x from left merged columns
+    to_rename = {col: col.rstrip("_x") for col in merged.columns if col.endswith("_x")}
+    merged = merged.rename(to_rename, axis=1)
+
+    return merged
+
 def has_gga(df):
     """Do any coordinates Series in this DataFrame contain GGA values?"""
     gga_lats = df["lat"].map(geo.is_gga_lat, na_action="ignore")
