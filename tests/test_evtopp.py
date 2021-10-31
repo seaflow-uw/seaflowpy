@@ -518,7 +518,7 @@ def multi_file_asserts(tmpout):
         assert len(group["filter_id"].unique()) == 1
         assert len(group) == opp_answers[file_id]["n"]
         # Weaker test for dataframe equality (not including types)
-        assert list(group.sum()[["D1", "D2", "fsc_small", "pe", "chl_small"]].astype(int)) == opp_answers[file_id]["sums"]
+        assert list(group.sum(numeric_only=True)[["D1", "D2", "fsc_small", "pe", "chl_small"]].astype(int)) == opp_answers[file_id]["sums"]
         # Strong test for dataframe equality (including types)
         assert pd.util.hash_pandas_object(group, index=False).sum() == opp_answers[file_id]["hash"]
 
