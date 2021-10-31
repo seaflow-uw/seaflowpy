@@ -443,6 +443,20 @@ class TestMultiFileFilter(object):
         )
         multi_file_asserts(tmpout)
 
+    def test_multi_file_filter_local_v2(self, tmpout):
+        """Test multi-file filtering on v2 data and ensure output can be read back OK"""
+        # python setup.py test doesn't play nice with pytest and
+        # multiprocessing, so we use one core here
+        file_dates = tmpout["file_dates"].copy()
+        file_dates["path"] = file_dates["path_v2"]
+        sfp.filterevt.filter_evt_files(
+            file_dates,
+            dbpath=tmpout["db"],
+            opp_dir=str(tmpout["oppdir"]),
+            worker_count=1
+        )
+        multi_file_asserts(tmpout)
+
     @pytest.mark.popcycle
     def test_against_popcycle(self, tmpout):
         # Generate popcycle results

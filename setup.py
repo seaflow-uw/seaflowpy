@@ -16,9 +16,7 @@ setup(
     include_package_data=True,
     python_requires='>=3.7.1',
     install_requires=[
-        'boto3',
         'click',
-        'fabric3',
         'hdbscan',
         'kern-smooth',
         'matplotlib',
