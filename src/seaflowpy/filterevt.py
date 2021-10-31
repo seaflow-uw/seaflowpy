@@ -6,8 +6,6 @@ import time
 import multiprocessing as mp
 import queue
 
-from . import clouds
-from .conf import get_aws_config
 from . import db
 from . import errors
 from . import fileio
@@ -22,8 +20,8 @@ quantiles = [2.5, 50, 97.5]
 
 
 @util.quiet_keyboardinterrupt
-def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
-                     every=10.0, window_size="1H"):
+def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
+                     window_size="1H"):
     """Filter a list of EVT files.
 
     Positional arguments:
@@ -33,7 +31,6 @@ def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
         opp_dir = Directory for output binary OPP files
 
     Keyword arguments:
-        s3 - Get EVT data from S3
         worker_count - number of worker processes to use
         every - Percent progress output resolution
         window_size - Time window for grouping filtering EVT file sets,
@@ -41,7 +38,6 @@ def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
     """
     work = {
         "files_df": None,  # fill in later
-        "s3": s3,
         "cloud_config_items": None,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
@@ -65,10 +61,6 @@ def filter_evt_files(files_df, dbpath, opp_dir, s3=False, worker_count=1,
     worker_count = min(len(grouped), worker_count)
 
     work["filter_params"] = db.get_latest_filter(dbpath)
-
-    if s3:
-        aws_config = get_aws_config(s3_only=True)
-        work["cloud_config_items"] = aws_config.items("aws")
 
     # Create input queue with info necessary to filter one file
     work_q = mp.Queue()
@@ -142,17 +134,13 @@ def do_filter(work_q, opps_q):
             }
 
             try:
-                fileobj = None
-                if work["s3"]:
-                    cloud = clouds.AWS(work["cloud_config_items"])
-                    fileobj = cloud.download_file_memory(row["path"])
-                evt_df = fileio.read_evt_labview(path=row["path"], fileobj=fileobj)
+                evt_df = fileio.read_evt_labview(path=row["path"])
             except errors.FileError as e:
                 result["error"] = f"Could not parse file {row['path']}: {e}"
-                evt_df = particleops.empty_df()
+                evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
             except Exception as e:
                 result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
-                evt_df = particleops.empty_df()
+                evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
 
             try:
                 evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)

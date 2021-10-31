@@ -56,7 +56,7 @@ def tmpout(tmpdir):
     }
 
 
-class TestOpen:
+class TestOpenV1:
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid(self, benchmark):
         df = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
@@ -76,18 +76,6 @@ class TestOpen:
                 outfh.write(infh.read(400000))
         with pytest.raises(sfp.errors.FileError):
             _df = sfp.fileio.read_evt_labview(truncpath)
-
-    def test_read_evt_valid_memory(self):
-        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", "rb").read()
-        df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", io.BytesIO(data))
-        assert len(df.index) == 40000
-        assert list(df) == sfp.particleops.COLUMNS
-
-    def test_read_evt_valid_gz_memory(self):
-        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", "rb").read()
-        df = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", io.BytesIO(data))
-        assert len(df.index) == 40000
-        assert list(df) == sfp.particleops.COLUMNS
 
     def test_read_evt_empty(self):
         with pytest.raises(sfp.errors.FileError):
@@ -117,14 +105,54 @@ class TestOpen:
         n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert n == 40000
 
-    def test_read_labview_row_count_valid_memory(self):
-        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", "rb").read()
-        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00", io.BytesIO(data))
+
+class TestOpenV2:
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_v2(self, benchmark):
+        df = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-00-02+00-00")
+        assert len(df.index) == 40000
+        assert list(df) == sfp.particleops.COLUMNS2
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_gz_v2(self, benchmark):
+        df = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz")
+        assert len(df.index) == 40000
+        assert list(df) == sfp.particleops.COLUMNS2
+
+    def test_read_evt_truncated_gz_v2(self, tmpout):
+        truncpath = os.path.join(tmpout["tmpdir"], "2014-07-04T00-03-02+00-00.gz")
+        with open("tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz", "rb") as infh:
+            with open(truncpath, "wb") as outfh:
+                outfh.write(infh.read(100000))
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview(truncpath)
+
+    def test_read_evt_empty_v2(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-06-02+00-00")
+
+    def test_read_evt_zero_header_v2(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-09-02+00-00")
+
+    def test_read_evt_short_header_v2(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-12-02+00-00")
+
+    def test_read_evt_more_data_than_header_count_v2(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-21-02+00-00")
+
+    def test_read_evt_less_data_than_header_count_v2(self):
+        with pytest.raises(sfp.errors.FileError):
+            _df = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-27-02+00-00")
+
+    def test_read_labview_row_count_valid_v2(self):
+        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt_v2/2014_185/2014-07-04T00-00-02+00-00")
         assert n == 40000
 
-    def test_read_labview_row_count_valid_gz_memory(self):
-        data = open("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", "rb").read()
-        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", io.BytesIO(data))
+    def test_read_labview_row_count_valid_gz_v2(self):
+        n = sfp.fileio.read_labview_row_count("tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert n == 40000
 
 
@@ -245,7 +273,7 @@ class TestTransform:
     def test_linearize_copy(self, evt_df):
         orig_df = evt_df.copy()
         npt.assert_array_equal(orig_df, evt_df)
-        t_df = sfp.particleops.linearize_particles(evt_df)
+        t_df = sfp.particleops.linearize_particles(evt_df, columns=["fsc_small", "D1"])
         assert t_df is not evt_df
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
@@ -265,10 +293,10 @@ class TestTransform:
         )
 
     def test_log_copy(self, evt_df):
-        evt_df = sfp.particleops.linearize_particles(evt_df)
+        evt_df = sfp.particleops.linearize_particles(evt_df, columns=["fsc_small", "D1"])
         orig_df = evt_df.copy()
         npt.assert_array_equal(orig_df, evt_df)
-        t_df = sfp.particleops.log_particles(evt_df)
+        t_df = sfp.particleops.log_particles(evt_df, columns=["fsc_small", "D1"])
         assert t_df is not evt_df
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
@@ -412,28 +440,6 @@ class TestMultiFileFilter(object):
             dbpath=tmpout["db"],
             opp_dir=str(tmpout["oppdir"]),
             worker_count=1
-        )
-        multi_file_asserts(tmpout)
-
-    @pytest.mark.s3
-    def test_multi_file_filter_S3(self, tmpout):
-        """Test S3 multi-file filtering and ensure output can be read back OK"""
-        config = sfp.conf.get_aws_config()
-        cloud = sfp.clouds.AWS(config.items("aws"))
-        files = cloud.get_files("testcruise_evt")
-        files = sfp.seaflowfile.keep_evt_files(files)
-
-        # modify file paths to match S3 paths (remove leading "tests/")
-        files_df = tmpout["file_dates"]
-        files_df["path"] = files_df["path"].map(lambda x: x.split("/", 1)[1])
-        # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we use one core here
-        sfp.filterevt.filter_evt_files(
-            files_df,
-            dbpath=tmpout["db"],
-            opp_dir=str(tmpout["oppdir"]),
-            worker_count=1,
-            s3=True
         )
         multi_file_asserts(tmpout)
 

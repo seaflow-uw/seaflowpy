@@ -100,7 +100,40 @@ def file_open_w(path):
             yield fh
 
 
-def read_labview(path, columns, fileobj=None):
+def detect_evt_version(path, fileobj=None):
+    """
+    Detect v1 or v2 EVT file.
+
+    Parameters
+    -----------
+    path: str
+        File path.
+    fileobj: io.BytesIO, optional
+        Open file object.
+
+    Returns
+    -------
+    string
+        "v1" or "v2"
+    """
+    try:
+        with file_open_r(path, fileobj) as fh:
+            buff = fh.read(4)
+            buff = fh.read(4)  # read the first column count 32bit uint
+    except (IOError, EOFError, zlib.error) as e:
+        raise errors.FileError("File could not be read: {}".format(str(e)))
+    if len(buff) < 4:
+        raise errors.FileError("File has incomplete first column count number")
+    colcnt = np.frombuffer(buff, dtype="uint32", count=1)
+    if colcnt == len(particleops.COLUMNS):
+        return "v1"
+    elif colcnt == len(particleops.COLUMNS2):
+        return "v2"
+    else:
+        raise errors.FileError("File has invalid value in first column count header")
+
+
+def read_labview(path, columns=None, fileobj=None):
     """
     Read a labview binary SeaFlow data file.
 
@@ -112,8 +145,8 @@ def read_labview(path, columns, fileobj=None):
     -----------
     path: str
         File path.
-    columns: list of str
-        Names of columns. Also represents how many columns there are.
+    columns: list of str, default is None
+        Names of columns. If none are given reasonable defaults are used.
     fileobj: io.BytesIO, optional
         Open file object.
 
@@ -122,29 +155,47 @@ def read_labview(path, columns, fileobj=None):
     pandas.DataFrame
         SeaFlow event DataFrame as numpy.float64 values.
     """
-    colcnt = len(columns) + 2  # 2 leading column per row
-
     try:
         with file_open_r(path, fileobj) as fh:
-            # Particle count (rows of data) is stored in an initial 32-bit
-            # unsigned int
+            # Particle count (rows of data) is stored in an initial 32-bit int
             buff = fh.read(4)
-            if len(buff) == 0:
-                raise errors.FileError("File is empty")
-            if len(buff) != 4:
-                raise errors.FileError("File has invalid particle count header")
+            if len(buff) < 4:
+                raise errors.FileError("File is truncated")
             rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
             if rowcnt == 0:
                 raise errors.FileError("File has no particle data")
 
-            # Read the rest of the data. Each particle has colcnt unsigned
-            # 16-bit ints in a row.
-            expected_bytes = rowcnt * colcnt * 2  # rowcnt * colcnt columns * 2 bytes
-            # must cast to int here because while BufferedIOReader objects
-            # returned from io.open(path, "rb") will accept a numpy.int64 type,
-            # io.BytesIO objects will not accept this type and will only accept
-            # vanilla int types. This is true for Python 3, not for Python 2.
-            buff = fh.read(int(expected_bytes))
+            # Column count is stored in the next 32-bit int
+            buff = fh.read(4)
+            if len(buff) < 4:
+                raise errors.FileError("File is truncated")
+            colcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
+
+            # Read the rest of the data. Each row is colcnt 16-bit ints
+            if colcnt == 10:
+                # v1 EVT
+                if columns is None:
+                    columns = particleops.COLUMNS
+                colcnt = len(columns)  # for compat with old labview OPP files
+                # Each row has a leading 32-bit int (column count) which can be
+                # discarded. We'll account for it by adding 2 to the colcnt
+                # (2 extra 16-bit columns)
+                colcnt += 2
+                expected_bytes = rowcnt * colcnt * 2  # 2 bytes per column
+                # Put the leading 32-bit int back in front of the first row
+                # since we already read it to get colcnt.
+                buff = int(colcnt).to_bytes(4, byteorder='little') + fh.read(int(expected_bytes) - 4)
+            elif colcnt == 7:
+                # v2 EVT
+                if columns is None:
+                    columns = particleops.COLUMNS2
+                colcnt = len(columns)  # for compat with old labview OPP files
+                # Unlike v1, there are no leading 32-bit ints for colcnt, except
+                # for the one we read at the beginning.
+                expected_bytes = rowcnt * colcnt * 2  # 2 bytes per column
+                buff = fh.read(int(expected_bytes))
+            else:
+                raise errors.FileError("invalid column count, {}".format(colcnt))
 
             # Read any extra data at the end of the file for error checking. There
             # shouldn't be any extra data, btw.
@@ -169,14 +220,11 @@ def read_labview(path, columns, fileobj=None):
     # Reshape into a matrix of colcnt columns and one row per particle
     events = np.reshape(events, [rowcnt, colcnt])
     # Create a Pandas DataFrame with descriptive column names.
-    #
-    # The first two uint16s [0,10] from start of each row are left out.
-    # These ints are an idiosyncrasy of LabVIEW's binary output format.
-    # I believe they're supposed to serve as EOL signals (NULL,
-    # linefeed in ASCII), but because the last line doesn't have them
-    # it's easier to treat them as leading ints on each line after the
-    # header.
-    df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
+    if colcnt != 7:
+        # v1 file, remove leading two columns (32-bit column count int in each row)
+        df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
+    else:
+        df = pd.DataFrame(events, columns=columns)
     return df
 
 
@@ -241,7 +289,7 @@ def read_evt_labview(path, fileobj=None):
     pandas.DataFrame
         SeaFlow event DataFrame as numpy.float64 values.
     """
-    return read_labview(path, particleops.COLUMNS, fileobj).astype(np.float64)
+    return read_labview(path, columns=None, fileobj=fileobj).astype(np.float64)
 
 
 def read_opp_labview(path, fileobj=None):

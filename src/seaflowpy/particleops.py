@@ -10,6 +10,10 @@ COLUMNS = [
     "pe", "chl_small", "chl_big"
 ]
 CHANNEL_COLUMNS = COLUMNS[2:]  # flow cytometer channel data columns
+COLUMNS2 = [
+    "pulse_width", "chl_small", "D1", "D2", "fsc_small", "pe", "evt_rate"
+]
+CHANNEL_COLUMNS2 = COLUMNS[1:6]  # flow cytometer channel data columns
 
 # Focused particle masks by quantile column. These get combined into bit flags
 # when storing OPP data in a binary file. e.g. 0b110 (6) means a particle is
@@ -68,7 +72,7 @@ def decode_bit_flags(df):
     return df
 
 
-def empty_df():
+def empty_df(v2=False):
     """
     Create an empty SeaFlow particle DataFrame.
 
@@ -76,7 +80,8 @@ def empty_df():
     -------
     pandas.DataFrame
     """
-    return pd.DataFrame(dtype=float, columns=COLUMNS)
+    cols = COLUMNS2 if v2 else COLUMNS
+    return pd.DataFrame(dtype=float, columns=cols)
 
 
 def encode_bit_flags(df):
@@ -296,7 +301,7 @@ def roughfilter(df, width=5000):
     width = float(width)
 
     if len(df) == 0:
-        return empty_df()
+        return df
 
     # Mark noise and saturated particles
     noise = mark_noise(df)
@@ -304,7 +309,7 @@ def roughfilter(df, width=5000):
 
     if np.sum(~noise & ~sat) == 0:
         # All data is noise/saturation filtered
-        return empty_df()
+        return df[0:0].copy()
 
     # Correction for the difference in sensitivity between D1 and D2
     origin = (df["D2"] - df["D1"]).median()
@@ -353,7 +358,7 @@ def select_focused(df):
     return df[selector].copy()
 
 
-def linearize_particles(df, columns=None):
+def linearize_particles(df, columns):
     """
     Linearize logged SeaFlow data.
 
@@ -367,7 +372,7 @@ def linearize_particles(df, columns=None):
     ----------
     df: pandas.DataFrame
         SeaFlow event data.
-    columns: list of str, default seaflowpy.particleops.channel_columns
+    columns: list of str
         Names of columns to linearize.
 
     Returns
@@ -375,15 +380,13 @@ def linearize_particles(df, columns=None):
     pandas.DataFrame
         Copy of df with linearized values.
     """
-    if not columns:
-        columns = CHANNEL_COLUMNS
     events = df.copy()
     if len(events.index) > 0:
         events[columns] = 10**((events[columns] / 2**16) * 3.5)
     return events
 
 
-def log_particles(df, columns=None):
+def log_particles(df, columns):
     """
     Opposite of linearize_particles().
 
@@ -391,7 +394,7 @@ def log_particles(df, columns=None):
     ----------
     df: pandas.DataFrame
         SeaFlow event data.
-    columns: list of str, default seaflowpy.particleops.channel_columns
+    columns: list of str
         Names of columns to log.
 
     Returns
@@ -399,8 +402,6 @@ def log_particles(df, columns=None):
     pandas.DataFrame
         Copy of df with logged values.
     """
-    if not columns:
-        columns = CHANNEL_COLUMNS
     events = df.copy()
     if len(events.index) > 0:
         events[columns] = (np.log10(events[columns]) / 3.5) * 2**16
