@@ -100,37 +100,39 @@ def file_open_w(path):
             yield fh
 
 
-def detect_evt_version(path, fileobj=None):
+def read_evt_header(f):
     """
     Detect v1 or v2 EVT file.
 
     Parameters
     -----------
-    path: str
-        File path.
-    fileobj: io.BytesIO, optional
-        Open file object.
+    f: Open file-like object
 
+    Raises
+    ------
+    errors.FileError
+        When version can't be determined
     Returns
     -------
-    string
-        "v1" or "v2"
+    dict
+        { "rowcnt": row count, "colcnt": column count, "version": v1 or v2 }
     """
-    try:
-        with file_open_r(path, fileobj) as fh:
-            buff = fh.read(4)
-            buff = fh.read(4)  # read the first column count 32bit uint
-    except (IOError, EOFError, zlib.error) as e:
-        raise errors.FileError("File could not be read: {}".format(str(e)))
-    if len(buff) < 4:
-        raise errors.FileError("File has incomplete first column count number")
-    colcnt = np.frombuffer(buff, dtype="uint32", count=1)
-    if colcnt == len(particleops.COLUMNS):
-        return "v1"
-    elif colcnt == len(particleops.COLUMNS2):
-        return "v2"
-    else:
-        raise errors.FileError("File has invalid value in first column count header")
+    bytes_per_col = 2
+    # v1: number of rows of data
+    # v2: bytes per row of data, should always be 10
+    buff1 = f.read(4)
+    # v1: number of 2-byte columns per row, should always be 14
+    # v2: number of rows of data
+    buff2 = f.read(4)
+    if len(buff1) < 4 or len(buff2) < 4:
+        raise errors.FileError("File has incomplete leading 32bit numbers")
+    num1 = int.from_bytes(buff1, byteorder='little')
+    num2 = int.from_bytes(buff2, byteorder='little')
+    if num2 == len(particleops.COLUMNS):
+        return { "rowcnt": num1, "colcnt": num2, "version": "v1" }
+    if num1 == len(particleops.COLUMNS2) * bytes_per_col:
+        return { "rowcnt": num2, "colcnt": num1 / bytes_per_col, "version": "v2" }
+    raise errors.FileError("File does not have a valid column size number")
 
 
 def read_labview(path, columns=None, fileobj=None):
@@ -157,22 +159,12 @@ def read_labview(path, columns=None, fileobj=None):
     """
     try:
         with file_open_r(path, fileobj) as fh:
-            # Particle count (rows of data) is stored in an initial 32-bit int
-            buff = fh.read(4)
-            if len(buff) < 4:
-                raise errors.FileError("File is truncated")
-            rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
+            counts = read_evt_header(fh)
+            rowcnt, version = counts["rowcnt"], counts["version"]
             if rowcnt == 0:
                 raise errors.FileError("File has no particle data")
 
-            # Column count is stored in the next 32-bit int
-            buff = fh.read(4)
-            if len(buff) < 4:
-                raise errors.FileError("File is truncated")
-            colcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
-
-            # Read the rest of the data. Each row is colcnt 16-bit ints
-            if colcnt == 10:
+            if version == "v1":
                 # v1 EVT
                 if columns is None:
                     columns = particleops.COLUMNS
@@ -185,7 +177,7 @@ def read_labview(path, columns=None, fileobj=None):
                 # Put the leading 32-bit int back in front of the first row
                 # since we already read it to get colcnt.
                 buff = int(colcnt).to_bytes(4, byteorder='little') + fh.read(int(expected_bytes) - 4)
-            elif colcnt == 7:
+            elif version == "v2":
                 # v2 EVT
                 if columns is None:
                     columns = particleops.COLUMNS2
@@ -195,7 +187,7 @@ def read_labview(path, columns=None, fileobj=None):
                 expected_bytes = rowcnt * colcnt * 2  # 2 bytes per column
                 buff = fh.read(int(expected_bytes))
             else:
-                raise errors.FileError("invalid column count, {}".format(colcnt))
+                raise ValueError("invalid version string")
 
             # Read any extra data at the end of the file for error checking. There
             # shouldn't be any extra data, btw.
@@ -257,16 +249,8 @@ def read_labview_row_count(path, fileobj=None):
     with file_open_r(path, fileobj) as fh:
         # Particle count (rows of data) is stored in an initial 32-bit
         # unsigned int
-        try:
-            buff = fh.read(4)
-        except (IOError, EOFError) as e:
-            raise errors.FileError("File could not be read: {}".format(str(e)))
-        if len(buff) == 0:
-            raise errors.FileError("File is empty")
-        if len(buff) != 4:
-            raise errors.FileError("File has invalid particle count header")
-        rowcnt = np.frombuffer(buff, dtype="uint32", count=1)[0]
-    return rowcnt
+        counts = read_evt_header(fh)
+    return counts["rowcnt"]
 
 
 def read_evt_labview(path, fileobj=None):
