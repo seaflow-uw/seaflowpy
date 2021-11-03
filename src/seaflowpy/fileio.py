@@ -212,7 +212,7 @@ def read_labview(path, columns=None, fileobj=None):
     # Reshape into a matrix of colcnt columns and one row per particle
     events = np.reshape(events, [rowcnt, colcnt])
     # Create a Pandas DataFrame with descriptive column names.
-    if colcnt != 7:
+    if version == "v1":
         # v1 file, remove leading two columns (32-bit column count int in each row)
         df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
     else:
