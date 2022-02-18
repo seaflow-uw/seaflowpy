@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import pandas as pd
 from . import util
@@ -47,31 +46,6 @@ def all_quantiles(df):
     return True
 
 
-def decode_bit_flags(df):
-    """
-    Convert "bitflags" column to per-quantile focused particles booleans.
-
-    This removes the "bitflags" column and adds a new boolean column for each
-    quantile encoded by the bit flags.
-
-    df: pandas.DataFrame
-        SeaFlow focused particle DataFrame with "bitflags" column.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Reference to original modified DataFrame.
-    """
-    # This sort is ASCII-alphabetical! But that works for the set of quantile
-    # column names we have so far. If this changes then do a numeric sort by
-    # quantile value.
-    bitflags = df["bitflags"]
-    df = df.drop(["bitflags"], axis="columns")
-    for col, f in sorted(flags.items()):
-        df[col] = (bitflags & f) > 0
-    return df
-
-
 def empty_df(v2=False):
     """
     Create an empty SeaFlow particle DataFrame.
@@ -82,36 +56,6 @@ def empty_df(v2=False):
     """
     cols = COLUMNS2 if v2 else COLUMNS
     return pd.DataFrame(dtype=float, columns=cols)
-
-
-def encode_bit_flags(df):
-    """
-    Encode a "bitflags" column for per-quantile focused particles booleans.
-
-    This removes the the noise and the per-quantile focused particles boolean
-    columns and adds a new column "bitflags" with bit flags values for each
-    quantile. See particleops.flags for the flag definitions.
-
-    Parameters
-    ----------
-    df: pandas.DataFrame
-        SeaFlow focused particle DataFrame with boolean columns for each
-        quantile.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Reference to original modified DataFrame.
-    """
-    # Construct bit flags to efficiently capture all quantile flag columns
-    bitflags = None
-    for col, f in flags.items():
-        if bitflags is None:
-            bitflags = np.left_shift(df[col], int(math.log(f, 2)))
-        else:
-            bitflags = bitflags | np.left_shift(df[col], int(math.log(f, 2)))
-    df["bitflags"] = bitflags  # new column
-    return df
 
 
 def mark_focused(df, params, inplace=False):
@@ -147,6 +91,8 @@ def mark_focused(df, params, inplace=False):
     for k in param_keys:
         if not k in params.columns:
             raise ValueError(f"Missing filter parameter {k} in mark_focused")
+    # Make sure params have 0-based indexing
+    params = params.reset_index(drop=True)
 
     if not inplace:
         df = df.copy()

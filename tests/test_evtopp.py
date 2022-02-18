@@ -5,10 +5,10 @@ import io
 import os
 import shutil
 import sqlite3
-import subprocess
 import numpy as np
 import numpy.testing as npt
 import pandas as pd
+import pandas.testing as pdt
 import pytest
 import seaflowpy as sfp
 
@@ -42,12 +42,18 @@ def params():
 def tmpout(tmpdir):
     """Setup to test complete filter workflow"""
     # Copy db with filtering params
-    db = str(tmpdir.join("testcruise.db"))
-    shutil.copyfile("tests/testcruise_paramsonly.db", db)
-    os.chmod(db, 0o664)  # make the db writeable
+    db_one = str(tmpdir.join("testcruise_one.db"))
+    shutil.copyfile("tests/testcruise_paramsonly_one_param.db", db_one)
+    os.chmod(db_one, 0o664)  # make the db writeable
+
+    db_plan = str(tmpdir.join("testcruise_plan.db"))
+    shutil.copyfile("tests/testcruise_paramsonly_plan.db", db_plan)
+    os.chmod(db_plan, 0o664)  # make the db writeable
+
     evt_path = "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00"
     return {
-        "db": db,
+        "db_one": db_one,
+        "db_plan": db_plan,
         "oppdir": str(tmpdir.join("oppdir")),
         "tmpdir": str(tmpdir),
         "evt_df": sfp.fileio.read_evt_labview(str(evt_path)),
@@ -155,22 +161,6 @@ class TestOpenV2:
         n = sfp.fileio.read_labview_row_count("tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert n == 40000
 
-
-class TestVCT:
-    def test_merge_vct(self):
-        # Normally OPP data used with VCT would be linearized, but for tests
-        # just leave it as is
-        opp = sfp.fileio.read_opp_labview("tests/testcruise_opp/2014_185/2014-07-04T00-00-02+00-00.opp.gz")
-        vct = sfp.fileio.read_vct_csv("tests/testcruise_vct/50/2014_185/2014-07-04T00-00-02+00-00.vct.gz")
-        opp50 = opp[opp["q50"]]
-        df = sfp.particleops.merge_opp_vct(opp50, vct)
-        medians = df.groupby("pop").median()
-        vals = list(medians.loc[["beads", "prochloro", "synecho", "unknown"]]["fsc_small"])
-        assert vals == [33680.0, 8368.0, 18856.0, 37952.0]
-        npt.assert_array_almost_equal(
-            list(medians.loc[["beads", "prochloro", "synecho", "unknown"]]["diam_lwr"]),
-            [1.802998, 0.707794, 1.012014, 2.229999]
-        )
 
 class TestFilter:
     def test_mark_focused_no_params(self, evt_df):
@@ -312,8 +302,8 @@ class TestOutput:
         signal_count = len(df[df["noise"] == False].index)
 
         vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
-        sfp.db.save_opp_to_db(vals, tmpout["db"])
-        con = sqlite3.connect(tmpout["db"])
+        sfp.db.save_opp_to_db(vals, tmpout["db_one"])
+        con = sqlite3.connect(tmpout["db_one"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         try:
@@ -339,8 +329,8 @@ class TestOutput:
         signal_count = len(df[df["noise"] == False].index)
 
         vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
-        sfp.db.save_opp_to_db(vals, tmpout["db"])
-        con = sqlite3.connect(tmpout["db"])
+        sfp.db.save_opp_to_db(vals, tmpout["db_one"])
+        con = sqlite3.connect(tmpout["db_one"])
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         assert sf_file.file_id == sqlitedf["file"][1]
@@ -385,50 +375,6 @@ class TestOutput:
         new_evt = gzip.open(out_evt_path).read()
         assert input_evt == new_evt
 
-    def test_binary_opp_output_None(self, tmpout):
-        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-        oppdir = os.path.join(tmpout["tmpdir"], "oppdir")
-        evt_df = None
-        out_opp_path = os.path.join(oppdir, sfile.file_id + ".opp.gz")
-        sfp.fileio.write_opp_labview(evt_df, sfile.file_id, oppdir)
-        assert os.path.exists(out_opp_path) is False
-
-    def test_binary_opp_output(self, tmpout, params):
-        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-
-        df = tmpout["evt_df"]
-        df = sfp.particleops.mark_focused(df, params, inplace=True)
-        # df should now have 5 new columns for noise, saturated, and 3 quantiles
-        # Write an opp file
-        df = sfp.particleops.select_focused(df)
-        sfp.fileio.write_opp_labview(df, sfile.file_id, tmpout["oppdir"], gz=False)
-        # Read it back
-        opp_path = os.path.join(tmpout["oppdir"], sfile.file_id + ".opp")
-        reread_opp_df = sfp.fileio.read_opp_labview(opp_path)
-        # Should equal original df with only focused particles
-        npt.assert_array_equal(
-            df,
-            reread_opp_df
-        )
-
-    def test_binary_opp_output_gz(self, tmpout, params):
-        sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-
-        df = tmpout["evt_df"]
-        df = sfp.particleops.mark_focused(df, params, inplace=True)
-        # df should now have 5 new columns for noise, saturated, and 3 quantiles
-        # Write an opp file
-        df = sfp.particleops.select_focused(df)
-        sfp.fileio.write_opp_labview(df, sfile.file_id, tmpout["oppdir"])
-        # Read it back
-        opp_path = os.path.join(tmpout["oppdir"], sfile.file_id + ".opp.gz")
-        reread_opp_df = sfp.fileio.read_opp_labview(opp_path)
-        # Should equal original df with only focused particles
-        npt.assert_array_equal(
-            df,
-            reread_opp_df
-        )
-
 
 class TestMultiFileFilter(object):
     def test_multi_file_filter_local(self, tmpout):
@@ -437,11 +383,32 @@ class TestMultiFileFilter(object):
         # multiprocessing, so we use one core here
         sfp.filterevt.filter_evt_files(
             tmpout["file_dates"],
-            dbpath=tmpout["db"],
+            dbpath=tmpout["db_one"],
             opp_dir=str(tmpout["oppdir"]),
             worker_count=1
         )
-        multi_file_asserts(tmpout)
+
+        opp_dfs = [
+            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet")),
+            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T01-00-00+00-00.1H.opp.parquet"))
+        ]
+        expected_opp_dfs = [
+            pd.read_parquet("tests/testcruise_opp_one_param/2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet("tests/testcruise_opp_one_param/2014-07-04T01-00-00+00-00.1H.opp.parquet")
+        ]
+        pdt.assert_frame_equal(opp_dfs[0], expected_opp_dfs[0], check_exact=False)
+        pdt.assert_frame_equal(opp_dfs[1], expected_opp_dfs[1], check_exact=False)
+
+        # Check numbers stored in opp table are correct
+        opp_table = sfp.db.get_opp_table(tmpout["db_one"])
+        expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_one_param.db")
+
+        pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
+
+        # Check that outlier table has entry for every file
+        outlier_table = sfp.db.get_outlier_table(tmpout["db_one"])
+        expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_one_param.db")
+        pdt.assert_frame_equal(outlier_table, expected_outlier_table)
 
     def test_multi_file_filter_local_v2(self, tmpout):
         """Test multi-file filtering on v2 data and ensure output can be read back OK"""
@@ -451,138 +418,29 @@ class TestMultiFileFilter(object):
         file_dates["path"] = file_dates["path_v2"]
         sfp.filterevt.filter_evt_files(
             file_dates,
-            dbpath=tmpout["db"],
+            dbpath=tmpout["db_plan"],
             opp_dir=str(tmpout["oppdir"]),
             worker_count=1
         )
-        multi_file_asserts(tmpout)
 
-    @pytest.mark.popcycle
-    def test_against_popcycle(self, tmpout):
-        # Generate popcycle results
-        popcycledir = os.path.join(tmpout["tmpdir"], "popcycle")
-        popcycle_cmd = "Rscript tests/generate_popcycle_results.R tests {}".format(str(popcycledir))
-        subprocess.check_call(popcycle_cmd.split())
+        opp_dfs = [
+            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet")),
+            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T01-00-00+00-00.1H.opp.parquet"))
+        ]
+        expected_opp_dfs = [
+            pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T01-00-00+00-00.1H.opp.parquet")
+        ]
+        pdt.assert_frame_equal(opp_dfs[0], expected_opp_dfs[0], check_exact=False)
+        pdt.assert_frame_equal(opp_dfs[1], expected_opp_dfs[1], check_exact=False)
 
-        # Generate seaflowpy results
-        files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
-        sfl_files = sfp.db.get_sfl_table(tmpout["db"])["file"].tolist()
-        files = sfp.seaflowfile.filtered_file_list(files, sfl_files)
-        sfp.filterevt.filter_evt_files(
-            files=files, dbpath=tmpout["db"], opp_dir=str(tmpout["oppdir"]),
-            worker_count=1
-        )
+        # Check numbers stored in opp table are correct
+        opp_table = sfp.db.get_opp_table(tmpout["db_plan"])
+        expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_plan.db")
 
-        # Compare opp table output
-        with sqlite3.connect(tmpout["db"]) as con_py:
-            opp_py = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_py)
-        with sqlite3.connect(os.path.join(popcycledir, "testcruise.db")) as con_R:
-            opp_R = pd.read_sql("SELECT * FROM opp ORDER BY file, quantile", con_R)
+        pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
 
-        columns = ["opp_count", "evt_count", "opp_evt_ratio", "quantile"]
-        npt.assert_allclose(opp_py[columns], opp_R[columns])
-        assert "\n".join(opp_py["file"].values) == "\n".join(opp_R["file"].values)
-
-        # Compare OPP file output
-        opps_py = [sfp.fileio.read_opp_labview(o) for o in sfp.seaflowfile.find_evt_files(tmpout["oppdir"], opp=True)]
-        opps_R = [sfp.fileio.read_opp_labview(o) for o in sfp.seaflowfile.find_evt_files(os.path.join(popcycledir, "opp"), opp=True)]
-        assert len(opps_py) == len(opps_R)
-        assert len(opps_py) == 2
-        assert len(opps_R) == 2
-        for i in range(len(opps_py)):
-            npt.assert_array_equal(opps_py[i], opps_R[i])
-
-def multi_file_asserts(tmpout):
-    # pandas.util.hash_pandas_object(df, index=False).sum() for OPP outputs by file_id
-    opp_answers = {
-        "2014_185/2014-07-04T00-00-02+00-00": {
-            "hash": -4859851545039191295,
-            "sums": [1114848, 945376, 1804048, 1395742, 3485061],
-            "n": 426
-        },
-        "2014_185/2014-07-04T00-03-02+00-00": {
-            "hash": 7424829463801822127,
-            "sums": [1601376, 1399856, 2824592, 2277108, 4914006],
-            "n": 495
-        }
-    }
-
-    data_cols = ["D1", "D2", "fsc_small", "pe", "chl_small"]
-    opp_df = pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet"))
-    opp_df = sfp.particleops.log_particles(opp_df, data_cols)
-    for file_id, group in opp_df.groupby("file_id"):
-        assert file_id in opp_answers
-        expected_filter_id = "2414efe1-a4ff-46da-a393-9180d6eab149"
-        got_filter_id = group["filter_id"].unique()[0]
-        assert got_filter_id == expected_filter_id
-        assert len(group["filter_id"].unique()) == 1
-        assert len(group) == opp_answers[file_id]["n"]
-        # Weaker test for dataframe equality (not including types)
-        assert list(group.sum(numeric_only=True)[["D1", "D2", "fsc_small", "pe", "chl_small"]].astype(int)) == opp_answers[file_id]["sums"]
-        # Strong test for dataframe equality (including types)
-        assert pd.util.hash_pandas_object(group, index=False).sum() == opp_answers[file_id]["hash"]
-
-    # Check numbers stored in opp table are correct
-    filter_params = sfp.db.get_latest_filter(tmpout["db"])
-    filter_id = filter_params.iloc[0]["id"]
-    opp_table = sfp.db.get_opp_table(tmpout["db"], filter_id)
-    npt.assert_array_equal(
-        opp_table["all_count"],
-        pd.Series([
-            40000, 40000, 40000,
-            40000, 40000, 40000,
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0,
-            40000, 40000, 40000,
-            40000, 40000, 40000
-        ], name="all_count")
-    )
-    npt.assert_array_equal(
-        opp_table["evt_count"],
-        pd.Series([
-            39928, 39928, 39928,
-            39925, 39925, 39925,
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0,
-            39925, 39925, 39925
-        ], name="evt_count")
-    )
-    npt.assert_array_equal(
-        opp_table["opp_count"],
-        pd.Series([
-            423, 107, 85,
-            492, 178, 142,
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0,
-            0, 13, 14
-        ], name="opp_count")
-    )
-    npt.assert_array_equal(
-        opp_table["opp_evt_ratio"],
-        (opp_table["opp_count"] / opp_table["evt_count"]).replace(np.inf, 0).replace(np.NaN, 0)
-    )
-
-    files = [
-        "2014_185/2014-07-04T00-00-02+00-00",
-        "2014_185/2014-07-04T00-03-02+00-00",
-        "2014_185/2014-07-04T00-06-02+00-00",
-        "2014_185/2014-07-04T00-09-02+00-00",
-        "2014_185/2014-07-04T00-12-02+00-00",
-        "2014_185/2014-07-04T00-15-02+00-00",
-        "2014_185/2014-07-04T00-17-02+00-00"
-    ]
-    answer = []
-    for threes in [[f, f, f] for f in files]:
-        for f in threes:
-            answer.append(f)
-    assert opp_table["file"].tolist() == answer
-
-    # Check that outlier table has entry for every file
-    outlier_table = sfp.db.get_outlier_table(tmpout["db"])
-    assert outlier_table["file"].tolist() == files
-    assert outlier_table["flag"].tolist() == [0 for f in files]
+        # Check that outlier table has entry for every file
+        outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])
+        expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
+        pdt.assert_frame_equal(outlier_table, expected_outlier_table)

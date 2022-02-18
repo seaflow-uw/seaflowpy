@@ -276,61 +276,6 @@ def read_evt_labview(path, fileobj=None):
     return read_labview(path, columns=None, fileobj=fileobj).astype(np.float64)
 
 
-def read_opp_labview(path, fileobj=None):
-    """
-    Read an OPP labview binary SeaFlow data file.
-
-    Data will be read from the file at the provided path or preferentially from
-    fileobj if provided. If path is provided and ends with '.gz' data will be
-    considered gzip compressed even if read from fileobj.
-
-    Parameters
-    -----------
-    path: str
-        File path.
-    fileobj: io.BytesIO, optional
-        Open file object.
-
-    Returns
-    -------
-    pandas.DataFrame
-        SeaFlow OPP DataFrame as numpy.float64 values with quantile flag
-        columns.
-    """
-    df = read_labview(path, particleops.COLUMNS + ["bitflags"], fileobj)
-    df[particleops.COLUMNS] = df[particleops.COLUMNS].astype(np.float64)
-    df["noise"] = False  # we know there are no noise events in OPP data
-    df["saturated"] = False  # we know there are no saturated events in OPP data
-    df = particleops.decode_bit_flags(df)
-    return df
-
-
-def read_vct_csv(path, fileobj=None):
-    """
-    Read a VCT space-separated CSV SeaFlow data file for one quantile.
-
-    Data will be read from the file at the provided path or preferentially from
-    fileobj if provided. If path is provided and ends with '.gz' data will be
-    considered gzip compressed even if read from fileobj.
-
-    Parameters
-    -----------
-    path: str
-        File path.
-    fileobj: io.BytesIO, optional
-        Open file object.
-
-    Returns
-    -------
-    pandas.DataFrame
-        SeaFlow VCT DataFrame for one quantile as numpy.float64 values plus
-        one text column for population labels.
-    """
-    with file_open_r(path, fileobj) as fh:
-        df = pd.read_csv(fh, sep=" ", names=["diam_lwr", "Qc_lwr", "diam_mid", "Qc_mid", "diam_upr", "Qc_upr", "pop"])
-        return df
-
-
 def read_filter_params_csv(path):
     """
     Read a filter parameters csv file.
@@ -422,53 +367,6 @@ def write_evt_labview(df, path, outdir, gz=True):
         outpath = outpath + ".gz"
     # Only keep columns we intend to write to file
     write_labview(df[particleops.COLUMNS], outpath)
-
-
-def write_opp_labview(df, path, outdir, gz=True, require_all=True):
-    """
-    Write an OPP SeaFlow event DataFrame as LabView binary file.
-
-    Quantile flags will be encoded as a final bit flag column. The noise column
-    will be dropped.
-
-    Parameters
-    -----------
-    df: pandas.DataFrame
-        SeaFlow focused particle DataFrame.
-    path: str
-        File name. This will be converted into a standard SeaFlow file ID and
-        will be used to construct the final output file path within outdir. The
-        final file name will also have an ".opp" file extension, plus ".gz"
-        extension if gz is True.
-    outdir: str
-        Output directory. This function will create day of year subdirectories
-        for EVT binary files.
-    gz: bool, default True
-        Gzip compress?
-    require_all: bool, default True
-        If true all an output file will only be created if there is focused
-        particle data for all quantiles.
-    """
-    if df is None:
-        return
-
-    # Return early if any quantiles got completely filtered out
-    write_flag = True
-    if require_all:
-        for q_col, _q, _q_str, q_df in particleops.quantiles_in_df(df):
-            write_flag = write_flag & q_df[q_col].any()
-
-    if write_flag:
-        # Attach a bit flag column to encode all the per-quantile focused
-        # particle flags.
-        df = particleops.encode_bit_flags(df.copy())
-
-        sfile = SeaFlowFile(path)
-        outpath = os.path.join(outdir, sfile.file_id + ".opp")
-        if gz:
-            outpath = outpath + ".gz"
-        # Only keep columns we intend to write to file
-        write_labview(df[particleops.COLUMNS + ["bitflags"]], outpath)
 
 
 def write_opp_parquet(opp_dfs, date, window_size, outdir):

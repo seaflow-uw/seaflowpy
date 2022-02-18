@@ -60,7 +60,8 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
 
     worker_count = min(len(grouped), worker_count)
 
-    work["filter_params"] = db.get_latest_filter(dbpath)
+    # Get a dictionary of file_id: filter_params
+    work["filter_params"] = db.get_filter_params_lookup(dbpath, files_df)
 
     # Create input queue with info necessary to filter one file
     work_q = mp.Queue()
@@ -133,6 +134,7 @@ def do_filter(work_q, opps_q):
                 "path": row["path"]
             }
 
+            filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
             try:
                 evt_df = fileio.read_evt_labview(path=row["path"])
             except errors.FileError as e:
@@ -143,23 +145,24 @@ def do_filter(work_q, opps_q):
                 evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
 
             try:
-                evt_df = particleops.mark_focused(evt_df, work["filter_params"], inplace=True)
+                evt_df = particleops.mark_focused(evt_df, filter_params, inplace=True)
                 opp_df = particleops.select_focused(evt_df)
+            except Exception as e:
+                result["error"] = f"Unexpected error when marking and selecting focused particles in file {row['path']}: {e}"
+            else:
                 opp_df["date"] = date
                 opp_df["file_id"] = row["file_id"]
-                opp_df["filter_id"] = work["filter_params"]["id"][0]
+                opp_df["filter_id"] = filter_params["id"][0]
                 result["opp"] = opp_df
                 result["all_count"] = len(evt_df.index)
                 result["noise_count"] = len(evt_df[evt_df["noise"]].index)
                 result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
                 result["opp_count"] = len(opp_df[opp_df["q50"]])
-            except Exception as e:
-                result["error"] = f"Unexpected error when selecting focused partiles in file {row['path']}: {e}"
+                result["filter_id"] = filter_params["id"][0]
 
             work["results"].append(result)
 
         # Prep db data
-        filter_id = work["filter_params"]["id"].unique().tolist()[0]
         work["opp_vals"], work["outlier_vals"] = [], []
         for r in work["results"]:
             work["opp_vals"].extend(
@@ -168,9 +171,10 @@ def do_filter(work_q, opps_q):
                     r["opp"],
                     r["all_count"],
                     r["all_count"] - r["noise_count"],
-                    filter_id
+                    r["filter_id"]
                 )
             )
+
             work["outlier_vals"].extend(db.prep_outlier(r["file_id"], 0))
         # Save OPP file
         # Only include OPP files with data in all quantiles
@@ -213,7 +217,7 @@ def do_save(opps_q, stats_q, files_left):
         try:
             work = opps_q.get(True, 600)  # We should get one hour of data every ten minutes at least
             #print("{} {} received {}/{} results at {}".format(work["window_start_date"], os.getpid(), len(work["results"]), len(work["files_df"]), datetime.datetime.now().isoformat()), file=sys.stderr)
-        except queue.Empty as e:
+        except queue.Empty:
             stats_q.put("EMPTY QUEUE")
             break
         except Exception:

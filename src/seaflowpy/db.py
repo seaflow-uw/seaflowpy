@@ -241,6 +241,33 @@ def get_latest_filter(dbpath):
     return df[df["id"] == _id]
 
 
+def get_filter_params_lookup(dbpath, files_df):
+    files_df = files_df.copy().reset_index(drop=False)
+    with sqlite3.connect(dbpath) as dbcon:
+        filter_df = safe_read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
+        filter_plan_df = safe_read_sql("SELECT * FROM filter_plan ORDER BY start_date ASC", dbcon)
+    if len(filter_df.index) == 0:
+        raise errors.SeaFlowpyError("No filter parameters found in database {}\n".format(dbpath))
+    if len(filter_plan_df.index) == 0:
+        raise errors.SeaFlowpyError("No filter plan found in database {}\n".format(dbpath))
+
+    files_df["filter_id"] = None
+    if len(filter_plan_df) > 1:
+        for i in range(len(filter_plan_df) - 1):
+            gte = files_df["date"] >= filter_plan_df.loc[i, "start_date"]
+            lte = files_df["date"] <= filter_plan_df.loc[i + 1, "start_date"]
+            files_df.loc[(gte & lte), "filter_id"] = filter_plan_df.loc[i, "filter_id"]
+    i = len(filter_plan_df) - 1
+    gte = files_df["date"] >= filter_plan_df.loc[i, "start_date"]
+    files_df.loc[gte, "filter_id"] = filter_plan_df.loc[i, "filter_id"]
+
+    filter_params = {}
+    for i, row in files_df.iterrows():
+        filter_params[row["file_id"]] = filter_df[filter_df["id"] == row["filter_id"]].reset_index(drop=True)
+
+    return filter_params
+
+
 def get_opp_table(dbpath, filter_id=""):
     if filter_id == "":
         sql = "SELECT * FROM opp ORDER BY file ASC, quantile ASC"
