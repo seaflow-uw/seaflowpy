@@ -61,63 +61,6 @@ def evt_cmd():
     pass
 
 
-@evt_cmd.command('count')
-@click.option('-H', '--no-header', is_flag=True, default=False, show_default=True,
-    help="Don't print column headers.")
-@click.argument('evt-files', nargs=-1, type=click.Path(exists=True))
-def count_evt_cmd(no_header, evt_files):
-    """
-    Reports event counts in EVT/OPP files.
-
-    For speed, only a portion at the beginning of the file is read to get the
-    event count. If any of EVT-FILES are directories all EVT/OPP files within
-    those directories will be recursively found and examined. Files which can't
-    be read with a valid EVT/OPP file name and file header will be reported
-    with a count of 0.
-
-    Unlike the "evt validate" command, this command does not attempt validation
-    of the EVT/OPP file beyond reading the first 4 byte row count header.
-    Because of this, there may be files where "evt validate" reports 0 events
-    while this tool reports > 0 events.
-
-    Outputs tab-delimited text to STDOUT.
-    """
-    if not evt_files:
-        return
-
-    # dirs to file paths
-    files = expand_file_list(evt_files)
-
-    header_printed = False
-
-    for filepath in files:
-        # Default values
-        filetype = '-'
-        file_id = '-'
-        events = 0
-
-        # Try to parse filename as SeaFlow file
-        try:
-            sff = seaflowfile.SeaFlowFile(filepath)
-            file_id = sff.file_id
-            if sff.is_opp:
-                filetype = 'opp'
-            else:
-                filetype = 'evt'
-        except errors.FileError:
-            # Might have unusual name
-            pass
-        try:
-            events = fileio.read_labview_row_count(filepath)
-        except errors.FileError:
-            pass  # accept defaults, do nothing
-
-        if not header_printed and not no_header:
-            print('\t'.join(['path', 'file_id', 'type', 'events']))
-            header_printed = True
-        print('\t'.join([filepath, file_id, filetype, str(events)]))
-
-
 @evt_cmd.command('beads')
 @click.option('-c', '--cruise', type=str, required=True,
     help='Cruise name for summary plot title.')
@@ -435,13 +378,13 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def validate_evt_cmd(report_all, files):
     """
-    Examines EVT/OPP files.
+    Examines EVT files.
 
-    If any of the file arguments are directories all EVT/OPP files within those
+    If any of the file arguments are directories all EVT files within those
     directories will be recursively found and examined. Prints file validation
     report to STDOUT. Print summary of files passing validation to STDERR.
     """
-    # TODO: expand to calculate hash for binary EVT and binary OPP (all columns, only OPP columns)
+    # TODO: expand to calculate hash for binary EVT
     # and OPP parquet files with an extra flag. OPP parquet should produce hashes for
     # each file_id in the whole file (e.g. by group_by)
     if not files:
@@ -455,8 +398,7 @@ def validate_evt_cmd(report_all, files):
 
     for filepath in files:
         # Default values
-        type_from_filename = '-'
-        filetype = '-'
+        version = '-'
         file_id = '-'
         events = 0
 
@@ -464,74 +406,37 @@ def validate_evt_cmd(report_all, files):
         try:
             sff = seaflowfile.SeaFlowFile(filepath)
             file_id = sff.file_id
-            if sff.is_evt:
-                type_from_filename = 'evt'
-                filetype = 'evt'
-            elif sff.is_opp:
-                type_from_filename = 'opp'
-                filetype = 'opp'
         except errors.FileError:
             # unusual name, no file_id
             pass
 
-        if type_from_filename == 'evt':
-            try:
-                data = fileio.read_evt_labview(filepath)
-                status = 'OK'
-                ok += 1
-                events = len(data.index)
-            except errors.FileError as e:
-                status = str(e)
-                bad += 1
-                events = 0
-        elif type_from_filename == 'opp':
-            try:
-                data = fileio.read_opp_labview(filepath)
-                status = 'OK'
-                ok += 1
-                events = len(data.index)
-            except errors.FileError as e:
-                status = str(e)
-                bad += 1
-                events = 0
-        elif type_from_filename == '-':
-            # Try to read as both EVT or OPP
-            try:
-                data = fileio.read_evt_labview(filepath)
-                filetype = 'evt'
-                status = 'OK'
-                ok += 1
-                events = len(data.index)
-            except errors.FileError:
-                try:
-                    data = fileio.read_opp_labview(filepath)
-                    filetype = 'opp'
-                    status = 'OK'
-                    ok += 1
-                    events = len(data.index)
-                except errors.FileError as e:
-                    status = str(e)
-                    bad += 1
-                    events = 0
+        # Try to read file as binary EVT
+        try:
+            data = fileio.read_evt_labview(filepath)
+            version = data['version']
+            status = 'OK'
+            ok += 1
+            events = len(data['df'].index)
+        except errors.FileError as e:
+            status = str(e)
+            bad += 1
 
         if not header_printed:
-            print('\t'.join(['path', 'file_id', 'type', 'status', 'events']))
+            print('\t'.join(['path', 'file_id', 'version', 'status', 'events']))
             header_printed = True
         if (report_all and status == 'OK') or (status != 'OK'):
-            print('\t'.join([filepath, file_id, filetype, status, str(events)]))
+            print('\t'.join([filepath, file_id, version, status, str(events)]))
     print('%d/%d files passed validation' % (ok, bad + ok), file=sys.stderr)
 
 
 def expand_file_list(files_and_dirs):
-    """Convert directories in file list to EVT/OPP file paths."""
+    """Convert directories in file list to EVT file paths."""
     # Find files in directories
     dirs = [f for f in files_and_dirs if os.path.isdir(f)]
     files = [f for f in files_and_dirs if os.path.isfile(f)]
 
     dfiles = []
     for d in dirs:
-        evt_files = seaflowfile.find_evt_files(d)
-        opp_files = seaflowfile.find_evt_files(d, opp=True)
-        dfiles = dfiles + evt_files + opp_files
+        dfiles = dfiles + seaflowfile.find_evt_files(d)
 
     return files + dfiles

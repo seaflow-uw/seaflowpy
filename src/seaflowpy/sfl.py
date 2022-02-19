@@ -392,7 +392,7 @@ def fix_underway(sfl_df, geo_df, thermo_df):
     """
     # Copy everything first
     sfl_df, geo_df, thermo_df = sfl_df.copy(), geo_df.copy(), thermo_df.copy()
-    
+
     offset = "1min"  # resampling target frequency
     # Resample geo
     # Special case handling of longitude around the international date line

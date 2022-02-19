@@ -32,18 +32,17 @@ def cmd(filter_, verbose, files):
             sfile = sfp.seaflowfile.SeaFlowFile(f)
         except sfp.errors.FileError:
             continue
-        if sfile.is_evt:
-            try:
-                evt_df = sfp.fileio.read_evt_labview(f)
-                msg = f"{os.path.basename(f)} {len(evt_df.index)}"
-                if filter_:
-                    evt_df = sfp.particleops.mark_focused(evt_df, params)
-                    opp_df = sfp.particleops.select_focused(evt_df)
-                    msg += f" {len(opp_df.index)}"
-                if verbose:
-                    print(msg)
-            except sfp.errors.FileError:
-                pass
+        try:
+            evt_df = sfp.fileio.read_evt_labview(f)["df"]
+            msg = f"{os.path.basename(f)} {len(evt_df.index)}"
+            if filter_:
+                evt_df = sfp.particleops.mark_focused(evt_df, params)
+                opp_df = sfp.particleops.select_focused(evt_df)
+                msg += f" {len(opp_df.index)}"
+            if verbose:
+                print(msg)
+        except sfp.errors.FileError:
+            pass
     print("{}".format(time.time() - t0))
 
 if __name__ == "__main__":

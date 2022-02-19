@@ -154,8 +154,10 @@ def read_labview(path, columns=None, fileobj=None):
 
     Returns
     -------
-    pandas.DataFrame
-        SeaFlow event DataFrame as numpy.float64 values.
+    dict of {
+        "version": "v1"|"v2",
+        "df": SeaFlow event pandas.DataFrame as numpy.float64 values
+    }
     """
     try:
         with file_open_r(path, fileobj) as fh:
@@ -217,40 +219,7 @@ def read_labview(path, columns=None, fileobj=None):
         df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
     else:
         df = pd.DataFrame(events, columns=columns)
-    return df
-
-
-def read_labview_row_count(path, fileobj=None):
-    """
-    Get the row count of a labview binary SeaFlow data file.
-
-    Only a small amount of data from the beginning of the file will be read to
-    get the reported row count from the file header. This should be a much
-    faster method of getting row count than reading the whole file. Data will
-    be read from the file at the provided path or preferentially from fileobj
-    if provided. If path is provided and ends with '.gz' data will be
-    considered gzip compressed even if read from fileobj.
-
-    Parameters
-    -----------
-    path: str
-        File path.
-    fileobj: io.BytesIO, optional
-        Open file object.
-
-    Returns
-    -------
-    int
-        Number of rows reported in the labview file header (first uint32).
-    """
-    if path.endswith('.gz'):
-        with io.open(path, 'rb') as fh:
-            fileobj = io.BytesIO(fh.read(512))  # read enough to get first 4 uncompressed bytes
-    with file_open_r(path, fileobj) as fh:
-        # Particle count (rows of data) is stored in an initial 32-bit
-        # unsigned int
-        counts = read_evt_header(fh)
-    return counts["rowcnt"]
+    return {"version": version, "df": df.astype(np.float64)}
 
 
 def read_evt_labview(path, fileobj=None):
@@ -270,10 +239,12 @@ def read_evt_labview(path, fileobj=None):
 
     Returns
     -------
-    pandas.DataFrame
-        SeaFlow event DataFrame as numpy.float64 values.
+    dict of {
+        "version": "v1"|"v2",
+        "df": SeaFlow event pandas.DataFrame as numpy.float64 values
+    }
     """
-    return read_labview(path, columns=None, fileobj=fileobj).astype(np.float64)
+    return read_labview(path, columns=None, fileobj=fileobj)
 
 
 def read_filter_params_csv(path):
@@ -302,6 +273,9 @@ def read_filter_params_csv(path):
     # Fix column names
     df.columns = [c.replace('.', '_') for c in df.columns]
     # Make sure serial numbers are treated as strings
+    # pandas.read_csv can return a dataframe or TextFileReader so disable
+    # member method linting.
+    # pylint: disable=no-member
     df = df.astype({"instrument": "str"})
     return df
 

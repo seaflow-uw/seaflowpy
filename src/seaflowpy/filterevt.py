@@ -136,7 +136,8 @@ def do_filter(work_q, opps_q):
 
             filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
             try:
-                evt_df = fileio.read_evt_labview(path=row["path"])
+                data = fileio.read_evt_labview(path=row["path"])
+                evt_df = data["df"]
             except errors.FileError as e:
                 result["error"] = f"Could not parse file {row['path']}: {e}"
                 evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition

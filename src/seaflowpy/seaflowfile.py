@@ -8,16 +8,12 @@ from . import util
 
 
 dayofyear_re = r'^\d{1,4}_\d{1,3}$'
-new_path_re = r'^\d{1,4}_\d{1,3}/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}$'
 new_file_re = r'^(?P<date>\d{4}-\d{2}-\d{2})T(?P<hours>\d{2})-(?P<minutes>\d{2})-(?P<seconds>\d{2})(?P<tzhours>[+-]\d{2})-(?P<tzminutes>\d{2})$'
-old_path_re = r'^\d{1,4}_\d{1,3}/\d+\.evt$'
 old_file_re = r'^\d+\.evt$'
-evt_file_re = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}(?:\.gz)?$|^\d+\.evt(?:\.gz)?$'
-opp_file_re = r'^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}[+-]\d{2}-\d{2}\.opp(?:\.gz)?$|^\d+\.evt\.opp(?:\.gz)?$'
 
 
 class SeaFlowFile:
-    """Base class for EVT/OPP/VCT file classes"""
+    """Base class for EVT file classes"""
 
     def __init__(self, path, date=None):
         """
@@ -30,15 +26,18 @@ class SeaFlowFile:
 
         parts = parse_path(self.path)
         self.filename = parts["file"]
-        self.filename_noext = remove_ext(parts["file"])
+        if parts["file"].endswith(".gz"):
+            self.filename_nogz = self.filename[:-3]
+        else:
+            self.filename_nogz = self.filename
 
         if not (self.is_old_style or self.is_new_style):
-            raise errors.FileError("Filename doesn't look like a SeaFlow file")
+            raise errors.FileError("Filename doesn't look like a SeaFlow EVT file")
 
         if self.is_new_style:
             err = None
             try:
-                timestamp = timestamp_from_filename(self.filename_noext)
+                timestamp = timestamp_from_filename(self.filename_nogz)
                 self.date = time.parse_date(timestamp)
             except ValueError as e:
                 err = e
@@ -58,9 +57,8 @@ class SeaFlowFile:
         # from file datestmap
         self.path_dayofyear = parts["dayofyear"]
 
-        # Identifer to match across file types (EVT/OPP/VCT)
-        # Should be something like 2014_142/42.evt for old files. Note always
-        # .evt even for opp and vct. No .gz.
+        # Identifer to match EVT/SFL files
+        # Should be something like 2014_142/42.evt for old files.
         # Should be something like 2014_342/2014-12-08T22-53-34+00-00 for new
         # files. Note no extension including .gz.
         # The day of year directory will be based on parsed datestamp in
@@ -71,16 +69,16 @@ class SeaFlowFile:
             # filenames since we can't parse dates to calculate a day of year
             # directory
             if self.path_dayofyear:
-                self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
+                self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_nogz)
             else:
-                self.file_id = self.filename_noext
+                self.file_id = self.filename_nogz
             self.path_file_id = self.file_id
         else:
-            self.file_id = "{}/{}".format(self.dayofyear, self.filename_noext)
+            self.file_id = "{}/{}".format(self.dayofyear, self.filename_nogz)
             if self.path_dayofyear:
-                self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_noext)
+                self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_nogz)
             else:
-                self.path_file_id = self.filename_noext
+                self.path_file_id = self.filename_nogz
 
     def __str__(self):
         return "SeaFlowFile: {}, {}".format(self.file_id, self.path)
@@ -98,22 +96,12 @@ class SeaFlowFile:
     @property
     def is_old_style(self):
         """Is this old style file? e.g. 2014_185/1.evt."""
-        return bool(re.match(old_file_re, self.filename_noext))
+        return bool(re.match(old_file_re, self.filename_nogz))
 
     @property
     def is_new_style(self):
         """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.gz"""
-        return bool(re.match(new_file_re, self.filename_noext))
-
-    @property
-    def is_evt(self):
-        """Is this an EVT file?"""
-        return bool(re.match(evt_file_re, self.filename))
-
-    @property
-    def is_opp(self):
-        """Is this an OPP file?"""
-        return bool(re.match(opp_file_re, self.filename))
+        return bool(re.match(new_file_re, self.filename_nogz))
 
     @property
     def rfc3339(self):
@@ -134,9 +122,9 @@ class SeaFlowFile:
         if self.is_old_style:
             # Number part of basename, necessary because number isn't
             # zero-filled
-            file_key = int(self.filename_noext.split(".")[0])
+            file_key = int(self.filename_nogz.split(".")[0])
         else:
-            file_key = self.filename_noext
+            file_key = self.filename_nogz
         return (year, day, file_key)
 
 
@@ -148,10 +136,10 @@ def create_dayofyear_directory(dt):
 
 
 def timestamp_from_filename(filename):
-    filename_noext = remove_ext(os.path.basename(filename))
-    m = re.match(new_file_re, filename_noext)
+    filename_to_first_dot = os.path.basename(filename).split(".")[0]
+    m = re.match(new_file_re, filename_to_first_dot)
     if m:
-        # New style EVT filenames, e.g.
+        # New style EVT/SFL filenames, e.g.
         # - 2014-05-15T17-07-08+00-00
         # - 2014-05-15T17-07-08-07-00
         # Parse RFC 3339 date string
@@ -170,18 +158,8 @@ def parse_path(file_path):
     return d
 
 
-def remove_ext(filename):
-    """Remove extensions from filename except .evt in old files."""
-    file_parts = filename.split(".")
-    noext = file_parts[0]
-    if len(file_parts) > 1 and file_parts[1] == "evt" and re.match(r'^\d+$', file_parts[0]):
-        # For old-style evt filenames, e.g. 42.evt
-        noext += ".evt"
-    return noext
-
-
 def sorted_files(files):
-    """Sort EVT/OPP/VCT file paths in chronological order.
+    """Sort EVT file paths in chronological order.
 
     Order is based on day of year directory parsed from path and then file name.
     """
@@ -204,24 +182,23 @@ def filtered_file_list(total_list, filter_list):
     return files
 
 
-def find_evt_files(root_dir, opp=False):
-    """Return a chronologically sorted list of EVT/OPP file paths in root_dir."""
+def find_evt_files(root_dir):
+    """Return a chronologically sorted list of EVT file paths in root_dir."""
     files = util.find_files(root_dir)
-    files = keep_evt_files(files, opp=opp)
+    files = keep_evt_files(files)
     return sorted_files(files)
 
 
-def keep_evt_files(files, opp=False):
+def keep_evt_files(files):
     """Filter list of files to only keep EVT files."""
     files_list = []
     for f in files:
         try:
-            sfile = SeaFlowFile(f)
+            _ = SeaFlowFile(f)
         except errors.FileError:
             pass
         else:
-            if (opp and sfile.is_opp) | (not opp and sfile.is_evt):
-                files_list.append(f)
+            files_list.append(f)
     return files_list
 
 

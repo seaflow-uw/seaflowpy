@@ -9,12 +9,6 @@ from seaflowpy import util
 from seaflowpy import seaflowfile
 
 
-@click.group()
-def filter_cmd():
-    """EVT filtering subcommand."""
-    pass
-
-
 def validate_limit(ctx, param, value):
     if value is not None and value < 1:
         raise click.BadParameter('if limit is set, it must be >= 1')
@@ -33,7 +27,7 @@ def validate_resolution(ctx, param, value):
     return value
 
 
-@filter_cmd.command('local')
+@click.command()
 @click.option('-D', '--delta', is_flag=True,
     help='Filter EVT files which are not already present in the opp table.')
 @click.option('-e', '--evt-dir', metavar='DIR', type=click.Path(exists=True), required=True,
@@ -49,7 +43,7 @@ def validate_resolution(ctx, param, value):
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
 @util.quiet_keyboardinterrupt
-def local_filter_evt_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution):
+def filter_evt_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Find cruise in db
     try:
