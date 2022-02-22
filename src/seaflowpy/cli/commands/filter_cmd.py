@@ -43,7 +43,7 @@ def validate_resolution(ctx, param, value):
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
 @util.quiet_keyboardinterrupt
-def filter_evt_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution):
+def filter_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Find cruise in db
     try:
