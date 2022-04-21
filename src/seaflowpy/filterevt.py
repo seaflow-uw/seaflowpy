@@ -236,7 +236,7 @@ def do_save(opps_q, stats_q, files_left):
                     db.save_outlier(work["outlier_vals"], work["dbpath"])
                 #print("{} {} db saved at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
         except Exception as e:
-            work["errors"].append("Unexpected error when saving file {} to db: {}".format(work["file"], e))
+            work["errors"].append("Unexpected error when saving to db for {} batch starting at {}: {}".format(work["window_size"], work["window_start_date"], e))
 
         #print("{} {} sent stats at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
         stats_q.put(work)
