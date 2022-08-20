@@ -57,7 +57,7 @@ def validate_hours(ctx, param, value):
 
 @click.group()
 def evt_cmd():
-    """EVT file examination subcommand."""
+    """EVT file subcommand."""
     pass
 
 
@@ -258,8 +258,6 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     The list of EVT files can be file paths or directory paths
     which will be searched for EVT files.
     COUNT events will be randomly selected from all data.
-    If --outpath is a single file only a fraction of the input files will be
-    sampled from (FILE-FRACTION) and one combined output file will be created.
     """
     if verbose == 0:
         loglevel = logging.WARNING
@@ -270,55 +268,33 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
 
     # Get file to date mappings from SFL file
+    files = seaflowfile.keep_evt_files(expand_file_list(files))
+    files = seaflowfile.sorted_files(files)
     if sfl_path:
         sfl_df = sfl.read_file(sfl_path, convert_dates=True)
         sfl_df = sfl.fix(sfl_df)  # ensure valid file_ids in file column
-        dates = dict(zip(sfl_df["file"].tolist(), sfl_df["date"].tolist()))
     else:
-        dates = {}
-
-    # dirs to file paths, only keep EVT/OPP files
-    files = seaflowfile.keep_evt_files(expand_file_list(files))
-    files = seaflowfile.sorted_files(files)
-    # Parse file names, adding dates from SFL data if needed
-    sfiles = []
-    for f in files:
-        try:
-            # Create an initial SeaFlowFile to get file_id
-            sf = seaflowfile.SeaFlowFile(f)
-        except errors.FileError:
-            logging.warning("could not parse filename for %s", f)
-        else:
-            if sfl_path is not None:
-                if sf.file_id in dates:
-                    # For old filenames without timestamp, this sets the date from
-                    # SFL. For new filenames with timestamps, this checks that both
-                    # dates match.
-                    sf = seaflowfile.SeaFlowFile(f, date=dates.get(sf.file_id, None))
-                    # Only add to list if in SFL when SFL is provided
-                    sfiles.append(sf)
-            else:
-                # Always accept file in absence of SFL
-                sfiles.append(sf)
-            # Add date to dates dict if not already there from SFL
-            dates[sf.file_id] = sf.date
+        sfl_df = None
+    evt = seaflowfile.date_evt_files(files, sfl_df)
 
     # Select by time.
     # If paths don't have timestamps and SFL not provided, this step will always
     # filter out all files.
-    if tail_hours is not None and len(sfiles):
-        latest = sfiles[-1].date
-        tail_min_date = latest - datetime.timedelta(hours=tail_hours)
+    if tail_hours is not None and len(evt):
+        tail_min_date = evt.date.max() - datetime.timedelta(hours=tail_hours)
         if min_date is None or min_date < tail_min_date:
             min_date = tail_min_date
         max_date = None
-    time_files = seaflowfile.timeselect_evt_files(sfiles, min_date, max_date)
-    time_files = [sf.path for sf in time_files]
+    if min_date is not None:
+        evt = evt[evt.date >= min_date]
+    if max_date is not None:
+        evt = evt[evt.date <= max_date]
+
     # Select fraction of files
     if not multi:
-        chosen_files = sample.random_select(time_files, file_fraction, seed)
+        chosen_files = sample.random_select(list(evt.path), file_fraction, seed)
     else:
-        chosen_files = time_files
+        chosen_files = list(evt.path)
 
     outdir = os.path.dirname(outpath)
     pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
@@ -327,7 +303,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
         chosen_files,
         count,
         outpath,
-        dates=dates,
+        dates=dict(zip(list(evt.file_id), list(evt.date))),
         min_chl=min_chl,
         min_fsc=min_fsc,
         min_pe=min_pe,
@@ -365,11 +341,59 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     if sfl_path:
         print("{} entries found in SFL file".format(len(sfl_df)), file=sys.stderr)
     print("{} input files".format(len(files)), file=sys.stderr)
-    print("{} files within time window".format(len(time_files)), file=sys.stderr)
+    print("{} files within time window".format(len(evt)), file=sys.stderr)
     print("{} selected files".format(len(chosen_files)), file=sys.stderr)
     print("{} total events".format(sum([r["events"] for r in results])), file=sys.stderr)
     print("{} events after noise/min filtering".format(sum([r["events_postfilter"] for r in results])), file=sys.stderr)
     print("{} events sampled".format(sum([r["events_postsampling"] for r in results])), file=sys.stderr)
+
+
+
+@evt_cmd.command('dates')
+@click.option('--min-date', type=str, callback=validate_timestamp,
+    help='Minimum date of file to consider.')
+@click.option('--max-date', type=str, callback=validate_timestamp,
+    help='Maximum date of file to consider.')
+@click.option('--tail-hours', type=int, metavar='N', callback=validate_hours,
+    help="""Only consider the most recent N hours of data. Unsets --max-date.
+            If --min-date is also provided it will be used if it is more recent
+            than <last date - N hours>.""")
+@click.option('-S', '--sfl', 'sfl_path', type=click.Path(),
+    help="""SFL file that can be used to associate dates with EVT files. Useful when
+            sampling undated EVT files.""")
+@click.argument('files', nargs=-1, type=click.Path(exists=True))
+def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
+    """
+    Get date range for a set of EVT files.
+
+    The list of EVT files can be file paths or directory paths
+    which will be searched for EVT files.
+    """
+    logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=logging.INFO)
+    files = seaflowfile.keep_evt_files(expand_file_list(files))
+    files = seaflowfile.sorted_files(files)
+    if sfl_path:
+        sfl_df = sfl.read_file(sfl_path, convert_dates=True)
+        sfl_df = sfl.fix(sfl_df)  # ensure valid file_ids in file column
+    else:
+        sfl_df = None
+    evt = seaflowfile.date_evt_files(files, sfl_df)
+
+    # Select by time.
+    # If paths don't have timestamps and SFL not provided, this step will always
+    # filter out all files.
+    if tail_hours is not None and len(evt):
+        tail_min_date = evt.date.max() - datetime.timedelta(hours=tail_hours)
+        if min_date is None or min_date < tail_min_date:
+            min_date = tail_min_date
+        max_date = None
+    if min_date is not None:
+        evt = evt[evt.date >= min_date]
+    if max_date is not None:
+        evt = evt[evt.date <= max_date]
+
+    if len(evt):
+        print(f"{evt.date.min().isoformat()} {evt.date.max().isoformat()}")
 
 
 @evt_cmd.command('validate')
