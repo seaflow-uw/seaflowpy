@@ -118,10 +118,11 @@ def read_evt_header(f):
         { "rowcnt": row count, "colcnt": column count, "version": v1 or v2 }
     """
     bytes_per_col = 2
+
     # v1: number of rows of data
-    # v2: bytes per row of data, should always be 10
+    # v2: bytes per row of data, should always be 14 (7 columns * 2 bytes)
     buff1 = f.read(4)
-    # v1: number of 2-byte columns per row, should always be 14
+    # v1: number of 2-byte columns per row, should always be 10
     # v2: number of rows of data
     buff2 = f.read(4)
     if len(buff1) < 4 or len(buff2) < 4:
