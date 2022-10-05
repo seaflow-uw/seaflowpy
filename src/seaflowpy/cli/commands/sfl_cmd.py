@@ -2,8 +2,10 @@ import json
 import os
 import sys
 from glob import glob
+import botocore
 import click
 import tsdataformat
+from seaflowpy import cloud
 from seaflowpy import db
 from seaflowpy import errors as sfperrors
 from seaflowpy import fileio
@@ -159,13 +161,37 @@ def manifest_cmd(verbose, sfl_file, evt_dir):
     """
     Compares files in SFL-FILE with files in EVT-DIR.
 
+    If EVT-DIR begins with 's3://s3-bucket-name' then files will located in S3.
+    To configure credentials for S3 access use the 'aws' command-line tool from
+    the 'awscli' Python package.
+
     It's normal for about one file per day to be missing from the SFL file or
     EVT day of year folder, especially around midnight.
 
     To read from STDIN use '-' for SFL_FILE. Prints a file list diff to STDOUT.
     """
     found_evt_ids = []
-    found_evt_files = seaflowfile.find_evt_files(evt_dir)
+    if evt_dir.startswith("s3://"):
+        try:
+            _, _, bucket, evt_dir = evt_dir.split("/", 3)
+        except ValueError:
+            raise click.ClickException("could not parse bucket and folder from S3 EVT-DIR")
+        try:
+            files = cloud.get_s3_file_list(bucket, evt_dir)
+        except botocore.exceptions.NoCredentialsError:
+            print('Please configure aws first:', file=sys.stderr)
+            print('  $ pip install awscli', file=sys.stderr)
+            print('  then', file=sys.stderr)
+            print('  $ aws configure', file=sys.stderr)
+            raise click.Abort()
+        except sfperrors.S3Error as e:
+            raise click.ClickException(e)
+        found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files))
+    else:
+        try:
+            found_evt_files = seaflowfile.find_evt_files(evt_dir)
+        except OSError as e:
+            raise click.ClickException(e)
 
     df = sfl.read_file(sfl_file)
     sfl_evt_ids = [seaflowfile.SeaFlowFile(f).file_id for f in df['file']]

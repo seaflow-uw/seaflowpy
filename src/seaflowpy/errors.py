@@ -11,3 +11,8 @@ class FileError(SeaFlowpyError):
 class ClusterError(SeaFlowpyError):
     """Custom exception class bead clustering errors"""
     pass
+
+
+class S3Error(SeaFlowpyError):
+    """Custom exception class for boto3 S3 related erorrs"""
+    pass

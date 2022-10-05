@@ -9,8 +9,12 @@ import time
 
 def find_files(root_dir):
     """Return a list of all file paths below root_dir."""
+    if not os.path.isdir(root_dir):
+        raise OSError("directory does not exist")
     allfiles = []
-    for root, _dirs, files in os.walk(root_dir):
+    def error_handler(e):
+        raise e
+    for root, _dirs, files in os.walk(root_dir, onerror=error_handler):
         for f in files:
             allfiles.append(os.path.join(root, f))
     return allfiles

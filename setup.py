@@ -16,6 +16,7 @@ setup(
     include_package_data=True,
     python_requires='>=3.7.1',
     install_requires=[
+        'boto3',
         'click',
         'hdbscan',
         'kern-smooth',
