@@ -4,6 +4,7 @@ import sys
 from glob import glob
 import botocore
 import click
+import pandas as pd
 import tsdataformat
 from seaflowpy import cloud
 from seaflowpy import db
@@ -238,14 +239,12 @@ def sfl_print_cmd(sfl_files):
     Input files will be concatenated in the order they're listed on the
     command-line. Outputs to STDOUT.
     """
-    df = None
+    dfs = []
     for f in sfl_files:
         onedf = sfl.read_file(f)
         onedf = sfl.fix(onedf)
-        if df is None:
-            df = onedf
-        else:
-            df = df.append(onedf)
+        dfs.append(onedf)
+    df = pd.concat(dfs, ignore_index=True)
     sfl.save_to_file(df, sys.stdout)
 
 
