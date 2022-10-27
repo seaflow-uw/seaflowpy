@@ -1,4 +1,3 @@
-from . import beads
 from . import cloud
 from . import db
 from . import errors
