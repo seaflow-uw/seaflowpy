@@ -57,6 +57,7 @@ def sample(
     min_pe=0,
     multi=False,
     noise_filter=False,
+    saturation_filter=False,
     process_count=1,
     seed=None,
 ):
@@ -85,7 +86,9 @@ def sample(
     multi: bool, default False
         Output one file per input file. If False, create one aggregated output file.
     noise_filter: bool, default False
-        Remove noise particles after sampling.
+        Remove noise particles before sampling.
+    saturation_filter: bool, default False
+        Remove particles saturating D1 or D2 before sampling (== max(D1|D2) for one EVT file)
     process_count: int, default: 1
         Number of worker processes to create.
     seed: int, default None
@@ -136,6 +139,7 @@ def sample(
         "min_fsc": min_fsc,
         "min_pe": min_pe,
         "noise_filter": noise_filter,
+        "saturation_filter": saturation_filter,
         "seed": seed,
     }
 
@@ -173,7 +177,7 @@ def _sample_many_to_one_worker(i, *args, **kwargs):
 
 
 def sample_many_to_one(
-    evtpaths, n, min_chl=0, min_fsc=0, min_pe=0, noise_filter=False, seed=None,
+    evtpaths, n, min_chl=0, min_fsc=0, min_pe=0, noise_filter=False, saturation_filter=False, seed=None,
 ):
     """
     Randomly sample rows from EVT files and combined into one dataframe.
@@ -191,7 +195,10 @@ def sample_many_to_one(
     min_pe: int, default 0
         Minimum pe value.
     noise_filter: bool, default False
-        Remove noise particles after sampling.
+        Remove noise particles before sampling.
+    saturation_filter: bool, default False
+        Remove particles saturating D1 or D2 before sampling (== max(D1|D2) for one EVT file)
+    saturation_filter
     seed: int, default None
         Integer seed for PRNG, used in sampling files and events. If None, a
         source of random seed will be used.
@@ -228,6 +235,7 @@ def sample_many_to_one(
             min_fsc=min_fsc,
             min_pe=min_pe,
             noise_filter=noise_filter,
+            saturation_filter=saturation_filter,
             seed=seed,
         )
         result["df"] = result["df"][columns]
@@ -251,7 +259,16 @@ def sample_many_to_one(
     }
 
 
-def sample_one(df, n, noise_filter=True, min_chl=0, min_fsc=0, min_pe=0, seed=None):
+def sample_one(
+    df,
+    n,
+    noise_filter=False,
+    saturation_filter=False,
+    min_chl=0,
+    min_fsc=0,
+    min_pe=0,
+    seed=None
+):
     """
     Randomly sample rows from an EVT dataframe.
 
@@ -261,8 +278,10 @@ def sample_one(df, n, noise_filter=True, min_chl=0, min_fsc=0, min_pe=0, seed=No
         EVT dataframe to sample from.
     n: int
         Events to sample from input files, > 0.
-    noise_filter: bool, default True
-        Remove noise particles after sampling.
+    noise_filter: bool, default False
+        Remove noise particles before sampling.
+    saturation_filter: bool, default False
+        Remove particles saturating D1 or D2 before sampling (== max(D1|D2) for one EVT file)
     min_chl: int, default 0
         Minimum chl_small value.
     min_fsc: int, default 0
@@ -296,11 +315,14 @@ def sample_one(df, n, noise_filter=True, min_chl=0, min_fsc=0, min_pe=0, seed=No
     chl = df["chl_small"].values >= min_chl
     fsc = df["fsc_small"].values >= min_fsc
     pe = df["pe"].values >= min_pe
+    selection = (chl & fsc & pe)
     if noise_filter:
         noise = particleops.mark_noise(df)
-        df = df[(~noise) & chl & fsc & pe]
-    else:
-        df = df[chl & fsc & pe]
+        selection = (selection & (~noise))
+    if saturation_filter:
+        sat = particleops.mark_saturated(df)
+        selection = (selection  & (~sat))
+    df = df[selection]
     events_postfilter = len(df.index)
     try:
         frac = min(n / events_postfilter, 1)

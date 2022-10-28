@@ -152,7 +152,7 @@ def mark_saturated(df):
     """
     Mark data that saturates D1 or D2.
 
-    This function returns a boolean Series marking events where none of
+    This function returns a boolean Series marking events where
     D1 == max(D1) or D2 == max(D2).
 
     Parameters
@@ -165,7 +165,7 @@ def mark_saturated(df):
     if len(df.index) == 0:
         return np.full(len(df.index), False)
     else:
-        return (df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max())
+        return ((df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max()))
 
 
 def merge_opp_vct(oppdf, vctdf):

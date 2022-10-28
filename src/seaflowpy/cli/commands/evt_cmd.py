@@ -84,6 +84,8 @@ def evt_cmd():
     help='Apply noise filter before subsampling.')
 @click.option('-p', '--process-count', type=int, default=1, show_default=True, callback=validate_positive,
     help='Number of processes to use.')
+@click.option('--saturation-filter', is_flag=True, default=False, show_default=True,
+    help='Apply saturation filter before subsampling.')
 @click.option('-s', '--seed', callback=validate_seed,
     help='Integer seed for PRNG, otherwise system-dependent source of randomness is used to seed the PRNG.')
 @click.option('-S', '--sfl', 'sfl_path', type=click.Path(),
@@ -93,8 +95,8 @@ def evt_cmd():
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
-                   min_date, max_date, tail_hours, multi, noise_filter, process_count, seed,
-                   sfl_path, verbose, files):
+                   min_date, max_date, tail_hours, multi, noise_filter, process_count, 
+                   saturation_filter, seed, sfl_path, verbose, files):
     """
     Sample a subset of events in EVT files.
 
@@ -152,6 +154,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
         min_pe=min_pe,
         multi=multi,
         noise_filter=noise_filter,
+        saturation_filter=saturation_filter,
         process_count=process_count,
         seed=seed
     )
@@ -187,7 +190,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     print("{} files within time window".format(len(evt)), file=sys.stderr)
     print("{} selected files".format(len(chosen_files)), file=sys.stderr)
     print("{} total events".format(sum([r["events"] for r in results])), file=sys.stderr)
-    print("{} events after noise/min filtering".format(sum([r["events_postfilter"] for r in results])), file=sys.stderr)
+    print("{} events after noise/sat/min filtering".format(sum([r["events_postfilter"] for r in results])), file=sys.stderr)
     print("{} events sampled".format(sum([r["events_postsampling"] for r in results])), file=sys.stderr)
 
 

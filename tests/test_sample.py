@@ -66,6 +66,49 @@ class TestSample:
         assert len(df.index) == 20000
         assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) == 0
 
+    def test_sample_evt_single_saturation_filter(self, tmpout):
+        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        results, errs = sfp.sample.sample(
+            tmpout["evtpaths"], 20000, outpath, saturation_filter=True, seed=12345
+        )
+        assert len(errs) == 0
+        assert len(results) == 2
+        assert [r["file_id"] for r in results] == tmpout["file_ids"]
+        assert [r["events"] for r in results] == [40000, 40000]
+        assert [r["events_postfilter"] for r in results] == [39789, 39737]
+        assert [r["events_postsampling"] for r in results] == [10000, 10000]
+        df = pd.read_parquet(outpath)
+        assert len(df.index) == 20000
+
+    def test_sample_evt_single_noise_and_saturation_filter(self, tmpout):
+        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        results, errs = sfp.sample.sample(
+            tmpout["evtpaths"], 20000, outpath, noise_filter=True, saturation_filter=True, seed=12345
+        )
+        assert len(errs) == 0
+        assert len(results) == 2
+        assert [r["file_id"] for r in results] == tmpout["file_ids"]
+        assert [r["events"] for r in results] == [40000, 40000]
+        assert [r["events_postfilter"] for r in results] == [39717, 39662]
+        assert [r["events_postsampling"] for r in results] == [10000, 10000]
+        df = pd.read_parquet(outpath)
+        assert len(df.index) == 20000
+
+    def test_sample_evt_single_noise_and_saturation_and_min_filter(self, tmpout):
+        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        results, errs = sfp.sample.sample(
+            tmpout["evtpaths"], 20000, outpath, noise_filter=True, saturation_filter=True, min_fsc=25000, seed=12345
+        )
+        assert len(errs) == 0
+        assert len(results) == 2
+        assert [r["file_id"] for r in results] == tmpout["file_ids"]
+        assert [r["events"] for r in results] == [40000, 40000]
+        assert [r["events_postfilter"] for r in results] == [600, 756]
+        assert [r["events_postsampling"] for r in results] == [600, 756]
+        df = pd.read_parquet(outpath)
+        assert len(df.index) == 1356
+        assert np.min(df["fsc_small"]) >= 25000
+
     def test_sample_evt_single_min_filter(self, tmpout):
         outpath = os.path.join(tmpout["tmpdir"], "test.gz")
         results, errs = sfp.sample.sample(
