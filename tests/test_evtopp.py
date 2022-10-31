@@ -207,9 +207,10 @@ class TestFilter:
         sat = sfp.particleops.mark_saturated(evt_df)
         assert sat.sum() == 211
 
-        d1_max = evt_df["D1"] == evt_df["D1"].max()
-        d2_max = evt_df["D2"] == evt_df["D2"].max()
-        assert len(evt_df[~(d1_max | d2_max)]) == 39789
+    def test_saturation_filter_custom_columns(self, evt_df):
+        """Events with max D2"""
+        sat = sfp.particleops.mark_saturated(evt_df, cols=["D2"])
+        assert sat.sum() == 210
 
     def test_all_quantiles(self):
         df = pd.DataFrame(

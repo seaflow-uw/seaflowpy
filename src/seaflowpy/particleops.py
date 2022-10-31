@@ -136,8 +136,8 @@ def mark_noise(df):
     This function returns a boolean Series marking events where none of
     D1, D2, or fsc_small are > 1.
 
-    Parameters
-    ----------
+    Returns
+    -------
     numpy.ndarray
         Boolean array of noise events.
     """
@@ -148,7 +148,7 @@ def mark_noise(df):
     return ~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1))
 
 
-def mark_saturated(df):
+def mark_saturated(df, cols=["D1", "D2"]):
     """
     Mark data that saturates D1 or D2.
 
@@ -157,15 +157,25 @@ def mark_saturated(df):
 
     Parameters
     ----------
+    df: pandas.DataFrame
+        SeaFlow EVT data.
+    cols: List of str, , default ["D1", "D2"]
+        Columns to test for saturation.
+
+    Returns
+    -------
     numpy.ndarray
         Boolean array of saturated events.
     """
-    if len(set(list(df)).intersection(set(["D1", "D2"]))) < 2:
-        raise ValueError("Can't apply saturation filter without D1 and D2")
+    if len(set(list(df)).intersection(set(cols))) < len(cols):
+        raise ValueError("Some columns requested are not present in df")
     if len(df.index) == 0:
         return np.full(len(df.index), False)
     else:
-        return ((df["D1"].values == df["D1"].values.max()) | (df["D2"].values == df["D2"].values.max()))
+        idx = False
+        for col in cols:
+            idx = (idx | (df[col].values == df[col].values.max()))
+        return idx
 
 
 def merge_opp_vct(oppdf, vctdf):

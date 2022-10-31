@@ -88,7 +88,8 @@ def sample(
     noise_filter: bool, default False
         Remove noise particles before sampling.
     saturation_filter: bool, default False
-        Remove particles saturating D1 or D2 before sampling (== max(D1|D2) for one EVT file)
+        Remove particles saturating D1, D2, fsc_small, chl_small, or pe before
+        sampling (== max(D1|D2|fsc_small|chl_small|pe) for one EVT file)
     process_count: int, default: 1
         Number of worker processes to create.
     seed: int, default None
@@ -197,7 +198,8 @@ def sample_many_to_one(
     noise_filter: bool, default False
         Remove noise particles before sampling.
     saturation_filter: bool, default False
-        Remove particles saturating D1 or D2 before sampling (== max(D1|D2) for one EVT file)
+        Remove particles saturating D1, D2, fsc_small, chl_small, or pe before
+        sampling (== max(D1|D2|fsc_small|chl_small|pe) for one EVT file)
     saturation_filter
     seed: int, default None
         Integer seed for PRNG, used in sampling files and events. If None, a
@@ -281,7 +283,8 @@ def sample_one(
     noise_filter: bool, default False
         Remove noise particles before sampling.
     saturation_filter: bool, default False
-        Remove particles saturating D1 or D2 before sampling (== max(D1|D2) for one EVT file)
+        Remove particles saturating D1, D2, fsc_small, chl_small, or pe before
+        sampling (== max(D1|D2|fsc_small|chl_small|pe) for one EVT file)
     min_chl: int, default 0
         Minimum chl_small value.
     min_fsc: int, default 0
@@ -320,7 +323,7 @@ def sample_one(
         noise = particleops.mark_noise(df)
         selection = (selection & (~noise))
     if saturation_filter:
-        sat = particleops.mark_saturated(df)
+        sat = particleops.mark_saturated(df, cols=["D1", "D2", "fsc_small", "chl_small", "pe"])
         selection = (selection  & (~sat))
     df = df[selection]
     events_postfilter = len(df.index)
