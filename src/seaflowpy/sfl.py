@@ -104,7 +104,7 @@ def check_date(df):
         date_flags = df["date"].map(check_date_string)
         if len(date_flags) > 0:
             # select rows that failed date check
-            for i, v in df[~date_flags]["date"].iteritems():
+            for i, v in df[~date_flags]["date"].items():
                 errors.append(create_error(df, "date", msg="Invalid date format", row=i, val=v))
     return errors
 
@@ -143,12 +143,12 @@ def check_file(df):
         good_files_selector = df["file"].map(parse_filename)
         good_files = df[good_files_selector]
         bad_files = df[~good_files_selector]
-        for i, v in bad_files["file"].iteritems():
+        for i, v in bad_files["file"].items():
             errors.append(create_error(bad_files, "file", msg="Invalid file name", row=i, val=v))
 
         # Files must be unique
         dup_files = df.loc[df["file"].duplicated(keep=False), "file"]
-        for i, v in dup_files.iteritems():
+        for i, v in dup_files.items():
             errors.append(create_error(dup_files, "file", msg="Duplicate file", row=i, val=v))
 
         # Files should be in order
@@ -162,7 +162,7 @@ def check_file(df):
 
         # Files should match date in same row
         if "date" in df.columns:
-            for i, v in good_files["file"].iteritems():
+            for i, v in good_files["file"].items():
                 s = seaflowfile.SeaFlowFile(v)
                 d = good_files.loc[i, "date"]
                 if s.is_new_style and s.rfc3339 != d:
@@ -217,7 +217,7 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         # Catch values outside correct range
         # Catch non-numeric values (NAs created during to_numeric())
         bad_numbers = notnas.loc[~good_selector, colname]
-        for i, v in bad_numbers.iteritems():
+        for i, v in bad_numbers.items():
             errors.append(create_error(df, colname, msg=f"Invalid {colname}", row=i, val=v, level="error"))
 
         nas = df.loc[df[colname].isna(), colname]
@@ -230,10 +230,10 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         elif len(nas) > 0:
             # Some missing
             if require_all:
-                for i, v in nas.iteritems():
+                for i, v in nas.items():
                     errors.append(create_error(df, colname, msg="Missing required data", row=i, val=v, level="error"))
             elif warn_missing:
-                for i, v in nas.iteritems():
+                for i, v in nas.items():
                     errors.append(create_error(df, colname, msg="Missing data", row=i, val=v, level="warning"))
 
     return errors
