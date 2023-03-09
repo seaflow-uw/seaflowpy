@@ -148,7 +148,7 @@ def mark_noise(df):
     return ~((df["fsc_small"].values > 1) | (df["D1"].values > 1) | (df["D2"].values > 1))
 
 
-def mark_saturated(df, cols=["D1", "D2"]):
+def mark_saturated(df, cols=None):
     """
     Mark data that saturates D1 or D2.
 
@@ -167,6 +167,8 @@ def mark_saturated(df, cols=["D1", "D2"]):
     numpy.ndarray
         Boolean array of saturated events.
     """
+    if cols is None:
+        cols = ["D1", "D2"]
     if len(set(list(df)).intersection(set(cols))) < len(cols):
         raise ValueError("Some columns requested are not present in df")
     if len(df.index) == 0:
