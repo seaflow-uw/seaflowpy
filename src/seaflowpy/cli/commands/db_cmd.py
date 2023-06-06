@@ -136,6 +136,19 @@ def db_import_filter_params_cmd(cruise, filter_file, db_file):
     db.save_filter_params(db_file, params.to_dict('index').values())
 
 
+@db_cmd.command('create-filter-plan')
+@click.argument('db-file', nargs=1, type=click.Path(writable=True))
+def db_create_filter_plan_cmd(db_file):
+    """
+    Create a filter plan table if sfl and filter tables are populated.
+    """
+    try:
+        filter_plan_df = db.create_filter_plan(db_file)
+    except SeaFlowpyError as e:
+        raise click.ClickException(e)
+    print("Saved a new filter plan")
+    print(filter_plan_df.to_string(index=False))
+
 @db_cmd.command('merge')
 @click.argument('db1', type=click.Path(exists=True))
 @click.argument('db2', type=click.Path(exists=True, writable=True))

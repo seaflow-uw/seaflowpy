@@ -220,6 +220,13 @@ def get_filter_table(dbpath):
     return filterdf
 
 
+def get_filter_plan_table(dbpath):
+    sql = "SELECT * FROM filter_plan"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = safe_read_sql(sql, dbcon)
+    return df
+
+
 def get_serial(dbpath):
     sql = "SELECT inst FROM metadata"
     with sqlite3.connect(dbpath) as dbcon:
@@ -314,6 +321,43 @@ def merge_dbs(db1, db2):
     # Merge meta
 
 
+def create_filter_plan(dbpath):
+    """
+    Create a filter plan table.
+
+    Only run for the simple case where sfl and filter tables are populated and
+    there is only one set of filter parameters.
+
+    Raise SeaFlowpyError if filter or sfl tables are empty, if more than one set
+    of filter parameters exists in the database, if a filter plan already
+    exists, or for database save errors.
+
+    Return a dataframe of the filter plan.
+    """
+    filter_df = get_filter_table(dbpath)
+    sfl_df = get_sfl_table(dbpath)
+    cur_filter_plan_df = get_filter_plan_table(dbpath)
+    if len(filter_df) == 0:
+        raise errors.SeaFlowpyError("no filter parameters found in db")
+    if len(filter_df["id"].unique()) > 1:
+        raise errors.SeaFlowpyError("more than one filter parameter found in db")
+    if len(sfl_df) == 0:
+        raise errors.SeaFlowpyError("no sfl data found in db")
+    if len(cur_filter_plan_df) > 0:
+        raise errors.SeaFlowpyError("a filter plan already exists in db")
+    filter_plan_df = pd.DataFrame({
+        "start_date": [sfl_df.sort_values(by="date").loc[0, "date"]],
+        "filter_id": [filter_df.loc[0, "id"]]
+    })
+    try:
+        with sqlite3.connect(dbpath) as con:
+            df_sql_insert(filter_plan_df, "filter_plan", con)
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when saving a filter plan: {!s}".format(e))
+
+    return filter_plan_df
+
+
 def execute(dbpath, sql, timeout=120):
     con = sqlite3.connect(dbpath, timeout=timeout)
     try:
@@ -356,3 +400,11 @@ def safe_read_sql(sql, con):
     if errmsg:
         raise errors.SeaFlowpyError(errmsg)
     return df
+
+
+def df_sql_insert(df: pd.DataFrame, table: str, con: sqlite3.Connection):
+    """Insert from df into SQL table without replacing the table schema"""
+    values_str = ", ".join([":" + f for f in df.columns])
+    sql_insert = f"INSERT OR REPLACE INTO {table} VALUES ({values_str})"
+    values = df.to_dict("index").values()
+    con.executemany(sql_insert, values)
