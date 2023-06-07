@@ -225,7 +225,7 @@ def sample_many_to_one(
     for f in evtpaths:
         msg = ""
         try:
-            data = fileio.read_evt_labview(f)
+            data = fileio.read_evt(f)
             df = data["df"]
         except Exception as e:
             msg = "{}: {}".format(type(e).__name__, str(e))

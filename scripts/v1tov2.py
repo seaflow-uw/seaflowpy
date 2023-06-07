@@ -13,7 +13,7 @@ def cli(v1dir, v2dir):
     v2files = []
     for f in v1files:
         sf = sfp.seaflowfile.SeaFlowFile(f)
-        v2files.append(os.path.join(v2dir, sf.dayofyear, sf.filename_nogz))
+        v2files.append(os.path.join(v2dir, sf.dayofyear, sf.filename_orig))
     for v1, v2 in zip(v1files, v2files):
         convert_v1_to_v2(v1, v2)
 

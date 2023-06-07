@@ -27,9 +27,11 @@ class SeaFlowFile:
         parts = parse_path(self.path)
         self.filename = parts["file"]
         if parts["file"].endswith(".gz"):
-            self.filename_nogz = self.filename[:-3]
+            self.filename_orig = self.filename[:-len(".gz")]
+        elif parts["file"].endswith(".parquet"):
+            self.filename_orig = self.filename[:-len(".parquet")]
         else:
-            self.filename_nogz = self.filename
+            self.filename_orig = self.filename
 
         if not (self.is_old_style or self.is_new_style):
             raise errors.FileError("Filename doesn't look like a SeaFlow EVT file")
@@ -37,7 +39,7 @@ class SeaFlowFile:
         if self.is_new_style:
             err = None
             try:
-                timestamp = timestamp_from_filename(self.filename_nogz)
+                timestamp = timestamp_from_filename(self.filename_orig)
                 self.date = time.parse_date(timestamp)
             except ValueError as e:
                 err = e
@@ -60,7 +62,7 @@ class SeaFlowFile:
         # Identifer to match EVT/SFL files
         # Should be something like 2014_142/42.evt for old files.
         # Should be something like 2014_342/2014-12-08T22-53-34+00-00 for new
-        # files. Note no extension including .gz.
+        # files. Note no extension including .gz or .parquet.
         # The day of year directory will be based on parsed datestamp in
         # filename when possible, not the given path. The file ID based on
         # the given path is stored in path_file_id.
@@ -69,16 +71,16 @@ class SeaFlowFile:
             # filenames since we can't parse dates to calculate a day of year
             # directory
             if self.path_dayofyear:
-                self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_nogz)
+                self.file_id = "{}/{}".format(self.path_dayofyear, self.filename_orig)
             else:
-                self.file_id = self.filename_nogz
+                self.file_id = self.filename_orig
             self.path_file_id = self.file_id
         else:
-            self.file_id = "{}/{}".format(self.dayofyear, self.filename_nogz)
+            self.file_id = "{}/{}".format(self.dayofyear, self.filename_orig)
             if self.path_dayofyear:
-                self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_nogz)
+                self.path_file_id = "{}/{}".format(self.path_dayofyear, self.filename_orig)
             else:
-                self.path_file_id = self.filename_nogz
+                self.path_file_id = self.filename_orig
 
     def __str__(self):
         return "SeaFlowFile: {}, {}".format(self.file_id, self.path)
@@ -96,12 +98,12 @@ class SeaFlowFile:
     @property
     def is_old_style(self):
         """Is this old style file? e.g. 2014_185/1.evt."""
-        return bool(re.match(old_file_re, self.filename_nogz))
+        return bool(re.match(old_file_re, self.filename_orig))
 
     @property
     def is_new_style(self):
         """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.gz"""
-        return bool(re.match(new_file_re, self.filename_nogz))
+        return bool(re.match(new_file_re, self.filename_orig))
 
     @property
     def rfc3339(self):
@@ -122,9 +124,9 @@ class SeaFlowFile:
         if self.is_old_style:
             # Number part of basename, necessary because number isn't
             # zero-filled
-            file_key = int(self.filename_nogz.split(".")[0])
+            file_key = int(self.filename_orig.split(".")[0])
         else:
-            file_key = self.filename_nogz
+            file_key = self.filename_orig
         return (year, day, file_key)
 
 

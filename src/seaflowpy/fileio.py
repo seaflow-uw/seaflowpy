@@ -3,6 +3,8 @@ import gzip
 import io
 import os
 import zlib
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from . import errors
@@ -232,7 +234,7 @@ def read_evt_labview(path, fileobj=None):
     considered gzip compressed even if read from fileobj.
 
     Parameters
-    -----------
+    ----------
     path: str
         File path.
     fileobj: io.BytesIO, optional
@@ -246,6 +248,28 @@ def read_evt_labview(path, fileobj=None):
     }
     """
     return read_labview(path, columns=None, fileobj=fileobj)
+
+
+def read_evt(path):
+    """
+    Read EVT file as raw binary, gzipped binary, or reduced Parquet.
+
+    Parameters
+    ----------
+    path: str
+        File path.
+
+    Returns
+    -------
+    dict of {
+        "version": "v1"|"v2"|"parquet",
+        "df": SeaFlow event pandas.DataFrame as numpy.float64 values
+    }
+    """
+    if path.endswith(".parquet"):
+        return { "version": "parquet", "df": pd.read_parquet(path) }
+    else:
+        return read_evt_labview(path)
 
 
 def read_filter_params_csv(path):
@@ -407,3 +431,9 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
 
     # Write parquet
     df.to_parquet(outpath, compression="snappy", index=False, engine="pyarrow")
+
+
+def binary_to_parquet(infile, outfile):
+    df = read_evt(infile)["df"][["D1", "D2", "fsc_small", "pe", "chl_small"]]
+    Path(outfile).parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(outfile)

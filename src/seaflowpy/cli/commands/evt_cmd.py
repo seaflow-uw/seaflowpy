@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import sys
+from joblib import Parallel, delayed
 
 import click
 from seaflowpy import errors
@@ -282,7 +283,7 @@ def validate_evt_cmd(report_all, files):
 
         # Try to read file as binary EVT
         try:
-            data = fileio.read_evt_labview(filepath)
+            data = fileio.read_evt(filepath)
             version = data['version']
             status = 'OK'
             ok += 1
@@ -299,6 +300,38 @@ def validate_evt_cmd(report_all, files):
     print('%d/%d files passed validation' % (ok, bad + ok), file=sys.stderr)
 
 
+@evt_cmd.command('parquet')
+@click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
+@click.option('-o', '--out-dir', default='.', type=click.Path(path_type=pathlib.Path),
+    help='Output directory')
+@click.argument('paths', nargs=-1, type=click.Path(exists=True, path_type=str))
+def parquet_cmd(n_jobs, out_dir, paths):
+    """
+    Convert binary EVT files to reduced Parquet.
+
+    Output files will be placed in appropriate day of year directories inside
+    out-dir.
+    """
+    in_files = [f for f in expand_file_list(paths)]
+    parquet_files = []
+    for f in in_files:
+        sf = seaflowfile.SeaFlowFile(f)
+        parquet_files.append(str(out_dir / sf.dayofyear / f"{sf.filename_orig}.parquet"))
+    print('Converting %d input EVT files' % (len(in_files),), file=sys.stderr)
+    parallel = Parallel(n_jobs=n_jobs, verbose=1)
+    args = zip(in_files, parquet_files)
+    results = parallel(delayed(_binary_to_parquet)(*a) for a in args)
+    error_lines = [f"  {r[0]}: {r[1]}" for r in results if r[1] is not None]
+    if error_lines:
+        print('Errors:', file=sys.stderr)
+        print(
+            '\n'.join(error_lines),
+            file=sys.stderr
+        )
+    ok = len([r for r in results if r[1] is None])
+    print('Converted %d / %d files' % (ok, len(in_files)), file=sys.stderr)
+
+
 def expand_file_list(files_and_dirs):
     """Convert directories in file list to EVT file paths."""
     # Find files in directories
@@ -310,3 +343,11 @@ def expand_file_list(files_and_dirs):
         dfiles = dfiles + seaflowfile.find_evt_files(d)
 
     return files + dfiles
+
+
+def _binary_to_parquet(infile, outfile):
+    try:
+        fileio.binary_to_parquet(infile, outfile)
+    except (errors.FileError, IOError) as e:
+        return (infile, e)
+    return (infile, None)
