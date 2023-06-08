@@ -5,6 +5,7 @@ import os
 import zlib
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 from . import errors
@@ -12,6 +13,8 @@ from . import particleops
 from .seaflowfile import SeaFlowFile
 from . import util
 
+# Reduced column set for Parquet EVT files
+REDUCED_COLS = ["D1", "D2", "fsc_small", "pe", "chl_small"]
 
 @contextmanager
 def file_open_r(path, fileobj=None, as_text=False):
@@ -437,3 +440,31 @@ def binary_to_parquet(infile, outfile):
     df = read_evt(infile)["df"][["D1", "D2", "fsc_small", "pe", "chl_small"]]
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(outfile)
+
+
+def validate_evt_file(f, checksum=True, cols=None):
+    data = {
+        "version": "-",
+        "err": None,
+        "hash": "-",
+        "count": 0
+    }
+
+    try:
+        file_data = read_evt(f)
+    except (errors.FileError, IOError) as e:
+        data["err"] = str(e)
+    else:
+        df = file_data["df"]
+        data["version"] = file_data["version"]
+        data["count"] = len(df.index)
+        if checksum:
+            if cols:
+                try:
+                    data["hash"] = joblib.hash(df[cols].reset_index(drop=True))
+                except KeyError as e:
+                    data["err"] = str(e)
+            else:
+                data["hash"] = joblib.hash(df.reset_index(drop=True))
+
+    return pd.Series(data)

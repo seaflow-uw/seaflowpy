@@ -3,15 +3,18 @@ import logging
 import os
 import pathlib
 import sys
-from joblib import Parallel, delayed
+from functools import partial
 
 import click
+import pandas as pd
+from joblib import Parallel, delayed
 from seaflowpy import errors
 from seaflowpy import seaflowfile
 from seaflowpy import fileio
 from seaflowpy import sample
 from seaflowpy import sfl
 from seaflowpy import time
+
 
 
 def validate_file_fraction(ctx, param, value):
@@ -246,8 +249,15 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
 @evt_cmd.command('validate')
 @click.option('-a', '--all', 'report_all', is_flag=True,
     help='Show information for all files. If not specified then only files errors are printed.')
-@click.argument('files', nargs=-1, type=click.Path(exists=True))
-def validate_evt_cmd(report_all, files):
+@click.option('--hash', 'hash_', is_flag=True,
+    help='Hash the contents of each EVT with joblib.hash()')
+@click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
+@click.option('-r', '--reduced-columns', is_flag=True,
+    help=f'Hash on the reduced column set {fileio.REDUCED_COLS}')
+@click.option('-p', '--progress', is_flag=True,
+    help='Print progress')
+@click.argument('paths', nargs=-1, type=click.Path(exists=True))
+def validate_evt_cmd(report_all, hash_, n_jobs, reduced_columns, progress, paths):
     """
     Examines EVT files.
 
@@ -255,57 +265,83 @@ def validate_evt_cmd(report_all, files):
     directories will be recursively found and examined. Prints file validation
     report to STDOUT. Print summary of files passing validation to STDERR.
     """
-    # TODO: expand to calculate hash for binary EVT
-    # and OPP parquet files with an extra flag. OPP parquet should produce hashes for
-    # each file_id in the whole file (e.g. by group_by)
-    if not files:
+    if not paths:
         return
 
+    if reduced_columns:
+        cols = fileio.REDUCED_COLS
+    else:
+        cols = None
+
     # dirs to file paths
-    files = expand_file_list(files)
+    files = expand_file_list(paths)
 
-    header_printed = False
-    ok, bad = 0, 0
-
+    file_ids = []
     for filepath in files:
-        # Default values
-        version = '-'
-        file_id = '-'
-        events = 0
-
         # Try to parse filename as SeaFlow file
         try:
             sff = seaflowfile.SeaFlowFile(filepath)
-            file_id = sff.file_id
         except errors.FileError:
             # unusual name, no file_id
-            pass
+            file_ids.append('-')
+        else:
+            file_ids.append(sff.file_id)
+    work = pd.DataFrame({'id': file_ids, 'path': files})
+    if progress:
+        verbose = 1
+    else:
+        verbose = 0
+    parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
+    work_func = partial(_validate_evt_file, checksum=hash_, cols=cols)
+    results = pd.DataFrame(parallel(delayed(work_func)(r[1]) for r in work.iterrows()))
+    results.sort_values(by='id', key=_idkey, inplace=True)
 
-        # Try to read file as binary EVT
+    if len(results):
+        print(
+            '%d/%d files passed validation' % (results['err'].isna().sum(), len(results)),
+            file=sys.stderr
+        )
+    if report_all:
+        results_output = results
+    else:
+        results_output = results.loc[results['err'] == '']
+
+    if len(results_output):
+        results_output.to_string(index=False, buf=sys.stdout)
+    print()
+
+
+def _validate_evt_file(s, checksum=True, cols=None):
+    s = s.copy()
+    data = fileio.validate_evt_file(s['path'], checksum=checksum, cols=cols)
+    s['hash'] = data['hash']
+    s['count'] = data['count']
+    s['version'] = data['version']
+    s['err'] = data['err']
+    return s
+
+
+def _idkey(id_series):
+    """pandas.DataFrame.sort_values key callable"""
+    def make_key(id_):
         try:
-            data = fileio.read_evt(filepath)
-            version = data['version']
-            status = 'OK'
-            ok += 1
-            events = len(data['df'].index)
-        except errors.FileError as e:
-            status = str(e)
-            bad += 1
+            sf = seaflowfile.SeaFlowFile(id_)
+        except errors.FileError:
+            return id_
+        else:
+            return sf.sort_key
 
-        if not header_printed:
-            print('\t'.join(['path', 'file_id', 'version', 'status', 'events']))
-            header_printed = True
-        if (report_all and status == 'OK') or (status != 'OK'):
-            print('\t'.join([filepath, file_id, version, status, str(events)]))
-    print('%d/%d files passed validation' % (ok, bad + ok), file=sys.stderr)
+    return id_series.apply(make_key)
 
 
 @evt_cmd.command('parquet')
 @click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
 @click.option('-o', '--out-dir', default='.', type=click.Path(path_type=pathlib.Path),
     help='Output directory')
+@click.option('-p', '--progress', is_flag=True,
+    help='Print progress')
 @click.argument('paths', nargs=-1, type=click.Path(exists=True, path_type=str))
-def parquet_cmd(n_jobs, out_dir, paths):
+def parquet_cmd(n_jobs, out_dir, progress, paths):
     """
     Convert binary EVT files to reduced Parquet.
 
@@ -318,7 +354,11 @@ def parquet_cmd(n_jobs, out_dir, paths):
         sf = seaflowfile.SeaFlowFile(f)
         parquet_files.append(str(out_dir / sf.dayofyear / f"{sf.filename_orig}.parquet"))
     print('Converting %d input EVT files' % (len(in_files),), file=sys.stderr)
-    parallel = Parallel(n_jobs=n_jobs, verbose=1)
+    if progress:
+        verbose = 1
+    else:
+        verbose = 0
+    parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
     args = zip(in_files, parquet_files)
     results = parallel(delayed(_binary_to_parquet)(*a) for a in args)
     error_lines = [f"  {r[0]}: {r[1]}" for r in results if r[1] is not None]
@@ -332,6 +372,119 @@ def parquet_cmd(n_jobs, out_dir, paths):
     print('Converted %d / %d files' % (ok, len(in_files)), file=sys.stderr)
 
 
+def _binary_to_parquet(infile, outfile):
+    try:
+        fileio.binary_to_parquet(infile, outfile)
+    except (errors.FileError, IOError) as e:
+        return (infile, e)
+    return (infile, None)
+
+
+@evt_cmd.command('compare')
+@click.option('-a', '--all', 'report_all', is_flag=True,
+    help='Show information for all files. If not specified then only file that differ are printed.')
+@click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
+@click.option('-p', '--progress', is_flag=True,
+    help='Print progress')
+@click.option('-r', '--reduced-columns', is_flag=True,
+    help=f'Hash on the reduced column set {fileio.REDUCED_COLS}')
+@click.argument('paths', nargs=2, type=click.Path(exists=True, path_type=pathlib.Path))
+def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
+    """
+    Compare EVT files for equality.
+
+    paths can either be two EVT files or two directories of EVT files. If
+    arguments are directories, EVT files are matched by canonical SeaFlow file
+    ID, and files with unparsable names are ignored. If both arguments are files
+    then file name parsing is not performed.
+
+    Equality is determined by joblib.hash() output. A TSV table of results is
+    printed to STDOUT for EVT dataframes that differ. If --all, all files are
+    reported, even those that match. Read and parsing errors are printed to
+    STDERR.
+    """
+    if paths[0].is_file() and paths[1].is_file():
+        # Ignore IDs to allow comparison between files with arbitrary names
+        x_files = pd.DataFrame({"id": ["-"], "path": [str(paths[0])]})
+        y_files = pd.DataFrame({"id": ["-"], "path": [str(paths[1])]})
+    elif paths[0].is_dir() and paths[1].is_dir():
+        x_ids, x_paths = [], []
+        y_ids, y_paths = [], []
+        for f in expand_file_list([str(paths[0])]):
+            try:
+                sf = seaflowfile.SeaFlowFile(f)
+            except errors.FileError as e:
+                print('error parsing file name for %s: %s' % (f, str(e)))
+            else:
+                x_ids.append(sf.file_id)
+                x_paths.append(f)
+        for f in expand_file_list([str(paths[1])]):
+            try:
+                sf = seaflowfile.SeaFlowFile(f)
+            except errors.FileError as e:
+                print('error parsing file name for %s: %s' % (f, str(e)))
+            else:
+                y_ids.append(sf.file_id)
+                y_paths.append(f)
+        x_files = pd.DataFrame({"id": x_ids, "path": x_paths})
+        y_files = pd.DataFrame({"id": y_ids, "path": y_paths})
+    else:
+        raise click.ClickException('path arguments must be two files or two directories')
+
+    if reduced_columns:
+        cols = fileio.REDUCED_COLS
+    else:
+        cols = None
+
+    m = x_files.merge(y_files, how='outer', on='id', indicator=True)
+    if m['id'].duplicated().any():
+        print('the following File IDs were duplicated in at least one dir and will be ignored', file=sys.stderr)
+        m.loc[m['id'].duplicated(), ['id', 'path_x', 'path_y']].to_string(index=False, bug=sys.stderr)
+        m = m.loc[~m['id'].duplicated()]
+
+    if progress:
+        verbose = 1
+    else:
+        verbose = 0
+    parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
+    work_func = partial(_compare_two_files, cols=cols)
+    m_hashed = pd.DataFrame(parallel(delayed(work_func)(r[1]) for r in m.iterrows()))
+    m_hashed.sort_values(by='id', key=_idkey, inplace=True)
+
+    if report_all:
+        m_output = m_hashed
+    else:
+        m_output = m_hashed.loc[~m_hashed['equal']]
+    if len(m_output):
+        m_output.to_string(index=False, buf=sys.stdout)
+    print()
+
+
+def _compare_two_files(s, cols=None):
+    s = s.copy()
+
+    if pd.isna(s["path_x"]):
+        x = pd.Series({ "version": "-", "err": None, "hash": "-", "count": 0 })
+    else:
+        x = fileio.validate_evt_file(s["path_x"], checksum=True, cols=cols)
+    if pd.isna(s["path_y"]):
+        y = pd.Series({ "version": "-", "err": None, "hash": "-", "count": 0 })
+    else:
+        y = fileio.validate_evt_file(s["path_y"], checksum=True, cols=cols)
+
+    s["equal"] = (x["hash"] == y["hash"]) and (x["hash"] != "-") and (y["hash"] != "-")
+    s["hash_x"] = x["hash"]
+    s["hash_y"] = y["hash"]
+    s["count_x"] = x["count"]
+    s["count_y"] = y["count"]
+    s["version_x"] = x["version"]
+    s["version_y"] = y["version"]
+    s["err_x"] = x["err"]
+    s["err_y"] = y["err"]
+
+    return s
+
+
 def expand_file_list(files_and_dirs):
     """Convert directories in file list to EVT file paths."""
     # Find files in directories
@@ -343,11 +496,3 @@ def expand_file_list(files_and_dirs):
         dfiles = dfiles + seaflowfile.find_evt_files(d)
 
     return files + dfiles
-
-
-def _binary_to_parquet(infile, outfile):
-    try:
-        fileio.binary_to_parquet(infile, outfile)
-    except (errors.FileError, IOError) as e:
-        return (infile, e)
-    return (infile, None)
