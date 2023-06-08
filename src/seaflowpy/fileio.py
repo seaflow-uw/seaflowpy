@@ -437,7 +437,7 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
 
 
 def binary_to_parquet(infile, outfile):
-    df = read_evt(infile)["df"][["D1", "D2", "fsc_small", "pe", "chl_small"]]
+    df = read_evt(infile)["df"][REDUCED_COLS]
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(outfile)
 
