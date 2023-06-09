@@ -275,7 +275,10 @@ def read_evt(path, dtype=DEFAULT_EVT_DTYPE):
     }
     """
     if path.endswith(".parquet"):
-        return { "version": "parquet", "df": pd.read_parquet(path) }
+        df = pd.read_parquet(path)
+        if (df.dtypes != dtype).any():
+            df = df.astype(dtype)
+        return { "version": "parquet", "df": df }
     else:
         return read_evt_labview(path, dtype=dtype)
 

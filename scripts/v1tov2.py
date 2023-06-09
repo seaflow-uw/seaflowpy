@@ -22,7 +22,7 @@ def convert_v1_to_v2(v1path, v2path):
     print(f"converting {v1path} to {v2path}")
     sfp.util.mkdir_p(os.path.dirname(v2path))
     try:
-        df1 = sfp.fileio.read_evt_labview(v1path)
+        df1 = sfp.fileio.read_evt_labview(v1path)["df"]
     except sfp.errors.FileError as e:
         print(e)
         return

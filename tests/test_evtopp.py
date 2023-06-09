@@ -65,15 +65,15 @@ def tmpout(tmpdir):
 class TestOpenV1:
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
-        assert len(data["df"].index) == 40000
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00")
+        assert len(data["df"].index) == 500000
         assert data["version"] == "v1"
         assert list(data["df"]) == sfp.particleops.COLUMNS
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
-        assert len(data["df"].index) == 40000
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00.gz")
+        assert len(data["df"].index) == 500000
         assert data["version"] == "v1"
         assert list(data["df"]) == sfp.particleops.COLUMNS
 
@@ -109,15 +109,15 @@ class TestOpenV1:
 class TestOpenV2:
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_v2(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-00-02+00-00")
-        assert len(data["df"].index) == 40000
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00")
+        assert len(data["df"].index) == 500000
         assert data["version"] == "v2"
         assert list(data["df"]) == sfp.particleops.COLUMNS2
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz_v2(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz")
-        assert len(data["df"].index) == 40000
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00.gz")
+        assert len(data["df"].index) == 500000
         assert data["version"] == "v2"
         assert list(data["df"]) == sfp.particleops.COLUMNS2
 
@@ -151,10 +151,19 @@ class TestOpenV2:
 
 class TestOpenParquetEVT:
     @pytest.mark.benchmark(group="evt-read")
-    def test_read_evt_parquet(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt_parquet/2014_185/2014-07-04T00-00-02+00-00.parquet")
-        assert len(data["df"].index) == 40000
+    def test_read_evt_parquet_float32(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_parquet/2021_014/2021-01-14T00-21-03+00-00.parquet", dtype=np.float32)
+        assert len(data["df"].index) == 500000
         assert data["version"] == "parquet"
+        assert (data["df"].dtypes == np.float32).all()
+        assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
+    
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_parquet_float64(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_parquet/2021_014/2021-01-14T00-21-03+00-00.parquet", dtype=np.float64)
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "parquet"
+        assert (data["df"].dtypes == np.float64).all()
         assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
 
 class TestFilter:
