@@ -15,6 +15,7 @@ from . import util
 
 # Reduced column set for Parquet EVT files
 REDUCED_COLS = ["D1", "D2", "fsc_small", "pe", "chl_small"]
+DEFAULT_EVT_DTYPE = np.float32
 
 @contextmanager
 def file_open_r(path, fileobj=None, as_text=False):
@@ -141,7 +142,7 @@ def read_evt_header(f):
     raise errors.FileError("File does not have a valid column size number")
 
 
-def read_labview(path, columns=None, fileobj=None):
+def read_labview(path, columns=None, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
     """
     Read a labview binary SeaFlow data file.
 
@@ -157,12 +158,14 @@ def read_labview(path, columns=None, fileobj=None):
         Names of columns. If none are given reasonable defaults are used.
     fileobj: io.BytesIO, optional
         Open file object.
+    dtype: numpy.dtype, optional
+        dtype for numberic columns in EVT dataframe.
 
     Returns
     -------
     dict of {
         "version": "v1"|"v2",
-        "df": SeaFlow event pandas.DataFrame as numpy.float64 values
+        "df": SeaFlow event pandas.DataFrame
     }
     """
     try:
@@ -225,10 +228,10 @@ def read_labview(path, columns=None, fileobj=None):
         df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
     else:
         df = pd.DataFrame(events, columns=columns)
-    return {"version": version, "df": df.astype(np.float64)}
+    return {"version": version, "df": df.astype(dtype)}
 
 
-def read_evt_labview(path, fileobj=None):
+def read_evt_labview(path, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
     """
     Read a raw labview binary SeaFlow data file.
 
@@ -242,18 +245,20 @@ def read_evt_labview(path, fileobj=None):
         File path.
     fileobj: io.BytesIO, optional
         Open file object.
+    dtype: numpy.dtype, optional
+        dtype for numberic columns in EVT dataframe.
 
     Returns
     -------
     dict of {
         "version": "v1"|"v2",
-        "df": SeaFlow event pandas.DataFrame as numpy.float64 values
+        "df": SeaFlow event pandas.DataFrame
     }
     """
     return read_labview(path, columns=None, fileobj=fileobj)
 
 
-def read_evt(path):
+def read_evt(path, dtype=DEFAULT_EVT_DTYPE):
     """
     Read EVT file as raw binary, gzipped binary, or reduced Parquet.
 
@@ -261,18 +266,20 @@ def read_evt(path):
     ----------
     path: str
         File path.
+    dtype: numpy.dtype, optional
+        dtype for numberic columns in EVT dataframe.
 
     Returns
     -------
     dict of {
         "version": "v1"|"v2"|"parquet",
-        "df": SeaFlow event pandas.DataFrame as numpy.float64 values
+        "df": SeaFlow event pandas.DataFrame
     }
     """
     if path.endswith(".parquet"):
         return { "version": "parquet", "df": pd.read_parquet(path) }
     else:
-        return read_evt_labview(path)
+        return read_evt_labview(path, dtype=dtype)
 
 
 def read_filter_params_csv(path):
@@ -437,7 +444,7 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
 
 
 def binary_to_parquet(infile, outfile):
-    df = read_evt(infile)["df"][REDUCED_COLS]
+    df = read_evt(infile)["df"][REDUCED_COLS].astype(DEFAULT_EVT_DTYPE)
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(outfile)
 
