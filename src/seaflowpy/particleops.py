@@ -14,6 +14,9 @@ COLUMNS2 = [
 ]
 CHANNEL_COLUMNS2 = COLUMNS[1:6]  # flow cytometer channel data columns
 
+# Reduced column set for Parquet EVT files
+REDUCED_COLUMNS = ["D1", "D2", "fsc_small", "pe", "chl_small"]
+
 # Focused particle masks by quantile column. These get combined into bit flags
 # when storing OPP data in a binary file. e.g. 0b110 (6) means a particle is
 # focused in quantiles 50.0 and 97.5 but not 2.5.

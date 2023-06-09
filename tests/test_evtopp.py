@@ -16,7 +16,7 @@ import seaflowpy as sfp
 
 @pytest.fixture()
 def evt_df():
-    return sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")["df"]
+    return sfp.fileio.read_evt("tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")["df"]
 
 
 @pytest.fixture()
@@ -56,7 +56,7 @@ def tmpout(tmpdir):
         "db_plan": db_plan,
         "oppdir": str(tmpdir.join("oppdir")),
         "tmpdir": str(tmpdir),
-        "evt_df": sfp.fileio.read_evt_labview(str(evt_path))["df"],
+        "evt_df": sfp.fileio.read_evt(str(evt_path))["df"],
         "evt_path": evt_path,
         "file_dates": pd.read_parquet("tests/file_dates.parquet")
     }
@@ -65,14 +65,14 @@ def tmpout(tmpdir):
 class TestOpenV1:
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
+        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00")
         assert len(data["df"].index) == 40000
         assert data["version"] == "v1"
         assert list(data["df"]) == sfp.particleops.COLUMNS
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
+        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert len(data["df"].index) == 40000
         assert data["version"] == "v1"
         assert list(data["df"]) == sfp.particleops.COLUMNS
@@ -83,40 +83,40 @@ class TestOpenV1:
             with open(truncpath, "wb") as outfh:
                 outfh.write(infh.read(400000))
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview(truncpath)
+            _data = sfp.fileio.read_evt(truncpath)
 
     def test_read_evt_empty(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_evt_zero_header(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_evt_short_header(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt/2014_185/2014-07-04T00-12-02+00-00")
 
     def test_read_evt_more_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt/2014_185/2014-07-04T00-21-02+00-00")
 
     def test_read_evt_less_data_than_header_count(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt/2014_185/2014-07-04T00-27-02+00-00")
 
 
 class TestOpenV2:
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_v2(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-00-02+00-00")
+        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-00-02+00-00")
         assert len(data["df"].index) == 40000
         assert data["version"] == "v2"
         assert list(data["df"]) == sfp.particleops.COLUMNS2
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz_v2(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt_labview, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz")
+        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz")
         assert len(data["df"].index) == 40000
         assert data["version"] == "v2"
         assert list(data["df"]) == sfp.particleops.COLUMNS2
@@ -127,28 +127,35 @@ class TestOpenV2:
             with open(truncpath, "wb") as outfh:
                 outfh.write(infh.read(100000))
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview(truncpath)
+            _data = sfp.fileio.read_evt(truncpath)
 
     def test_read_evt_empty_v2(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-06-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt_v2/2014_185/2014-07-04T00-06-02+00-00")
 
     def test_read_evt_zero_header_v2(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-09-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt_v2/2014_185/2014-07-04T00-09-02+00-00")
 
     def test_read_evt_short_header_v2(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-12-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt_v2/2014_185/2014-07-04T00-12-02+00-00")
 
     def test_read_evt_more_data_than_header_count_v2(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-21-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt_v2/2014_185/2014-07-04T00-21-02+00-00")
 
     def test_read_evt_less_data_than_header_count_v2(self):
         with pytest.raises(sfp.errors.FileError):
-            _data = sfp.fileio.read_evt_labview("tests/testcruise_evt_v2/2014_185/2014-07-04T00-27-02+00-00")
+            _data = sfp.fileio.read_evt("tests/testcruise_evt_v2/2014_185/2014-07-04T00-27-02+00-00")
 
+class TestOpenParquetEVT:
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_parquet(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/testcruise_evt_parquet/2014_185/2014-07-04T00-00-02+00-00.parquet")
+        assert len(data["df"].index) == 40000
+        assert data["version"] == "parquet"
+        assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
 
 class TestFilter:
     def test_mark_focused_no_params(self, evt_df):
@@ -333,14 +340,14 @@ class TestOutput:
     def test_binary_evt_output(self, tmpout):
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         evtdir = os.path.join(tmpout["tmpdir"], "evtdir")
-        evt_df = sfp.fileio.read_evt_labview(tmpout["evt_path"])["df"]
+        evt_df = sfp.fileio.read_evt(tmpout["evt_path"])["df"]
 
         # Output to binary uncompressed file
         sfp.fileio.write_evt_labview(evt_df, sfile.file_id, evtdir, gz=False)
         # Make sure EVT binary file written can be read back as EVT and
         # DataFrame is the the same
         out_evt_path = os.path.join(evtdir, sfile.file_id)
-        reread_evt_df = sfp.fileio.read_evt_labview(out_evt_path)["df"]
+        reread_evt_df = sfp.fileio.read_evt(out_evt_path)["df"]
         npt.assert_array_equal(evt_df, reread_evt_df)
         # Check that output evt binary file matches input file
         input_evt = io.open(tmpout["evt_path"], "rb").read()
@@ -350,14 +357,14 @@ class TestOutput:
     def test_binary_evt_output_gz(self, tmpout):
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         evtdir = os.path.join(tmpout["tmpdir"], "evtdir")
-        evt_df = sfp.fileio.read_evt_labview(tmpout["evt_path"])["df"]
+        evt_df = sfp.fileio.read_evt(tmpout["evt_path"])["df"]
 
         # Output to gzipped binary file
         sfp.fileio.write_evt_labview(evt_df, sfile.file_id, evtdir)
         # Make sure EVT binary file written can be read back as EVT and
         # DataFrame is the the same
         out_evt_path = os.path.join(evtdir, sfile.file_id + ".gz")
-        reread_evt_df = sfp.fileio.read_evt_labview(out_evt_path)["df"]
+        reread_evt_df = sfp.fileio.read_evt(out_evt_path)["df"]
         npt.assert_array_equal(evt_df, reread_evt_df)
         # Check that output evt binary file matches input file
         input_evt = io.open(tmpout["evt_path"], "rb").read()

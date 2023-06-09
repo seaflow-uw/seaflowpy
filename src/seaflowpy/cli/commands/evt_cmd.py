@@ -11,6 +11,7 @@ from joblib import Parallel, delayed
 from seaflowpy import errors
 from seaflowpy import seaflowfile
 from seaflowpy import fileio
+from seaflowpy import particleops
 from seaflowpy import sample
 from seaflowpy import sfl
 from seaflowpy import time
@@ -253,7 +254,7 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
     help='Hash the contents of each EVT with joblib.hash()')
 @click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
 @click.option('-r', '--reduced-columns', is_flag=True,
-    help=f'Hash on the reduced column set {fileio.REDUCED_COLS}')
+    help=f'Hash on the reduced column set {particleops.REDUCED_COLUMNS}')
 @click.option('-p', '--progress', is_flag=True,
     help='Print progress')
 @click.argument('paths', nargs=-1, type=click.Path(exists=True))
@@ -269,7 +270,7 @@ def validate_evt_cmd(report_all, hash_, n_jobs, reduced_columns, progress, paths
         return
 
     if reduced_columns:
-        cols = fileio.REDUCED_COLS
+        cols = particleops.REDUCED_COLUMNS
     else:
         cols = None
 
@@ -387,7 +388,7 @@ def _binary_to_parquet(infile, outfile):
 @click.option('-p', '--progress', is_flag=True,
     help='Print progress')
 @click.option('-r', '--reduced-columns', is_flag=True,
-    help=f'Hash on the reduced column set {fileio.REDUCED_COLS}')
+    help=f'Hash on the reduced column set {particleops.REDUCED_COLUMNS}')
 @click.argument('paths', nargs=2, type=click.Path(exists=True, path_type=pathlib.Path))
 def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
     """
@@ -432,7 +433,7 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
         raise click.ClickException('path arguments must be two files or two directories')
 
     if reduced_columns:
-        cols = fileio.REDUCED_COLS
+        cols = particleops.REDUCED_COLUMNS
     else:
         cols = None
 

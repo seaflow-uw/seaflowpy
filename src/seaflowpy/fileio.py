@@ -13,8 +13,6 @@ from . import particleops
 from .seaflowfile import SeaFlowFile
 from . import util
 
-# Reduced column set for Parquet EVT files
-REDUCED_COLS = ["D1", "D2", "fsc_small", "pe", "chl_small"]
 DEFAULT_EVT_DTYPE = np.float32
 
 @contextmanager
@@ -444,7 +442,7 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
 
 
 def binary_to_parquet(infile, outfile):
-    df = read_evt(infile)["df"][REDUCED_COLS].astype(DEFAULT_EVT_DTYPE)
+    df = read_evt(infile)["df"][particleops.REDUCED_COLUMNS].astype(DEFAULT_EVT_DTYPE)
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(outfile)
 
