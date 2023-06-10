@@ -14,6 +14,7 @@ from .seaflowfile import SeaFlowFile
 from . import util
 
 DEFAULT_EVT_DTYPE = np.float32
+PARQUET_EVT_DTYPE = np.float32
 
 @contextmanager
 def file_open_r(path, fileobj=None, as_text=False):
@@ -220,13 +221,18 @@ def read_labview(path, columns=None, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
     events = np.frombuffer(buff, dtype="uint16", count=rowcnt*colcnt)
     # Reshape into a matrix of colcnt columns and one row per particle
     events = np.reshape(events, [rowcnt, colcnt])
-    # Create a Pandas DataFrame with descriptive column names.
+
+    # v1 file, remove leading two columns (32-bit column count int in each row)
     if version == "v1":
-        # v1 file, remove leading two columns (32-bit column count int in each row)
-        df = pd.DataFrame(np.delete(events, [0, 1], 1), columns=columns)
-    else:
-        df = pd.DataFrame(events, columns=columns)
-    return {"version": version, "df": df.astype(dtype)}
+        events = np.delete(events, [0, 1], 1)
+
+    # Create a Pandas DataFrame with descriptive column names.
+    df = pd.DataFrame(events, columns=columns)
+
+    if not (df.dtypes == dtype).all():
+        df = df.astype(dtype)
+
+    return {"version": version, "df": df}
 
 
 def read_evt_labview(path, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
@@ -253,7 +259,7 @@ def read_evt_labview(path, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
         "df": SeaFlow event pandas.DataFrame
     }
     """
-    return read_labview(path, columns=None, fileobj=fileobj)
+    return read_labview(path, columns=None, fileobj=fileobj, dtype=dtype)
 
 
 def read_evt(path, dtype=DEFAULT_EVT_DTYPE):
@@ -445,7 +451,7 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
 
 
 def binary_to_parquet(infile, outfile):
-    df = read_evt(infile)["df"][particleops.REDUCED_COLUMNS].astype(DEFAULT_EVT_DTYPE)
+    df = read_evt(infile, dtype=PARQUET_EVT_DTYPE)["df"][particleops.REDUCED_COLUMNS]
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(outfile)
 

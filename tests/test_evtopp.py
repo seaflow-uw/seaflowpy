@@ -69,6 +69,23 @@ class TestOpenV1:
         assert len(data["df"].index) == 500000
         assert data["version"] == "v1"
         assert list(data["df"]) == sfp.particleops.COLUMNS
+        assert (data["df"].dtypes == np.float32).all()
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_uint16(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00", dtype=np.uint16)
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "v1"
+        assert list(data["df"]) == sfp.particleops.COLUMNS
+        assert (data["df"].dtypes == np.uint16).all()
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_float64(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00", dtype=np.float64)
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "v1"
+        assert list(data["df"]) == sfp.particleops.COLUMNS
+        assert (data["df"].dtypes == np.float64).all()
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz(self, benchmark):
@@ -113,6 +130,23 @@ class TestOpenV2:
         assert len(data["df"].index) == 500000
         assert data["version"] == "v2"
         assert list(data["df"]) == sfp.particleops.COLUMNS2
+        assert (data["df"].dtypes == np.float32).all()
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_v2_uint16(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00", dtype=np.uint16)
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "v2"
+        assert list(data["df"]) == sfp.particleops.COLUMNS2
+        assert (data["df"].dtypes == np.uint16).all()
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_v2_float64(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00", dtype=np.float64)
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "v2"
+        assert list(data["df"]) == sfp.particleops.COLUMNS2
+        assert (data["df"].dtypes == np.float64).all()
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz_v2(self, benchmark):
@@ -151,11 +185,19 @@ class TestOpenV2:
 
 class TestOpenParquetEVT:
     @pytest.mark.benchmark(group="evt-read")
-    def test_read_evt_parquet_float32(self, benchmark):
-        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_parquet/2021_014/2021-01-14T00-21-03+00-00.parquet", dtype=np.float32)
+    def test_read_evt_parquet(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_parquet/2021_014/2021-01-14T00-21-03+00-00.parquet")
         assert len(data["df"].index) == 500000
         assert data["version"] == "parquet"
         assert (data["df"].dtypes == np.float32).all()
+        assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_parquet_uint16(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_parquet/2021_014/2021-01-14T00-21-03+00-00.parquet", dtype=np.uint16)
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "parquet"
+        assert (data["df"].dtypes == np.uint16).all()
         assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
     
     @pytest.mark.benchmark(group="evt-read")
