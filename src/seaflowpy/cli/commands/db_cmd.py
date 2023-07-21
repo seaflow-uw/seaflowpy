@@ -29,17 +29,33 @@ def db_cmd():
 
 
 @db_cmd.command('create')
-@click.option('-d', '--db', 'db_file', required=True, type=click.Path(writable=True),
-    help='DB file to create or update.')
-@click.option('-c', '--cruise', required=True,
+@click.option('-c', '--cruise', type=str,
     help='Supply a cruise name to be saved in the database.',)
-@click.option('-s', '--serial', required=True,
+@click.option('-s', '--serial', type=str,
     help='Supply an instrument serial number to be saved in the database.')
-def db_create_cmd(db_file, cruise, serial):
+@click.argument('db-file', nargs=1, type=click.Path(writable=True))
+def db_create_cmd(cruise, serial, db_file):
     """
-    Create or updated a popcycle database with cruise and serial number.
+    Create or update a popcycle database with cruise and serial number.
     """
+    # Try to read cruise and serial from database
+
+    if not cruise:
+        click.echo('no cruise provided, pulling from database')
+        try:
+            cruise = db.get_cruise(db_file)
+        except SeaFlowpyError as e:
+            raise click.ClickException(e)
+    if not serial:
+        click.echo('no serial provided, pulling from database')
+        try:
+            serial = db.get_serial(db_file)
+        except SeaFlowpyError as e:
+            raise click.ClickException(e)
+
     try:
+        # This step also creates a new database file if necessary or updates an
+        # existing database's schema.
         db.save_metadata(db_file, [{"cruise": cruise, "inst": serial}])
     except SeaFlowpyError as e:
         raise click.ClickException(str(e))
