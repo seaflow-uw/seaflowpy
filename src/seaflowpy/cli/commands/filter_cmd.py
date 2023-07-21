@@ -36,14 +36,17 @@ def validate_resolution(ctx, param, value):
     help='Popcycle SQLite3 db file with filter parameters and cruise name.')
 @click.option('-l', '--limit', type=int, metavar='N', callback=validate_limit,
     help='Limit number of files to process.')
+@click.option('-m', '--max-particles-per-file', type=int, default=filterevt.max_particles_per_file_default,
+    show_default=True, metavar='N', callback=validate_limit,
+    help='Only filter files with an event count <= this limit.')
 @click.option('-o', '--opp-dir', metavar='DIR',
     help='Directory in which to save OPP files. Will be created if does not exist.')
-@click.option('-p', '--process-count', default=1, show_default=True, metavar="N", callback=validate_process_count,
+@click.option('-p', '--process-count', default=1, show_default=True, metavar='N', callback=validate_process_count,
     help='Number of processes to use in filtering.')
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
 @util.quiet_keyboardinterrupt
-def filter_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution):
+def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Find cruise in db
     try:
@@ -63,6 +66,7 @@ def filter_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution
         'delta': delta,
         'evt_dir': evt_dir,
         'limit': limit,
+        'max_particles_per_file': max_particles_per_file,
         'db': dbpath,
         'opp_dir': opp_dir,
         'process_count': process_count,
@@ -125,7 +129,8 @@ def filter_cmd(delta, evt_dir, dbpath, limit, opp_dir, process_count, resolution
                 dbpath,
                 opp_dir,
                 worker_count=process_count,
-                every=resolution
+                every=resolution,
+                max_particles_per_file=max_particles_per_file
             )
         except errors.SeaFlowpyError as e:
             raise click.ClickException(str(e))

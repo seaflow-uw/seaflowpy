@@ -1,5 +1,6 @@
 from builtins import str
 from builtins import object
+from pathlib import Path
 import gzip
 import io
 import os
@@ -72,6 +73,13 @@ class TestOpenV1:
         assert (data["df"].dtypes == np.float32).all()
 
     @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_metadata(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt_metadata, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00")
+        assert data["rowcnt"] == 500000
+        assert data["version"] == "v1"
+        assert data["colcnt"] == len(sfp.particleops.COLUMNS)
+
+    @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_uint16(self, benchmark):
         data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00", dtype=np.uint16)
         assert len(data["df"].index) == 500000
@@ -133,6 +141,13 @@ class TestOpenV2:
         assert (data["df"].dtypes == np.float32).all()
 
     @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_metadata_v2(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt_metadata, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00")
+        assert data["rowcnt"] == 500000
+        assert data["version"] == "v2"
+        assert data["colcnt"] == len(sfp.particleops.COLUMNS2)
+
+    @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_v2_uint16(self, benchmark):
         data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00", dtype=np.uint16)
         assert len(data["df"].index) == 500000
@@ -191,6 +206,13 @@ class TestOpenParquetEVT:
         assert data["version"] == "parquet"
         assert (data["df"].dtypes == np.float32).all()
         assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_metadata_parquet(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt_metadata, "tests/test_evt_read_benchmark/evt_parquet/2021_014/2021-01-14T00-21-03+00-00.parquet")
+        assert data["rowcnt"] == 500000
+        assert data["version"] == "parquet"
+        assert data["colcnt"] == len(sfp.particleops.REDUCED_COLUMNS)
 
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_parquet_uint16(self, benchmark):
@@ -486,6 +508,35 @@ class TestMultiFileFilter(object):
         expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_plan.db")
 
         pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
+
+        # Check that outlier table has entry for every file
+        outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])
+        expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
+        pdt.assert_frame_equal(outlier_table, expected_outlier_table)
+
+    def test_multi_file_filter_local_v2_with_per_file_limit(self, tmpout):
+        """Test multi-file filtering on v2 data with per-file event max and ensure output can be read back OK"""
+        # python setup.py test doesn't play nice with pytest and
+        # multiprocessing, so we use one core here
+        file_dates = tmpout["file_dates"].copy()
+        file_dates["path"] = file_dates["path_v2"]
+        sfp.filterevt.filter_evt_files(
+            file_dates,
+            dbpath=tmpout["db_plan"],
+            opp_dir=str(tmpout["oppdir"]),
+            worker_count=1,
+            max_particles_per_file=1
+        )
+
+        assert not (Path(tmpout["oppdir"]) / "2014-07-04T00-00-00+00-00.1H.opp.parquet").exists()
+        assert not (Path(tmpout["oppdir"]) / "2014-07-04T01-00-00+00-00.1H.opp.parquet").exists()
+
+        # Check data stored in opp table are correct
+        opp_table = sfp.db.get_opp_table(tmpout["db_plan"])
+        assert len(opp_table) == 24
+        assert opp_table["all_count"].sum() == 0
+        assert opp_table["evt_count"].sum() == 0
+        assert opp_table["opp_count"].sum() == 0
 
         # Check that outlier table has entry for every file
         outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])

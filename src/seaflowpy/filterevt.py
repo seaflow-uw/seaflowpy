@@ -17,11 +17,12 @@ from . import util
 stop = 'STOP'
 # Quantile list
 quantiles = [2.5, 50, 97.5]
+max_particles_per_file_default = 50000 * 180  # max event rate 50k
 
 
 @util.quiet_keyboardinterrupt
 def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
-                     window_size="1H"):
+                     max_particles_per_file=max_particles_per_file_default, window_size="1H"):
     """Filter a list of EVT files.
 
     Positional arguments:
@@ -42,6 +43,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
         "filter_params": None,  # fill in later from db,
+        "max_particles_per_file": max_particles_per_file,
         "window_size": window_size,
         "window_start_date": None,
         "errors": [],  # global errors outside of processing single files
@@ -69,7 +71,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
     stats_q = mp.Queue()  # result stats
     opps_q = mp.Queue()   # OPP data
     done_q = mp.Queue()   # signal we're done to main thread
-
+    # TODO: top-level exception handling in all worker processes
     # Create worker processes
     workers = []
     for _ in range(worker_count):
@@ -135,15 +137,31 @@ def do_filter(work_q, opps_q):
             }
 
             filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
+
+            # First check that particle count is below limit
             try:
-                data = fileio.read_evt(row["path"])
-                evt_df = data["df"]
+                row_count = fileio.read_evt_metadata(row['path'])["rowcnt"]
             except (errors.FileError, IOError) as e:
                 result["error"] = f"Could not parse file {row['path']}: {e}"
-                evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
+                evt_df = particleops.empty_df()
             except Exception as e:
                 result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
-                evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
+                evt_df = particleops.empty_df()
+            if row_count > work["max_particles_per_file"]:
+                result["error"] = f"{row_count} records in {row['path']} is > limit of {work['max_particles_per_file']}, will not filter"
+                evt_df = particleops.empty_df()
+            elif not result["error"]:
+                # Particle count below limit and file is probably readable, go ahead and filter
+                try:
+                    data = fileio.read_evt(row["path"])
+                    evt_df = data["df"]
+                    result["all_count"] = len(evt_df)
+                except (errors.FileError, IOError) as e:
+                    result["error"] = f"Could not parse file {row['path']}: {e}"
+                    evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
+                except Exception as e:
+                    result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
+                    evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
 
             try:
                 evt_df = particleops.mark_focused(evt_df, filter_params, inplace=True)
@@ -155,10 +173,10 @@ def do_filter(work_q, opps_q):
                 opp_df["file_id"] = row["file_id"]
                 opp_df["filter_id"] = filter_params["id"][0]
                 result["opp"] = opp_df
-                result["all_count"] = len(evt_df.index)
                 result["noise_count"] = len(evt_df[evt_df["noise"]].index)
                 result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
                 result["opp_count"] = len(opp_df[opp_df["q50"]])
+                result["evt_count"] = result["all_count"] - result["noise_count"]
                 result["filter_id"] = filter_params["id"][0]
 
             work["results"].append(result)
@@ -171,7 +189,7 @@ def do_filter(work_q, opps_q):
                     r["file_id"],
                     r["opp"],
                     r["all_count"],
-                    r["all_count"] - r["noise_count"],
+                    r["evt_count"],
                     r["filter_id"]
                 )
             )

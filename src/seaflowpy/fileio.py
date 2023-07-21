@@ -8,6 +8,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
@@ -105,18 +106,27 @@ def file_open_w(path):
             yield fh
 
 
-def read_evt_header(f):
+def read_evt_metadata(path):
+    if path.endswith(".parquet"):
+        with file_open_r(path) as fh:
+            return read_evt_parquet_metadata(fh)
+    else:
+        with file_open_r(path) as fh:
+            return read_evt_labview_metadata(fh)
+
+
+def read_evt_labview_metadata(f):
     """
-    Detect v1 or v2 EVT file.
+    Read labview EVT file metadata.
 
     Parameters
     -----------
-    f: Open file-like object
+    f: File-like object
 
     Raises
     ------
     errors.FileError
-        When version can't be determined
+
     Returns
     -------
     dict
@@ -124,12 +134,16 @@ def read_evt_header(f):
     """
     bytes_per_col = 2
 
-    # v1: number of rows of data
-    # v2: bytes per row of data, should always be 14 (7 columns * 2 bytes)
-    buff1 = f.read(4)
-    # v1: number of 2-byte columns per row, should always be 10
-    # v2: number of rows of data
-    buff2 = f.read(4)
+    try:
+        # v1: number of rows of data
+        # v2: bytes per row of data, should always be 14 (7 columns * 2 bytes)
+        buff1 = f.read(4)
+        # v1: number of 2-byte columns per row, should always be 10
+        # v2: number of rows of data
+        buff2 = f.read(4)
+    except (IOError, EOFError, zlib.error) as e:
+        raise errors.FileError("File could not be read: {}".format(str(e)))
+
     if len(buff1) < 4 or len(buff2) < 4:
         raise errors.FileError("File has incomplete leading 32bit numbers")
     num1 = int.from_bytes(buff1, byteorder='little')
@@ -139,6 +153,27 @@ def read_evt_header(f):
     if num1 == len(particleops.COLUMNS2) * bytes_per_col:
         return { "rowcnt": num2, "colcnt": num1 / bytes_per_col, "version": "v2" }
     raise errors.FileError("File does not have a valid column size number")
+
+
+def read_evt_parquet_metadata(f):
+    """
+    Read Parquet EVT metadata.
+
+    Parameters
+    -----------
+    f: File-like object
+
+    Returns
+    -------
+    dict
+        { "rowcnt": row count, "colcnt": column count, "version": "parquet" }
+    """
+    metadata = pq.read_metadata(f)
+    return {
+        "rowcnt": metadata.num_rows,
+        "colcnt": metadata.num_columns,
+        "version": "parquet"
+    }
 
 
 def read_labview(path, columns=None, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
@@ -169,7 +204,7 @@ def read_labview(path, columns=None, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
     """
     try:
         with file_open_r(path, fileobj) as fh:
-            counts = read_evt_header(fh)
+            counts = read_evt_labview_metadata(fh)
             rowcnt, version = counts["rowcnt"], counts["version"]
             if rowcnt == 0:
                 raise errors.FileError("File has no particle data")
