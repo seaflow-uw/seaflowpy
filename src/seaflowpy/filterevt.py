@@ -1,7 +1,6 @@
 import copy
 #import datetime
 import logging
-import os
 import signal
 import sys
 import time
@@ -18,14 +17,7 @@ logger = logging.getLogger(__name__)
 
 proc_polling_int_sec = 0.5
 # Track any signals received while filtering
-signal_received = {
-    "signum": None,
-    "exception_to_raise": None
-}
-signal_exceptions = {
-    signal.SIGTERM: SystemExit,
-    signal.SIGINT: KeyboardInterrupt
-}
+signal_received = { "signum": None }
 # Stop sentinel value for filtering procs
 # Done sentinel value to indicate pipeline finished without an error
 stop = "STOP"
@@ -38,10 +30,16 @@ max_particles_per_file_default = 50000 * 180  # max event rate (per sec) 50k
 def signal_handler(signum, frame):
     logger.debug("got %s in signal handler", signum)
     signal_received["signum"] = signum
-    try:
-        signal_received["exception_to_raise"] = signal_exceptions[signum]
-    except KeyError:
-        pass  # signum not recognized, default to not raising
+
+
+def raise_signal_exception():
+    if signal_received["signum"] == signal.SIGINT:
+        logger.debug("raising %s", KeyboardInterrupt)
+        raise KeyboardInterrupt
+    elif signal_received["signum"] == signal.SIGTERM:
+        exc = SystemExit(128 + signal_received["signum"])
+        logger.debug("raising %s", exc)
+        raise exc
 
 
 def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
@@ -98,15 +96,15 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         filtered_q = manager.Queue()
         # reporting stats, db saver proc writes, reporter proc reads
         stats_q = manager.Queue()
-        # Queue to receive child error
-        error_q = manager.Queue()
+        # Queue to receive done sentinel or child exception
+        done_q = manager.Queue()
 
         # Create worker processes
         workers = []
         for _ in range(worker_count):
             p = mp.Process(
                 target=do_filter,
-                args=(work_q, filtered_q, error_q),
+                args=(work_q, filtered_q, done_q),
                 daemon=True
             )
             p.start()
@@ -115,7 +113,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         # Create db output process
         saver = mp.Process(
             target=do_save,
-            args=(filtered_q, stats_q, len(files_df), error_q),
+            args=(filtered_q, stats_q, len(files_df), done_q),
             daemon=True
         )
         saver.start()
@@ -123,7 +121,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         # Create reporting process
         reporter = mp.Process(
             target=do_reporting,
-            args=(stats_q, every, len(files_df), error_q),
+            args=(stats_q, every, len(files_df), done_q),
             daemon=True
         )
         reporter.start()
@@ -151,18 +149,18 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
                 # Polling interval implented here
                 try:
 
-                    child_err = error_q.get(block=True, timeout=proc_polling_int_sec)
+                    child_resp = done_q.get(block=True, timeout=proc_polling_int_sec)
                 except Empty:
-                    child_err = None
-                if child_err is not None:
-                    if child_err == done:
+                    child_resp = None
+                if child_resp is not None:
+                    if child_resp == done:
                         # Normal exit, don't terminate children, expect them to
                         # wrap up on their own.
                         logger.debug("got %s from child, exiting early", done)
                         break
                     else:
                         # Got error from child
-                        logger.debug("got error '%s' from child, exiting early", child_err)
+                        logger.debug("got error '%s' from child, exiting early", child_resp)
                         for w in workers:
                             w.terminate()
                         saver.terminate()
@@ -193,13 +191,16 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
             logger.debug("restoring original signal handlers")
             for sig, handler in orig_handlers.items():
                 signal.signal(sig, handler)
-            exception_to_raise = signal_received["exception_to_raise"]
-            if exception_to_raise is not None:
-                logger.debug("raising %s", exception_to_raise)
-                raise exception_to_raise
+            # Raise exception that would have been caused by signal, or not if
+            # no recognized signal was raised.
+            raise_signal_exception()
+            # Raise exception reported by child
+            if isinstance(child_resp, Exception):
+                raise child_resp
 
 
-def do_filter(work_q, filtered_q, error_q):
+
+def do_filter(work_q, filtered_q, done_q):
     """Filter one EVT file, save to sqlite3, return filter stats"""
     try:
         logger.debug("filter process started")
@@ -314,13 +315,13 @@ def do_filter(work_q, filtered_q, error_q):
     except Exception as e:
         # Something unexpected happened, tell other processes to exit and exit this process
         logger.debug("filter process encountered error '%s'", e)
-        error_q.put(e)
+        done_q.put(e)
     except KeyboardInterrupt:
         # Return quietly on SIGINT, no stack trace
         pass
 
 
-def do_save(filtered_q, stats_q, files_left, error_q):
+def do_save(filtered_q, stats_q, files_left, done_q):
     try:
         logger.debug("saver process started")
         while files_left > 0:
@@ -342,13 +343,13 @@ def do_save(filtered_q, stats_q, files_left, error_q):
     except Exception as e:
         # Something unexpected happened, tell other processes to exit and exit this process
         logger.debug("db saver process encountered error '%s'", e)
-        error_q.put(e)
+        done_q.put(e)
     except KeyboardInterrupt:
         # Return quietly on SIGINT, no stack trace
         pass
 
 
-def do_reporting(stats_q, every, file_count, error_q):
+def do_reporting(stats_q, every, file_count, done_q):
     try:
         logger.debug("reporter process started")
         event_count = 0
@@ -450,11 +451,11 @@ def do_reporting(stats_q, every, file_count, error_q):
             )
         print(summary_text)
         print(f"{files_ok} / {file_count} EVT files parsed successfully")
-        error_q.put(done)  # signal pipeline finished normally
+        done_q.put(done)  # signal pipeline finished normally
     except Exception as e:
         # Something unexpected happened, tell other processes to exit and exit this process
         logger.debug("reporter process encountered error '%s'", e)
-        error_q.put(e)
+        done_q.put(e)
     except KeyboardInterrupt:
         # Return quietly on SIGINT, no stack trace
         pass
