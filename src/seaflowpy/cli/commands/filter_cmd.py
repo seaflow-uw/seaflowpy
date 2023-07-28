@@ -1,13 +1,21 @@
 import json
+import logging
+
 import click
 import pandas as pd
 import pkg_resources
 from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import filterevt
-from seaflowpy import util
 from seaflowpy import seaflowfile
 
+logger = logging.getLogger(__name__.split(".")[0])
+logger.setLevel(logging.NOTSET)
+logging_ch = logging.StreamHandler()
+logging_ch.setFormatter(
+    logging.Formatter(fmt="%(asctime)s pid=%(process)-10s %(levelname)s %(module)s %(message)s")
+)
+logger.addHandler(logging_ch)
 
 def validate_limit(ctx, param, value):
     if value is not None and value < 1:
@@ -45,7 +53,6 @@ def validate_resolution(ctx, param, value):
     help='Number of processes to use in filtering.')
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
-@util.quiet_keyboardinterrupt
 def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, process_count, resolution):
     """Filter EVT data locally."""
     # Find cruise in db

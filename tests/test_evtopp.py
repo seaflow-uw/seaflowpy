@@ -446,7 +446,8 @@ class TestOutput:
 
 
 class TestMultiFileFilter(object):
-    def test_multi_file_filter_local(self, tmpout):
+    @pytest.mark.parametrize("jobs", [1, 2])
+    def test_multi_file_filter_local(self, tmpout, jobs):
         """Test multi-file filtering and ensure output can be read back OK"""
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
@@ -454,7 +455,7 @@ class TestMultiFileFilter(object):
             tmpout["file_dates"],
             dbpath=tmpout["db_one"],
             opp_dir=str(tmpout["oppdir"]),
-            worker_count=1
+            worker_count=jobs
         )
 
         opp_dfs = [
@@ -479,17 +480,16 @@ class TestMultiFileFilter(object):
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_one_param.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
 
-    def test_multi_file_filter_local_v2(self, tmpout):
+    @pytest.mark.parametrize("jobs", [1, 2])
+    def test_multi_file_filter_local_v2(self, tmpout, jobs):
         """Test multi-file filtering on v2 data and ensure output can be read back OK"""
-        # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we use one core here
         file_dates = tmpout["file_dates"].copy()
         file_dates["path"] = file_dates["path_v2"]
         sfp.filterevt.filter_evt_files(
             file_dates,
             dbpath=tmpout["db_plan"],
             opp_dir=str(tmpout["oppdir"]),
-            worker_count=1
+            worker_count=jobs
         )
 
         opp_dfs = [
@@ -514,17 +514,16 @@ class TestMultiFileFilter(object):
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
 
-    def test_multi_file_filter_local_v2_with_per_file_limit(self, tmpout):
+    @pytest.mark.parametrize("jobs", [1, 2])
+    def test_multi_file_filter_local_v2_with_per_file_limit(self, tmpout, jobs):
         """Test multi-file filtering on v2 data with per-file event max and ensure output can be read back OK"""
-        # python setup.py test doesn't play nice with pytest and
-        # multiprocessing, so we use one core here
         file_dates = tmpout["file_dates"].copy()
         file_dates["path"] = file_dates["path_v2"]
         sfp.filterevt.filter_evt_files(
             file_dates,
             dbpath=tmpout["db_plan"],
             opp_dir=str(tmpout["oppdir"]),
-            worker_count=1,
+            worker_count=jobs,
             max_particles_per_file=1
         )
 
