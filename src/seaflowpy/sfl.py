@@ -15,6 +15,7 @@ from . import seaflowfile
 
 
 sfl_delim = '\t'
+sfl_NA = 'NA'
 
 # Mappings between SFL file and SQL table column names
 colname_mapping = {
@@ -181,7 +182,8 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
     Parameters
     -----------
     df: pandas.DataFrame
-        SFL DataFrame with column to check.
+        SFL DataFrame with column to check. Should have NA values encoded as
+        pandas.NA.
     colname: str
         Name of the column to check.
     require_all: bool, default False
@@ -205,12 +207,12 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         # column must be present
         errors.append(create_error(df, colname, msg=f"{colname} column is missing", level="error"))
     else:
-        missing_idx = df[colname] == ""
+        missing_idx = df[colname].isna()
         missing = df[missing_idx]
         numbers = pd.to_numeric(df[colname], errors="coerce")
         # Create boolean index for values in acceptable range and are interpretable
-        # as numbers. Don't include NAs that resulted from empty string. We
-        # treat those separately as strictly missing values.
+        # as numbers. Don't include NAs that resulted from empty string or SFL
+        # NA string. We treat those separately as strictly missing values.
         good_selector = missing_idx | numbers.notna()
         if minval is not None:
             good_selector = good_selector & (numbers >= minval)
@@ -504,6 +506,7 @@ def read_file(
         "dtype": str,
         "na_filter": True,
         "encoding": "utf-8",
+        "na_values": [sfl_NA, ""],
         "keep_default_na": False
     }
     kwargs_defaults = dict(defaults, **kwargs)
