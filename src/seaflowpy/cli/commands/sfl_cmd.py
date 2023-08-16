@@ -292,7 +292,7 @@ def sfl_validate_cmd(report_all, sfl_file):
     need_header = True
     for f in sfl_file:
         try:
-            df = sfl.read_file(f)
+            df = sfl.read_file(f, convert_numerics=False)
         except sfperrors.FileError as e:
             raise click.ClickException(str(e))
         errors = sfl.check(df)

@@ -205,36 +205,36 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         # column must be present
         errors.append(create_error(df, colname, msg=f"{colname} column is missing", level="error"))
     else:
-        notnas = df[df[colname].notna()]
-        numbers = pd.to_numeric(notnas[colname], errors="coerce")
-        # Create boolean index for values in acceptable range
-        # Start by selecting everything, then select by minval/maxval
-        good_selector = np.ones(len(numbers), dtype=bool)
+        missing_idx = df[colname] == ""
+        missing = df[missing_idx]
+        numbers = pd.to_numeric(df[colname], errors="coerce")
+        # Create boolean index for values in acceptable range and are interpretable
+        # as numbers. Don't include NAs that resulted from empty string. We
+        # treat those separately as strictly missing values.
+        good_selector = missing_idx | numbers.notna()
         if minval is not None:
             good_selector = good_selector & (numbers >= minval)
         if maxval is not None:
             good_selector = good_selector & (numbers <= maxval)
-        # Catch values outside correct range
-        # Catch non-numeric values (NAs created during to_numeric())
-        bad_numbers = notnas.loc[~good_selector, colname]
+        bad_numbers = df.loc[~good_selector, colname]
         for i, v in bad_numbers.items():
             errors.append(create_error(df, colname, msg=f"Invalid {colname}", row=i, val=v, level="error"))
 
-        nas = df.loc[df[colname].isna(), colname]
-        if len(nas) == len(df):
+        # Report missing values
+        if len(missing) == len(df):
             # No data in column
             if require_all or require_some:
                 errors.append(create_error(df, colname, msg=f"{colname} column has no data", level="error"))
             else:
                 errors.append(create_error(df, colname, msg=f"{colname} column has no data", level="warning"))
-        elif len(nas) > 0:
+        elif len(missing) > 0:
             # Some missing
             if require_all:
-                for i, v in nas.items():
-                    errors.append(create_error(df, colname, msg="Missing required data", row=i, val=v, level="error"))
+                for i, row in missing.iterrows():
+                    errors.append(create_error(df, colname, msg="Missing required data", row=i, val=row[colname], level="error"))
             elif warn_missing:
-                for i, v in nas.items():
-                    errors.append(create_error(df, colname, msg="Missing data", row=i, val=v, level="warning"))
+                for i, row in missing.iterrows():
+                    errors.append(create_error(df, colname, msg="Missing data", row=i, val=row[colname], level="warning"))
 
     return errors
 
@@ -503,7 +503,8 @@ def read_file(
         "sep": str(sfl_delim),
         "dtype": str,
         "na_filter": True,
-        "encoding": "utf-8"
+        "encoding": "utf-8",
+        "keep_default_na": False
     }
     kwargs_defaults = dict(defaults, **kwargs)
 
