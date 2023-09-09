@@ -258,7 +258,7 @@ def date_evt_files(evt_paths, sfl_df=None):
     """
     data = {"date": [], "file_id": [], "path": []}
     if sfl_df is not None:
-        if not pd.api.types.is_datetime64_ns_dtype(sfl_df["date"]):
+        if sfl_df["date"].dtype == object:
             sfl_df["date"] = sfl_df["date"].map(time.parse_date)
         sfl_dates_by_file = dict(zip(sfl_df["file"].tolist(), sfl_df["date"].tolist()))
         for path in evt_paths:

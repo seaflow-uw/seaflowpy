@@ -203,31 +203,27 @@ Update pip, wheel, setuptools
 pip3 install -U pip wheel setuptools
 ```
 
-And install `seaflowpy`
+And install `seaflowpy` and freeze  the requirements
 
 ```sh
-pip3 install .
-```
-
-Then freeze the requirements
-
-```sh
+pip3 install . && \
+pytest && \
 pip3 freeze | grep -v seaflowpy >requirements.txt
 ```
 
 Then install test dependencies, test, and freeze
 
 ```sh
-pip3 install pytest pytest-benchmark
-pytest
+pip3 install pytest pytest-benchmark && \
+pytest && \
 pip3 freeze | grep -v seaflowpy >requirements-test.txt
 ```
 
 Then install dev dependencies, test, and freeze
 
 ```sh
-pip3 install pylint twine
-pytest
+pip3 install pylint twine jupyterlab && \
+pytest && \
 pip3 freeze | grep -v seaflowpy >requirements-dev.txt
 ```
 
