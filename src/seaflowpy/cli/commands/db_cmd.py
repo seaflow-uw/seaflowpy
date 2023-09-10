@@ -1,5 +1,6 @@
 import sys
 import click
+from pathlib import Path
 from seaflowpy import db
 from seaflowpy.errors import SeaFlowpyError
 from seaflowpy import fileio
@@ -88,14 +89,15 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
     cruise, serial = None, None
 
     # Try to read cruise and serial from database
-    try:
-        cruise = db.get_cruise(db_file)
-    except SeaFlowpyError as e:
-        pass
-    try:
-        serial = db.get_serial(db_file)
-    except SeaFlowpyError as e:
-        pass
+    if Path(db_file).exists():
+        try:
+            cruise = db.get_cruise(db_file)
+        except SeaFlowpyError as e:
+            pass
+        try:
+            serial = db.get_serial(db_file)
+        except SeaFlowpyError as e:
+            pass
 
     # Try to read cruise and serial from filename if not already defined
     if cruise is None or serial is None:
