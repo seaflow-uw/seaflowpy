@@ -3,6 +3,7 @@ import datetime
 import pkgutil
 import sqlite3
 import uuid
+from pathlib import Path
 import pandas as pd
 from . import errors
 from . import particleops
@@ -12,6 +13,7 @@ from .seaflowfile import SeaFlowFile
 def create_db(dbpath):
     """Create or complete database"""
     schema_text = pkgutil.get_data(__name__, 'data/popcycle.sql').decode('UTF-8', 'ignore')
+    Path(dbpath).parent.mkdir(parents=True, exist_ok=True)
     executescript(dbpath, schema_text)
 
 
