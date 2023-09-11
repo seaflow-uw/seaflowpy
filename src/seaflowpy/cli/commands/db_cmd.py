@@ -128,9 +128,11 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
 @db_cmd.command('import-filter-params')
 @click.option('-c', '--cruise',
     help='Supply a cruise name for parameter selection. If not provided cruise in database will be used.')
+@click.option('-p', '--plan',  is_flag=True,
+    help='Create a filter plan for this set of parameters covering all files in SFL table')
 @click.argument('filter-file', nargs=1, type=click.File())
 @click.argument('db-file', nargs=1, type=click.Path(writable=True))
-def db_import_filter_params_cmd(cruise, filter_file, db_file):
+def db_import_filter_params_cmd(cruise, plan, filter_file, db_file):
     """
     Imports filter parameters to database.
 
@@ -152,6 +154,11 @@ def db_import_filter_params_cmd(cruise, filter_file, db_file):
     if len(params.index) == 0:
         raise click.ClickException('no filter parameters found for cruise %s' % cruise)
     db.save_filter_params(db_file, params.to_dict('index').values())
+    if plan:
+        try:
+            db.create_filter_plan(db_file)
+        except SeaFlowpyError as e:
+            raise click.ClickException(str(e))
 
 
 @db_cmd.command('create-filter-plan')
