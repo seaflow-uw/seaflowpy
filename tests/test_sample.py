@@ -188,7 +188,7 @@ class TestSample:
         assert (
             len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) > 0
         )
-        gb = df.groupby("file_id")
+        gb = df.groupby("file_id", observed=True)
         assert gb.ngroups == 2
         assert list(gb.groups.keys()) == tmpout["file_ids"]
         assert [len(g) for g in gb.groups.values()] == [20000, 20000]
