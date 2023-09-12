@@ -8,6 +8,7 @@ from . import fileio
 from . import filterevt
 from . import geo
 from . import particleops
+from . import plan
 from . import sample
 from . import sfl
 from . import time

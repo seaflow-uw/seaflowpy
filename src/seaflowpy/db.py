@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 from . import errors
 from . import particleops
+from . import plan
 from .seaflowfile import SeaFlowFile
 
 
@@ -50,6 +51,26 @@ def save_filter_params(dbpath, vals):
         v['id'] = id_
         v['date'] = date
     executemany(dbpath, sql_insert, vals)
+
+
+def save_df(dbpath, table, df, delete_first=True):
+    """Save dataframe to db table
+
+    If delete_first is true, delete entries in table first without dropping and
+    recreating the table.
+    
+    The table schema should stay consistent with the schema at db creation after
+    this function runs.
+    """
+    create_db(dbpath)
+    if delete_first:
+        execute(dbpath, f"DELETE FROM {table}")
+
+    try:
+        with sqlite3.connect(dbpath) as con:
+            df.to_sql(table, con, index=False, if_exists="append")
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when saving {!s} table: {!s}".format(table, e))
 
 
 def save_metadata(dbpath, vals):
@@ -229,6 +250,27 @@ def get_filter_plan_table(dbpath):
     return df
 
 
+def get_gating_table(dbpath):
+    sql = "SELECT * FROM gating ORDER BY date ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = safe_read_sql(sql, dbcon)
+    return df
+
+
+def get_gating_plan_table(dbpath):
+    sql = "SELECT * FROM gating_plan ORDER BY start_date ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = safe_read_sql(sql, dbcon)
+    return df
+
+
+def get_poly_table(dbpath):
+    sql = "SELECT * FROM poly ORDER BY gating_id, pop, point_order ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = safe_read_sql(sql, dbcon)
+    return df
+
+
 def get_serial(dbpath):
     sql = "SELECT inst FROM metadata"
     with sqlite3.connect(dbpath) as dbcon:
@@ -285,6 +327,14 @@ def get_opp_table(dbpath, filter_id=""):
     with sqlite3.connect(dbpath) as dbcon:
         oppdf = safe_read_sql(sql, dbcon)
     return oppdf
+
+
+def get_vct_table(dbpath):
+    """Get vct table joined to SFL to add a date column"""
+    sql = "SELECT vct.*, sfl.date FROM vct INNER JOIN sfl ON vct.file = sfl.file ORDER BY file ASC, pop ASC, quantile ASC"
+    with sqlite3.connect(dbpath) as dbcon:
+        df = safe_read_sql(sql, dbcon)
+    return df
 
 
 def get_outlier_table(dbpath):
@@ -358,6 +408,29 @@ def create_filter_plan(dbpath):
         raise errors.SeaFlowpyError("An error occurred when saving a filter plan: {!s}".format(e))
 
     return filter_plan_df
+
+
+def create_gating_plan_from_vct(dbpath):
+    """
+    Create a gating plan table from vct
+
+    Raise SeaFlowpyError if vct or sfl tables are empty or non-existent.
+
+    Return a dataframe of the gating plan.
+    """
+    gating_df = get_gating_table(dbpath)
+    vct_df = get_vct_table(dbpath)
+    vct_df = vct_df[vct_df["quantile"] == 2.5]
+    if len(vct_df) == 0:
+        raise errors.SeaFlowpyError("no data in vct/sfl tables, can't create a gating_plan")
+    # Make sure all gating_ids in vct are in gating, otherwise throw
+    vct_ids = set(vct_df["gating_id"].unique())
+    gating_ids = set(gating_df["id"].unique())
+    if len(vct_ids.difference(gating_ids)) > 0:
+        raise errors.SeaFlowpyError("gating IDs found in vct table that are not in gating table")
+    vct_df = vct_df.rename(columns={"gating_id": "id"})[["date", "id"]]
+    gating_plan_df = plan.condense_plan(vct_df).rename(columns={"id": "gating_id"})
+    return gating_plan_df
 
 
 def execute(dbpath, sql, timeout=120):
