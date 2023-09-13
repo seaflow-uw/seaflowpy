@@ -4,12 +4,13 @@ function print_help {
     echo "usage: build.sh [-h] [-s]"
     echo "  -h: display this help"
     echo "  -s: skip tests"
-    echo "  -v: custom version string"
+    echo "  -t: git tag or commit to build from, defaults to latest"
 }
 
 skiptests=0
-verstr=""
-while getopts ":hsv:" opt; do
+refcommit=""
+
+while getopts ":hst:" opt; do
     case ${opt} in
         h ) # help
             print_help
@@ -18,8 +19,8 @@ while getopts ":hsv:" opt; do
         s ) # skip tests
             skiptests=1
             ;;
-        v ) # custom version string
-            verstr=$OPTARG
+        t ) # git ref or commit
+            refcommit=$OPTARG
             ;;
         : )
             echo "error: $OPTARG requires an argument" 1>&2
@@ -32,15 +33,15 @@ while getopts ":hsv:" opt; do
     esac
 done
 shift $((OPTIND - 1))
-if [[ -z "$verstr" ]]; then
-    verstr=$(git describe --tags --dirty --always)
+if [[ -z "$refcommit" ]]; then
+    refcommit=$(git describe --dirty --tags --always)
 fi
-echo "using version string $verstr"
+echo "using tag/commit string $refcommit"
 
 # --------------------------------------------------------------------------- #
 # Build a Docker image
 # --------------------------------------------------------------------------- #
-docker build -t seaflowpy:"$verstr" .
+docker build -t seaflowpy:"$refcommit" --build-arg="ARG_GIT_REF_COMMIT=$refcommit" .
 buildrc=$?
 if [ $buildrc -ne 0 ]; then
     echo "error building Docker image" >&2
@@ -51,7 +52,7 @@ fi
 # Test the new Docker image
 # --------------------------------------------------------------------------- #
 if [[ "$skiptests" -eq 0 ]]; then
-    docker run -it --rm seaflowpy:"$verstr" pytest
+    docker run -it --rm seaflowpy:"$refcommit" pytest
     dockertestrc=$?
     if [ $dockertestrc -ne 0 ]; then
         echo "docker image failed tests" >&2
@@ -64,7 +65,7 @@ fi
 # Will create directory seaflowpy-dist
 # --------------------------------------------------------------------------- #
 [[ -d seaflowpy-dist ]] || mkdir seaflowpy-dist
-docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/dist seaflowpy:"$verstr" bash -c 'cp /seaflowpy/dist/* /dist/'
+docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/dist seaflowpy:"$refcommit" bash -c 'cp /seaflowpy/dist/* /dist/'
 
 # --------------------------------------------------------------------------- #
 # Misc docker tasks
@@ -85,7 +86,7 @@ docker run -it --rm -v "$(pwd)"/seaflowpy-dist:/dist seaflowpy:"$verstr" bash -c
 # Source tarball and wheel should be seaflowpy-dist after Docker build
 # If not, copy from docker image
 # mkdir dist
-# docker run -it --rm -v $(pwd)/seaflowpy-dist:/app seaflowpy:$verstr bash -c 'cp /seaflowpy-dist/* /app'
+# docker run -it --rm -v $(pwd)/seaflowpy-dist:/app seaflowpy:$refcommit bash -c 'cp /seaflowpy-dist/* /app'
 # Test against test PyPI repo
 # twine upload --repository-url https://test.pypi.org/legacy/ seaflowpy-dist/seaflowpy-<version>*
 
