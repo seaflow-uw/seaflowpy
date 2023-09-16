@@ -6,7 +6,6 @@ import re
 import numpy as np
 import pandas as pd
 import pytz
-from . import db
 from . import errors as sfperrors
 from . import geo
 from . import time
@@ -190,7 +189,7 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         Require that all rows have non-NA value?
     require_some: bool, default False
         Require that > 0 rows have non-NA value?
-    warning_missing: bool, default False
+    warn_missing: bool, default False
         Warn when any rows have missing data?
     minval: int or float, optional
         Minimum acceptable value.
@@ -207,20 +206,28 @@ def check_numeric(df, colname, require_all=False, require_some=False, warn_missi
         # column must be present
         errors.append(create_error(df, colname, msg=f"{colname} column is missing", level="error"))
     else:
+        # missing in file
         missing_idx = df[colname].isna()
         missing = df[missing_idx]
+
+        # try to interpret as numbers
         numbers = pd.to_numeric(df[colname], errors="coerce")
-        # Create boolean index for values in acceptable range and are interpretable
-        # as numbers. Don't include NAs that resulted from empty string or SFL
-        # NA string. We treat those separately as strictly missing values.
-        good_selector = missing_idx | numbers.notna()
+
+        # not missing and not interpretable as a number
+        not_numbers_idx = ~missing_idx & numbers.isna()
+        for i, v in df.loc[not_numbers_idx, colname].items():
+            errors.append(create_error(df, colname, msg=f"{colname} value not a number", row=i, val=v, level="error"))
+
+        # (not missing) and (interpretable as numbers) and (in range)
+        numbers_in_range_idx = ~missing_idx & numbers.notna()
         if minval is not None:
-            good_selector = good_selector & (numbers >= minval)
+            numbers_in_range_idx = numbers_in_range_idx & (numbers >= minval)
         if maxval is not None:
-            good_selector = good_selector & (numbers <= maxval)
-        bad_numbers = df.loc[~good_selector, colname]
-        for i, v in bad_numbers.items():
-            errors.append(create_error(df, colname, msg=f"Invalid {colname}", row=i, val=v, level="error"))
+            numbers_in_range_idx = numbers_in_range_idx & (numbers <= maxval)
+        # (not missing) and (interpretable as numbers) and (out of range)
+        numbers_out_of_range_idx = ~missing_idx & ~not_numbers_idx & ~numbers_in_range_idx
+        for i, v in df.loc[numbers_out_of_range_idx, colname].items():
+            errors.append(create_error(df, colname, msg=f"{colname} value out of range", row=i, val=v, level="error"))
 
         # Report missing values
         if len(missing) == len(df):
@@ -530,26 +537,6 @@ def read_file(
         df = df.rename(columns=colname_mapping["table_to_file"])
 
     return df
-
-
-def save_to_db(df, dbpath, cruise=None, serial=None):
-    """Write SFL dataframe to a SQLite3 database.
-
-    Any pre-existing SFL data will be erased.
-
-    Arguments:
-    df -- SFL DataFrame.
-    dbpath -- Path to SQLite3 database file.
-    """
-    db.create_db(dbpath)  # create or update db if needed
-    if cruise is None:
-        cruise = 'None'
-    if serial is None:
-        serial = 'None'
-    metadf = pd.DataFrame({'cruise': [cruise], 'inst': [serial]})
-    db.save_metadata(dbpath, metadf.to_dict('index').values())
-    # This assumes there are column names which match SQL SFL table
-    db.save_sfl(dbpath, df.to_dict('index').values())
 
 
 @util.suppress_sigpipe

@@ -3,12 +3,100 @@ import datetime
 import pkgutil
 import sqlite3
 import uuid
+from collections import defaultdict
 from pathlib import Path
+from typing import Any, Optional, Union
+import numpy as np
 import pandas as pd
+import pyarrow as pa
+from sqlalchemy import and_, create_engine, MetaData, or_, Table
+from sqlalchemy.exc import ArgumentError, NoSuchTableError
 from . import errors
 from . import particleops
 from . import plan
 from .seaflowfile import SeaFlowFile
+from . import sfl
+
+
+def dbpath_to_url(dbpath: Union[str, Path]) -> str:
+    """Normalize a dbpath to SQLAlchemy sqlite3 DB URL"""
+    if Path(dbpath).exists():
+        dbpath = f"sqlite:///{dbpath}"
+    elif not str(dbpath).startswith("sqlite:///"):
+        raise ValueError("dbpath must a path to an existing file or a sqlalchmey sqlite3 URL string")
+    return str(dbpath)
+
+
+def table_cols(table: str, dbpath: Union[str, Path]) -> list[str]:
+    """Get column names for table in dbpath"""
+    engine = create_engine(f"{dbpath_to_url(dbpath)}")
+    sfl_table = Table(table, MetaData(), autoload_with=engine)
+    names = [c.name for c in sfl_table.columns]
+    engine.dispose()
+    return names
+
+
+def read_table(table: str, dbpath: Union[str, Path]) -> pd.DataFrame:
+    """Read table as dataframe sorted ASC by ROWID"""
+    try:
+        return pd.read_sql(
+            f"SELECT * FROM {table} ORDER BY ROWID",
+            dbpath_to_url(dbpath),
+            dtype_backend="pyarrow"
+        )
+    except pd.io.sql.DatabaseError as e:
+        raise errors.SeaFlowpyError(e) from e
+
+
+def read_sql(sql: str, dbpath: Union[str, Path]):
+    """Read from Catch and handle error if table not present during pandas.read_sql()"""
+    try:
+        return pd.read_sql(sql, dbpath_to_url(dbpath), dtype_backend="pyarrow")
+    except pd.io.sql.DatabaseError as e:
+        raise errors.SeaFlowpyError(e) from e
+
+
+def save_df(
+    df: pd.DataFrame,
+    table: str,
+    dbpath: Union[str, Path],
+    clear: bool=True,
+    replace_by_file: bool=True
+):
+    """Save dataframe to db table
+
+    If clear, clear entries in table first without dropping and recreating the
+    table. If replace_by_file, entries matched by file will be replaced in
+    db.
+    """
+    create_db(dbpath)
+
+    try:
+        engine = create_engine(dbpath_to_url(dbpath))
+    except ArgumentError as e:
+        raise errors.SeaFlowpyError(f"error opening database: {e}") from e
+
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                del_stmt = None
+                if clear or replace_by_file:
+                    table_obj = Table(table, MetaData(), autoload_with=conn)
+                    if clear:
+                        del_stmt = table_obj.delete().where()
+                    elif replace_by_file:
+                        if "file" in [c.name for c in table_obj.columns] and "file" in df.columns:
+                            file_selections = []
+                            for f in df["file"].to_list():
+                                file_selections.append(table_obj.c.file == f)
+                            del_stmt = table_obj.delete().where(or_(*file_selections))
+                    if del_stmt is not None:
+                        conn.execute(del_stmt)
+                df.to_sql(table, conn, index=False, if_exists="append")
+    except (NoSuchTableError, pd.io.sql.DatabaseError) as e:
+        raise errors.SeaFlowpyError(f"error saving dataframe to db: {e}") from e
+    finally:
+        engine.dispose()
 
 
 def create_db(dbpath):
@@ -18,102 +106,173 @@ def create_db(dbpath):
     executescript(dbpath, schema_text)
 
 
-def save_filter_params(dbpath, vals):
+def executescript(dbpath, sql_script_text, timeout=120):
+    con = sqlite3.connect(dbpath, timeout=timeout)
+    try:
+        with con:
+            con.executescript(sql_script_text)
+    except sqlite3.Error as e:
+        raise errors.SeaFlowpyError("An error occurred when executing a SQL script: {!s}".format(e))
+    finally:
+        con.close()
+
+
+def save_filter_params(
+    df: pd.DataFrame,
+    dbpath: Union[str, Path],
+    clear: bool=True
+) -> str:
+    """Save filter parameters and return the generated filter ID"""
     create_db(dbpath)
-    # NOTE: values inserted must be in the same order as fields in opp
-    # table. Defining that order in a list here makes it easier to verify
-    # that the right order is used.
-    field_order = [
-        "id",
-        "date",
-        "quantile",
-        "beads_fsc_small",
-        "beads_D1",
-        "beads_D2",
-        "width",
-        "notch_small_D1",
-        "notch_small_D2",
-        "notch_large_D1",
-        "notch_large_D2",
-        "offset_small_D1",
-        "offset_small_D2",
-        "offset_large_D1",
-        "offset_large_D2"
-    ]
-    # Construct values string with named placeholders
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT OR REPLACE INTO filter VALUES ({})".format(values_str)
-    id_ = str(uuid.uuid4())
-    # Create an ISO8601 timestamp in the format '2019-04-29T20:54:26+00:00'
     utcnow = datetime.datetime.now(datetime.timezone.utc)
     date = utcnow.isoformat(timespec='seconds')
-    for v in vals:
-        v['id'] = id_
-        v['date'] = date
-    executemany(dbpath, sql_insert, vals)
+    id_ = str(uuid.uuid4())
+    df.insert(0, "date", date)
+    df.insert(0, "id", id_)
+    save_df(df, "filter", dbpath, clear=clear)
+    return id_
 
 
-def save_df(dbpath, table, df, delete_first=True):
-    """Save dataframe to db table
+def import_filter_params(
+    filter_path: Union[str, Path],
+    dbpath: Union[str, Path],
+    plan: bool=True,
+    clear: bool=False
+) -> str:
+    types = defaultdict(
+        lambda: "float64[pyarrow]",
+        cruise=pd.ArrowDtype(pa.string()),
+        instrument=pd.ArrowDtype(pa.string())
+    )
+    df = pd.read_csv(filter_path, dtype=types, dtype_backend="pyarrow")
+    df.columns = [c.replace('.', '_') for c in df.columns]
+    cruise = get_cruise(dbpath)
+    df = df[df.cruise == cruise]
+    if len(df) == 0:
+        raise errors.SeaFlowpyError('no filter parameters found for cruise %s' % cruise)
+    df = df.drop(columns=["instrument", "cruise"])
+    id_ = save_filter_params(df, dbpath, clear=clear)
+    if plan:
+        save_df(create_filter_plan(dbpath), "filter_plan", dbpath, clear=True)
+    return id_
 
-    If delete_first is true, delete entries in table first without dropping and
-    recreating the table.
-    
-    The table schema should stay consistent with the schema at db creation after
-    this function runs.
+
+def import_gating_params(
+    gating_path: Union[str, Path],
+    poly_path: Union[str, Path],
+    gating_plan_path: Union[str, Path],
+    dbpath: Union[str, Path]
+):
+    gating_df = pd.read_csv(gating_path, sep="\t", dtype_backend="pyarrow")
+    poly_df = pd.read_csv(poly_path, sep="\t", dtype_backend="pyarrow")
+    gating_plan_df = pd.read_csv(gating_plan_path, sep="\t", dtype_backend="pyarrow", dtype="string")
+
+    save_df(gating_df, "gating", dbpath, clear=True)
+    save_df(poly_df, "poly", dbpath, clear=True)
+    save_df(gating_plan_df, "gating_plan", dbpath, clear=True)
+
+
+def import_sfl(
+    sfl_path: Union[str, Path],
+    dbpath: Union[str, Path],
+    force: bool=False
+) -> list[dict[str, Any]]:
+    """Import SFL file to database
+
+    If there are errors during SLF validation, return the errors without
+    altering the database. If there are errors and force is True, save the SFL
+    and return errors.
+
+    This function will raise SeaFlowpyError if cruise and instrument serial in
+    the metadata table don't match cruise and serial parsed from the SFL file
+    name. If the file name does not contain a cruise and serial,
+    SeaFlowpyError is raised if they are not present in the metadata table.
     """
-    create_db(dbpath)
-    if delete_first:
-        execute(dbpath, f"DELETE FROM {table}")
+    cruise, serial = None, None
 
+    # Try to read cruise and serial from database
+    if Path(dbpath).exists():
+        try:
+            cruise = get_cruise(dbpath)
+        except errors.SeaFlowpyError as e:
+            pass
+        try:
+            serial = get_serial(dbpath)
+        except errors.SeaFlowpyError as e:
+            pass
+
+    # Try to read cruise and serial from filename if not already defined
+    file_cruise = None
+    file_serial = None
+    results = sfl.parse_sfl_filename(sfl_path)
+    if results:
+        file_cruise = results[0]
+        file_serial = results[1]
+    if cruise and file_cruise:
+        if cruise != file_cruise:
+            raise  errors.SeaFlowpyError(
+                "cruise from metadata table and file name don't match, make sure filename only has '_' if cruise/serial parsing is desired"
+            )
+    if serial and file_serial:
+        if serial != file_serial:
+            raise  errors.SeaFlowpyError(
+                "serial from metadata table and file name don't match, , make sure filename only has '_' if cruise/serial parsing is desired"
+            )
+    # Make sure cruise and serial are defined somewhere
+    cruise = cruise or file_cruise
+    serial = serial or file_serial
+    if cruise is None or serial is None:
+        raise errors.SeaFlowpyError(
+            'serial and cruise must be in either file name as <cruise>_<serial>.sfl or in db metadata table.'
+        )
+
+    # Perform checks on original string data to discriminate between missing
+    # data and values that could not be intepreted as numbers
+    df = sfl.read_file(sfl_path, convert_numerics=False)
+    check_errors = sfl.check(df)
+
+    if force or len([e for e in check_errors if e["level"] == "error"]) == 0:
+        # Read SFL again, this time converting all numeric columns when reading file
+        sfl.read_file(sfl_path, convert_numerics=True)
+        save_df(pd.DataFrame({'cruise': [cruise], 'inst': [serial]}), "metadata", dbpath, clear=True)
+        save_sfl(df, dbpath)
+
+    return check_errors
+
+
+def export_gating_params(dbpath: Union[str, Path], out_prefix: Union[str, Path]):
+    gating_df = get_gating_table(dbpath)
+    poly_df = get_poly_table(dbpath)
     try:
-        with sqlite3.connect(dbpath) as con:
-            df.to_sql(table, con, index=False, if_exists="append")
-    except sqlite3.Error as e:
-        raise errors.SeaFlowpyError("An error occurred when saving {!s} table: {!s}".format(table, e))
+        gating_plan_df = get_gating_plan_table(dbpath)
+    except errors.SeaFlowpyError as e:
+        # Maybe this is an older db schema without gating_plan table
+        gating_plan_df = None
+
+    if gating_plan_df is None or len(gating_plan_df) == 0:
+        gating_plan_df = create_gating_plan(dbpath)
+        if len(gating_plan_df) == 0:
+            raise errors.SeaFlowpyError("could not create gating_plan from db")
+
+    Path(out_prefix).parent.mkdir(exist_ok=True, parents=True)
+    gating_df.to_csv(f"{out_prefix}.gating.tsv", sep="\t", index=False)
+    poly_df.to_csv(f"{out_prefix}.poly.tsv", sep="\t", index=False)
+    gating_plan_df.to_csv(f"{out_prefix}.gating_plan.tsv", sep="\t", index=False)
 
 
-def save_metadata(dbpath, vals):
-    create_db(dbpath)
-    # Bit drastic but there should only be one entry in metadata at a time
-    sql_delete = "DELETE FROM metadata"
-    execute(dbpath, sql_delete)
-
-    sql_insert = "INSERT INTO metadata VALUES (:cruise, :inst)"
-    executemany(dbpath, sql_insert, vals)
+def save_opp_to_db(df: pd.DataFrame, dbpath: Union[str, Path]):
+    """Save aggregate statistics for filtered particle data to SQLite"""
+    save_df(df, "opp", dbpath, clear=False)
 
 
-def save_opp_to_db(vals, dbpath):
-    """
-    Save aggregate statistics for filtered particle data to SQLite.
-
-    Parameters
-    ----------
-    vals: list of dicts
-        Values array to be saved to opp table, created by prep_opp().
-    dbpath: str
-        Path to SQLite DB file.
-    """
-    # NOTE: values inserted must be in the same order as fields in opp
-    # table. Defining that order in a list here makes it easier to verify
-    # that the right order is used.
-    field_order = [
-        "file",
-        "all_count",
-        "opp_count",
-        "evt_count",
-        "opp_evt_ratio",
-        "filter_id",
-        "quantile"
-    ]
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT OR REPLACE INTO opp VALUES ({})".format(values_str)
-    executemany(dbpath, sql_insert, vals)
-
-
-def prep_opp(file, df, all_count, evt_count, filter_id):
-    """
-    Prepare aggregate statistic values for filtered particle data to SQLite.
+def prep_opp(
+    file: str,
+    df: pd.DataFrame,
+    all_count: int,
+    evt_count: int,
+    filter_id: str
+) -> pd.DataFrame:
+    """Prepare aggregate statistics values for filtered particle data
 
     The array returned by this function can be passed to save_opp_to_db.
 
@@ -136,7 +295,7 @@ def prep_opp(file, df, all_count, evt_count, filter_id):
 
     Returns
     -------
-    Array of values for save_opp_to_db().
+    DataFrame of opp aggregate statistics matching opp table structure
     """
     vals = []
     for _q_col, q, _q_str, q_df in particleops.quantiles_in_df(df):
@@ -154,80 +313,19 @@ def prep_opp(file, df, all_count, evt_count, filter_id):
             "filter_id": filter_id,
             "quantile": q
         })
-    return vals
+    df = pd.DataFrame(vals)
+    return df
 
 
-def save_outlier(vals, dbpath):
-    """
-    Save entries in outlier table.
-
-    Parameters
-    ----------
-    vals: list of dicts
-        Values array to be saved to outlier table, created by prep_outlier().
-    dbpath: str
-        Path to SQLite DB file.
-    """
-    field_order = ["file", "flag"]
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT OR REPLACE INTO outlier VALUES ({})".format(values_str)
-    executemany(dbpath, sql_insert, vals)
-
-
-def prep_outlier(file, flag):
-    """
-    Prepare an outlier entry for this file.
-
-    Parameters
-    ----------
-    file: str
-        Path to SeaFlow file that was filtered. Used to get the canonical
-        SeaFlow file ID.
-        e.g. tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00 will become
-        2014_185/2014-07-04T00-00-02+00-00.
-    flag: int
-        Outlier table value, 0 for OK.
-
-    Returns
-    -------
-    A single item array of values for save_outlier().
-    """
-    return [{"file": SeaFlowFile(file).file_id, "flag": flag}]
-
-
-def save_sfl(dbpath, vals):
+def save_sfl(df: pd.DataFrame, dbpath: Union[str, Path]):
     create_db(dbpath)
-
-    # Remove any previous SFL data
-    sql_delete = "DELETE FROM sfl"
-    execute(dbpath, sql_delete)
-
-    # NOTE: values inserted must be in the same order as fields in sfl
-    # table. Defining that order in a list here makes it easier to verify
-    # that the right order is used.
-    field_order = [
-        "file",
-        "date",
-        "file_duration",
-        "lat",
-        "lon",
-        "conductivity",
-        "salinity",
-        "ocean_tmp",
-        "par",
-        "bulk_red",
-        "stream_pressure",
-        "event_rate"
-    ]
-    values_str = ", ".join([":" + f for f in field_order])
-    sql_insert = "INSERT OR REPLACE INTO sfl VALUES (%s)" % values_str
-    executemany(dbpath, sql_insert, vals)
+    cols = table_cols("sfl", dbpath)
+    save_df(df[cols], "sfl", dbpath, clear=True)
 
 
 def get_cruise(dbpath):
     sql = "SELECT cruise FROM metadata"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
+    df = read_sql(sql, dbpath)
     if len(df.index) > 1:
         cruises = ", ".join([str(c) for c in df.cruise.tolist()])
         raise errors.SeaFlowpyError("More than one cruise found in database {}: {}".format(dbpath, cruises))
@@ -238,43 +336,32 @@ def get_cruise(dbpath):
 
 def get_filter_table(dbpath):
     sql = "SELECT * FROM filter ORDER BY date ASC, quantile ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        filterdf = safe_read_sql(sql, dbcon)
-    return filterdf
+    return read_sql(sql, dbpath)
 
 
 def get_filter_plan_table(dbpath):
-    sql = "SELECT * FROM filter_plan"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
-    return df
+    sql = "SELECT * FROM filter_plan ORDER BY start_date ASC"
+    return read_sql(sql, dbpath)
 
 
 def get_gating_table(dbpath):
     sql = "SELECT * FROM gating ORDER BY date ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
-    return df
+    return read_sql(sql, dbpath)
 
 
 def get_gating_plan_table(dbpath):
     sql = "SELECT * FROM gating_plan ORDER BY start_date ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
-    return df
+    return read_sql(sql, dbpath)
 
 
 def get_poly_table(dbpath):
     sql = "SELECT * FROM poly ORDER BY gating_id, pop, point_order ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
-    return df
+    return read_sql(sql, dbpath)
 
 
 def get_serial(dbpath):
     sql = "SELECT inst FROM metadata"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
+    df = read_sql(sql, dbpath)
     if len(df.index) > 1:
         insts = ", ".join([str(c) for c in df.inst.tolist()])
         raise errors.SeaFlowpyError("More than one instrument serial found in database {}: {}".format(dbpath, insts))
@@ -284,8 +371,7 @@ def get_serial(dbpath):
 
 
 def get_latest_filter(dbpath):
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
+    df = read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbpath)
     if len(df.index) == 0:
         raise errors.SeaFlowpyError("No filter parameters found in database {}\n".format(dbpath))
     _id = df.iloc[0]["id"]
@@ -294,9 +380,8 @@ def get_latest_filter(dbpath):
 
 def get_filter_params_lookup(dbpath, files_df):
     files_df = files_df.copy().reset_index(drop=False)
-    with sqlite3.connect(dbpath) as dbcon:
-        filter_df = safe_read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbcon)
-        filter_plan_df = safe_read_sql("SELECT * FROM filter_plan ORDER BY start_date ASC", dbcon)
+    filter_df = read_sql("SELECT * FROM filter ORDER BY date DESC, quantile ASC", dbpath)
+    filter_plan_df = read_sql("SELECT * FROM filter_plan ORDER BY start_date ASC", dbpath)
     if len(filter_df.index) == 0:
         raise errors.SeaFlowpyError("No filter parameters found in database {}\n".format(dbpath))
     if len(filter_plan_df.index) == 0:
@@ -324,31 +409,23 @@ def get_opp_table(dbpath, filter_id=""):
         sql = "SELECT * FROM opp ORDER BY file ASC, quantile ASC"
     else:
         sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
-    with sqlite3.connect(dbpath) as dbcon:
-        oppdf = safe_read_sql(sql, dbcon)
-    return oppdf
+    return read_sql(sql, dbpath)
 
 
 def get_vct_table(dbpath):
     """Get vct table joined to SFL to add a date column"""
     sql = "SELECT vct.*, sfl.date FROM vct INNER JOIN sfl ON vct.file = sfl.file ORDER BY file ASC, pop ASC, quantile ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
-    return df
+    return read_sql(sql, dbpath)
 
 
 def get_outlier_table(dbpath):
     sql = "SELECT * FROM outlier ORDER BY file ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        outlierdf = safe_read_sql(sql, dbcon)
-    return outlierdf
+    return read_sql(sql, dbpath)
 
 
 def get_sfl_table(dbpath):
     sql = "SELECT * FROM sfl ORDER BY date ASC"
-    with sqlite3.connect(dbpath) as dbcon:
-        df = safe_read_sql(sql, dbcon)
-    return df
+    return read_sql(sql, dbpath)
 
 
 def get_event_counts(dbpath):
@@ -358,31 +435,16 @@ def get_event_counts(dbpath):
     return {name: group["all_count"].head(1).values[0] for name, group in grouped}
 
 
-def merge_dbs(db1, db2):
-    """Merge two SQLite databases into a new database."""
-    with sqlite3.connect(db1) as con1:
-        with sqlite3.connect(db2) as con2:
-            gatingdf = safe_read_sql('select * from gating', con1)
-            polydf = safe_read_sql('select * from poly', con1)
-            filterdf = safe_read_sql('select * from filter', con1)
-            gatingdf.to_sql('gating', con2, if_exists='append', index=False)
-            polydf.to_sql('poly', con2, if_exists='append', index=False)
-            filterdf.to_sql('filter', con2, if_exists='append', index=False)
-    # Merge opp
-    # Merge vct
-    # Merge meta
-
-
-def create_filter_plan(dbpath):
+def create_filter_plan(dbpath: Union[str, Path]) -> pd.DataFrame:
     """
-    Create a filter plan table.
+    Return a filter plan dataframe from database contents.
 
     Only run for the simple case where sfl and filter tables are populated and
     there is only one set of filter parameters.
 
     Raise SeaFlowpyError if filter or sfl tables are empty, if more than one set
     of filter parameters exists in the database, if a filter plan already
-    exists, or for database save errors.
+    exists.
 
     Return a dataframe of the filter plan.
     """
@@ -400,17 +462,11 @@ def create_filter_plan(dbpath):
     filter_plan_df = pd.DataFrame({
         "start_date": [sfl_df.sort_values(by="date").loc[0, "date"]],
         "filter_id": [filter_df.loc[0, "id"]]
-    })
-    try:
-        with sqlite3.connect(dbpath) as con:
-            df_sql_insert(filter_plan_df, "filter_plan", con)
-    except sqlite3.Error as e:
-        raise errors.SeaFlowpyError("An error occurred when saving a filter plan: {!s}".format(e))
-
+    }, dtype=pd.ArrowDtype(pa.string()))
     return filter_plan_df
 
 
-def create_gating_plan_from_vct(dbpath):
+def create_gating_plan(dbpath: Union[str, Path]) -> pd.DataFrame:
     """
     Create a gating plan table from vct
 
@@ -431,55 +487,3 @@ def create_gating_plan_from_vct(dbpath):
     vct_df = vct_df.rename(columns={"gating_id": "id"})[["date", "id"]]
     gating_plan_df = plan.condense_plan(vct_df).rename(columns={"id": "gating_id"})
     return gating_plan_df
-
-
-def execute(dbpath, sql, timeout=120):
-    con = sqlite3.connect(dbpath, timeout=timeout)
-    try:
-        with con:
-            con.execute(sql)
-    except sqlite3.Error as e:
-        raise errors.SeaFlowpyError("An error occurred when executing SQL queries: {!s}".format(e))
-    finally:
-        con.close()
-
-
-def executemany(dbpath, sql, values=None, timeout=120):
-    con = sqlite3.connect(dbpath, timeout=timeout)
-    try:
-        with con:
-            con.executemany(sql, values)
-    except sqlite3.Error as e:
-        raise errors.SeaFlowpyError("An error occurred when executing SQL queries: {!s}".format(e))
-    finally:
-        con.close()
-
-def executescript(dbpath, sql_script_text, timeout=120):
-    con = sqlite3.connect(dbpath, timeout=timeout)
-    try:
-        with con:
-            con.executescript(sql_script_text)
-    except sqlite3.Error as e:
-        raise errors.SeaFlowpyError("An error occurred when executing a SQL script: {!s}".format(e))
-    finally:
-        con.close()
-
-
-def safe_read_sql(sql, con):
-    """Catch and handle error if table not present during pandas.read_sql()"""
-    try:
-        df = pd.read_sql(sql, con)
-        errmsg = ''
-    except pd.io.sql.DatabaseError as e:
-        errmsg = str(e)
-    if errmsg:
-        raise errors.SeaFlowpyError(errmsg)
-    return df
-
-
-def df_sql_insert(df: pd.DataFrame, table: str, con: sqlite3.Connection):
-    """Insert from df into SQL table without replacing the table schema"""
-    values_str = ", ".join([":" + f for f in df.columns])
-    sql_insert = f"INSERT OR REPLACE INTO {table} VALUES ({values_str})"
-    values = df.to_dict("index").values()
-    con.executemany(sql_insert, values)

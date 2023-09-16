@@ -21,6 +21,7 @@ setup(
         'joblib',
         'pandas',
         'pyarrow',
+        'sqlalchemy',
         'tsdataformat'
     ],
     entry_points={

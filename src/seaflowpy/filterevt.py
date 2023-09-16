@@ -7,10 +7,12 @@ import time
 import multiprocessing as mp
 from queue import Empty
 
+import pandas as pd
 from . import db
 from . import errors
 from . import fileio
 from . import particleops
+from .seaflowfile import SeaFlowFile
 from . import util
 
 logger = logging.getLogger(__name__)
@@ -264,9 +266,9 @@ def do_filter(work_q, filtered_q, done_q):
                 work["results"].append(result)
 
             # Prep db data
-            work["opp_vals"], work["outlier_vals"] = [], []
+            work["opp_stat_dfs"], work["outlier_vals"] = [], []
             for r in work["results"]:
-                work["opp_vals"].extend(
+                work["opp_stat_dfs"].append(
                     db.prep_opp(
                         r["file_id"],
                         r["opp"],
@@ -275,8 +277,10 @@ def do_filter(work_q, filtered_q, done_q):
                         r["filter_id"]
                     )
                 )
-
-                work["outlier_vals"].extend(db.prep_outlier(r["file_id"], 0))
+                work["outlier_vals"].append({
+                    "file": SeaFlowFile(r["file_id"]).file_id,
+                    "flag": 0
+                })
             # Save OPP file
             # Only include OPP files with data in all quantiles
             good_opps = []
@@ -332,10 +336,11 @@ def do_save(filtered_q, stats_q, files_left, done_q):
 
             # Save to DB
             if work["dbpath"]:
-                if work["opp_vals"]:
-                    db.save_opp_to_db(work["opp_vals"], work["dbpath"])
+                if work["opp_stat_dfs"]:
+                    opp = pd.concat(work["opp_stat_dfs"], ignore_index=True)
+                    db.save_df(opp, "opp", work["dbpath"], clear=False)
                 if work["outlier_vals"]:
-                    db.save_outlier(work["outlier_vals"], work["dbpath"])
+                    db.save_df(pd.DataFrame(work["outlier_vals"]), "outlier", work["dbpath"], clear=False)
                 #print("{} {} db saved at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
 
             #print("{} {} sent stats at {}".format(work["window_start_date"], os.getpid(), datetime.datetime.now().isoformat()), file=sys.stderr)
