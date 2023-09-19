@@ -1,5 +1,4 @@
 import logging
-import sys
 
 from . import cloud
 from . import db
@@ -14,8 +13,6 @@ from . import sfl
 from . import time
 from . import util
 
-from ._version import get_versions
-__version__ = get_versions()['version']
-del get_versions
+__version__ = "0.0.0"
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())

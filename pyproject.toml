@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "seaflowpy"
+version = "0.0.0"
+description = "A Python library for SeaFlow data"
+authors = ["Chris Berthiaume <chrisbee@uw.edu>"]
+readme = "README.md"
+license = "GPL-3.0-only"
+packages = [
+    { include = "seaflowpy", from = "src" },
+]
+include = [
+    { path = "tests", format = "sdist" },
+]
+
+[tool.poetry.scripts]
+seaflowpy = "seaflowpy.cli:run"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+boto3 = "^1.28.50"
+click = "^8.1.7"
+joblib = "^1.3.2"
+pandas = "^2.1.0"
+pyarrow = "^13.0.0"
+sqlalchemy = "^2.0.21"
+tsdataformat = "^2.0.2"
+
+[tool.poetry.group.test]
+optional = true
+
+[tool.poetry.group.test.dependencies]
+pytest = "^7.4.2"
+pytest-benchmark = "^4.0.0"
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^2.17.5"
+jupyterlab = "^4.0.6"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+pattern = '^(?P<base>\d+(\.\d+)*)$'
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
