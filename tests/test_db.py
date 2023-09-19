@@ -1,8 +1,5 @@
 import shutil
-import sqlite3
-import time
 from collections import defaultdict
-import numpy as np
 import pandas as pd
 import pandas.testing as pdt
 import pyarrow as pa
@@ -265,6 +262,46 @@ def test_export_gating_params(test_data):
     got_gating_plan_df = pd.read_csv(f"{outprefix_path}.gating_plan.tsv", **csv_kwargs)
     expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", **csv_kwargs)
     pdt.assert_frame_equal(got_gating_plan_df, expect_gating_plan_df, check_dtype=False)
+
+
+def test_export_outlier(test_data):
+    csv_kwargs = {"sep": "\t", "dtype_backend": "pyarrow"}
+    testdb = test_data["db_empty"]
+    sfp.db.save_df(
+        pd.DataFrame({"file": ["a", "b", "c"], "flag": [0, 0, 0]}),
+        "outlier",
+        testdb
+    )
+    outfile = test_data["tmpdir"] / "outlier.tsv"
+    sfp.db.export_outlier(testdb, outfile)
+    assert not outfile.exists()
+
+    outfile = test_data["tmpdir"] / "outlier.tsv"
+    sfp.db.export_outlier(testdb, outfile, populated=False)
+    assert outfile.exists()
+
+    outfile2 = test_data["tmpdir"] / "outlier2.tsv"
+    sfp.db.save_df(
+        pd.DataFrame({"file": ["a", "b", "c"], "flag": [0, 1, 0]}),
+        "outlier",
+        testdb,
+        clear=True
+    )
+    sfp.db.export_outlier(testdb, outfile2)
+    assert outfile2.exists()
+    df = pd.read_csv(outfile2, **csv_kwargs)
+    assert df["file"].to_list() == ["a", "b", "c"]
+    assert df["flag"].to_list() == [0, 1, 0]
+
+
+def test_import_outlier(test_data):
+    testdb = test_data["db_empty"]
+    expect = pd.DataFrame({"file": ["a", "b", "c"], "flag": [0, 1, 0]})
+    outfile = test_data["tmpdir"] / "outlier.tsv"
+    expect.to_csv(outfile, sep="\t", index=False)
+    sfp.db.import_outlier(outfile, testdb)
+    got = sfp.db.read_table("outlier", testdb)
+    pdt.assert_frame_equal(got, expect, check_dtype=False)
 
 
 def test_save_df_replace(test_data):

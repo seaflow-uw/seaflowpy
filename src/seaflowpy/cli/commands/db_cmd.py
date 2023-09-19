@@ -151,6 +151,27 @@ def db_export_gating_params_cmd(db_file, out_prefix):
         raise click.ClickException(e)
 
 
+@db_cmd.command('import-outlier')
+@click.argument('in-file', nargs=1, type=str)
+@click.argument('db-file', nargs=1, type=click.Path(readable=True))
+def db_import_outlier_cmd(in_file, db_file):
+    """Import outlier table from TSV."""
+    try:
+        db.import_outlier(in_file, db_file)
+    except SeaFlowpyError as e:
+        raise click.ClickException(e)
+
+
+@db_cmd.command('export-outlier')
+@click.option('-p', '--populated', is_flag=True,
+    help="Only export if table is populated, i.e. there are flags != 0")
+@click.argument('db-file', nargs=1, type=click.Path(readable=True))
+@click.argument('out-file', nargs=1, type=str)
+def db_export_outlier_cmd(populated, db_file, out_file):
+    """Export outlier table as TSV."""
+    db.export_outlier(db_file, out_file, populated=populated)
+
+
 @db_cmd.command('create-filter-plan')
 @click.argument('db-file', nargs=1, type=click.Path(writable=True))
 def db_create_filter_plan_cmd(db_file):

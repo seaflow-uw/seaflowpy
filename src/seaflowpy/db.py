@@ -23,7 +23,7 @@ def dbpath_to_url(dbpath: Union[str, Path]) -> str:
     if Path(dbpath).exists():
         dbpath = f"sqlite:///{dbpath}"
     elif not str(dbpath).startswith("sqlite:///"):
-        raise ValueError("dbpath must a path to an existing file or a sqlalchmey sqlite3 URL string")
+        raise ValueError(f"dbpath '{dbpath}' must a path to an existing file or a sqlalchmey sqlite3 URL string")
     return str(dbpath)
 
 
@@ -240,6 +240,11 @@ def import_sfl(
     return check_errors
 
 
+def import_outlier(outlier_path: Union[str, Path], dbpath: Union[str, Path]):
+    df = pd.read_csv(outlier_path, sep="\t", dtype_backend="pyarrow")
+    save_df(df, "outlier", dbpath, clear=True)
+
+
 def export_gating_params(dbpath: Union[str, Path], out_prefix: Union[str, Path]):
     gating_df = get_gating_table(dbpath)
     poly_df = get_poly_table(dbpath)
@@ -258,6 +263,17 @@ def export_gating_params(dbpath: Union[str, Path], out_prefix: Union[str, Path])
     gating_df.to_csv(f"{out_prefix}.gating.tsv", sep="\t", index=False)
     poly_df.to_csv(f"{out_prefix}.poly.tsv", sep="\t", index=False)
     gating_plan_df.to_csv(f"{out_prefix}.gating_plan.tsv", sep="\t", index=False)
+
+
+def export_outlier(
+    dbpath: Union[str, Path],
+    out_path: Union[str, Path],
+    populated: bool=True
+):
+    outlier_df = get_outlier_table(dbpath)
+    if populated and np.all(outlier_df["flag"] == 0):
+        return
+    outlier_df.to_csv(out_path, sep="\t", index=False)
 
 
 def save_opp_to_db(df: pd.DataFrame, dbpath: Union[str, Path]):
