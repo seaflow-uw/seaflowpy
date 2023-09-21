@@ -273,6 +273,7 @@ def export_outlier(
     outlier_df = get_outlier_table(dbpath)
     if populated and np.all(outlier_df["flag"] == 0):
         return
+    Path(out_path).parent.mkdir(exist_ok=True, parents=True)
     outlier_df.to_csv(out_path, sep="\t", index=False)
 
 
