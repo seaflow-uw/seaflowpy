@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 from sqlalchemy import and_, create_engine, MetaData, or_, Table
-from sqlalchemy.exc import ArgumentError, NoSuchTableError
+from sqlalchemy.exc import ArgumentError, NoSuchTableError, OperationalError
 from . import errors
 from . import particleops
 from . import plan
@@ -52,7 +52,7 @@ def read_sql(sql: str, dbpath: Union[str, Path]):
     """Read from Catch and handle error if table not present during pandas.read_sql()"""
     try:
         return pd.read_sql(sql, dbpath_to_url(dbpath), dtype_backend="pyarrow")
-    except pd.io.sql.DatabaseError as e:
+    except (pd.io.sql.DatabaseError, OperationalError, NoSuchTableError) as e:
         raise errors.SeaFlowpyError(e) from e
 
 

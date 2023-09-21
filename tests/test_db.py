@@ -1,5 +1,7 @@
 import shutil
+import sqlalchemy
 from collections import defaultdict
+from pathlib import Path
 import pandas as pd
 import pandas.testing as pdt
 import pyarrow as pa
@@ -262,6 +264,44 @@ def test_export_gating_params(test_data):
     got_gating_plan_df = pd.read_csv(f"{outprefix_path}.gating_plan.tsv", **csv_kwargs)
     expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", **csv_kwargs)
     pdt.assert_frame_equal(got_gating_plan_df, expect_gating_plan_df, check_dtype=False)
+
+
+def test_export_gating_params(test_data):
+    csv_kwargs = {"sep": "\t", "dtype_backend": "pyarrow"}
+    testdb = test_data["db_sfl_meta"]
+    sfp.db.import_gating_params(
+        "tests/testcruise.gating_params.gating.tsv",
+        "tests/testcruise.gating_params.poly.tsv",
+        "tests/testcruise.gating_params.gating_plan.tsv",
+        testdb
+    )
+    outprefix_path = test_data["tmpdir"] / "outprefix"
+    sfp.db.export_gating_params(testdb, outprefix_path)
+    
+    got_gating_df = pd.read_csv(f"{outprefix_path}.gating.tsv", **csv_kwargs)
+    expect_gating_df = pd.read_csv("tests/testcruise.gating_params.gating.tsv", **csv_kwargs)
+    pdt.assert_frame_equal(got_gating_df, expect_gating_df, check_dtype=False)
+
+    got_poly_df = pd.read_csv(f"{outprefix_path}.poly.tsv", **csv_kwargs)
+    expect_poly_df = pd.read_csv("tests/testcruise.gating_params.poly.tsv", **csv_kwargs)
+    pdt.assert_frame_equal(got_poly_df, expect_poly_df, check_dtype=False)
+
+    got_gating_plan_df = pd.read_csv(f"{outprefix_path}.gating_plan.tsv", **csv_kwargs)
+    expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", **csv_kwargs)
+    pdt.assert_frame_equal(got_gating_plan_df, expect_gating_plan_df, check_dtype=False)
+
+    # Try again after removing gating_plan table, should produce no output
+    # and throw since no vct data to fall back on
+    outprefix_path2 = test_data["tmpdir"] / "outprefix2"
+    engine = sqlalchemy.create_engine(f"sqlite:///{testdb}")
+    with engine.connect() as conn:
+        conn.execute(sqlalchemy.text("drop table gating_plan"))
+    engine.dispose()
+    with pytest.raises(sfp.errors.SeaFlowpyError):
+        sfp.db.export_gating_params(testdb, outprefix_path2)
+    assert not Path(f"{outprefix_path2}.gating.tsv").exists()
+    assert not Path(f"{outprefix_path2}.poly.tsv").exists()
+    assert not Path(f"{outprefix_path2}.gating_plan.tsv").exists()
 
 
 def test_export_outlier(test_data):
