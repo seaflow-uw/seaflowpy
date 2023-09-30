@@ -1,50 +1,7 @@
 from functools import wraps
+from pathlib import Path
 from signal import getsignal, signal, SIGPIPE, SIG_DFL
-import errno
-import os
-import subprocess
 import sys
-import time
-
-
-def find_files(root_dir):
-    """Return a list of all file paths below root_dir."""
-    if not os.path.isdir(root_dir):
-        raise OSError("directory does not exist")
-    allfiles = []
-    def error_handler(e):
-        raise e
-    for root, _dirs, files in os.walk(root_dir, onerror=error_handler):
-        for f in files:
-            allfiles.append(os.path.join(root, f))
-    return allfiles
-
-
-def gzip_file(path, print_timing=False):
-    """Gzip a file.
-
-    Try to use pigz, but fall back to gzip.
-    """
-    gzipbin = "pigz"  # Default to using pigz
-    devnull = open(os.devnull, "w")
-    try:
-        subprocess.check_call(["pigz", "--version"], stdout=devnull,
-                              stderr=subprocess.STDOUT)
-    except OSError:
-        # If pigz is not installed fall back to gzip
-        gzipbin = "gzip"
-
-    if print_timing:
-        t0 = time.time()
-        print("")
-        print("Compressing %s" % path)
-
-    subprocess.check_call([gzipbin, "-f", path],
-                          stderr=subprocess.STDOUT)
-
-    if print_timing:
-        t1 = time.time()
-        print("Compression completed in %.2f seconds" % (t1 - t0))
 
 
 def jobs_parts(things, n):
@@ -71,15 +28,7 @@ def jobs_parts(things, n):
 
 def mkdir_p(path):
     """Create directory tree for path."""
-    if path == '':
-        return
-    try:
-        os.makedirs(path)
-    except OSError as e:
-        if e.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
+    Path(path).mkdir(exist_ok=True, parents=True)
 
 
 def quantile_str(q):
@@ -90,23 +39,6 @@ def quantile_str(q):
     part, display it.
     """
     return "{0}".format(str(q) if q % 1 else int(q))
-
-
-def splitpath(path):
-    """Return a list of all path components"""
-    parts = []
-    path, last = os.path.split(path)
-    if last != "":
-        parts.append(last)
-    while True:
-        path, last = os.path.split(path)
-        if last != "":
-            parts.append(last)
-        else:
-            if path != "":
-                parts.append(path)
-            break
-    return parts[::-1]
 
 
 def suppress_sigpipe(f):

@@ -1,6 +1,5 @@
 import datetime
 import logging
-import os
 import pathlib
 import sys
 from functools import partial
@@ -63,7 +62,7 @@ def evt_cmd():
 
 
 @evt_cmd.command('sample')
-@click.option('-o', '--outpath', type=click.Path(), required=True,
+@click.option('-o', '--outpath', type=click.Path(path_type=pathlib.Path), required=True,
     help="""Output path for parquet file with subsampled event data.""")
 @click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_positive,
     help='Target number of events to keep.')
@@ -118,7 +117,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
 
     # Get file to date mappings from SFL file
-    files = seaflowfile.keep_evt_files(expand_file_list(files))
+    files = seaflowfile.keep_evt_files(seaflowfile.expand_file_list(files))
     files = seaflowfile.sorted_files(files)
     if sfl_path:
         sfl_df = sfl.read_file(sfl_path, convert_dates=True)
@@ -146,8 +145,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     else:
         chosen_files = list(evt.path)
 
-    outdir = os.path.dirname(outpath)
-    pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
+    outpath.parent.mkdir(parents=True, exist_ok=True)
 
     results, errs = sample.sample(
         chosen_files,
@@ -221,7 +219,7 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
     which will be searched for EVT files.
     """
     logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=logging.INFO)
-    files = seaflowfile.keep_evt_files(expand_file_list(files))
+    files = seaflowfile.keep_evt_files(seaflowfile.expand_file_list(files))
     files = seaflowfile.sorted_files(files)
     if sfl_path:
         sfl_df = sfl.read_file(sfl_path, convert_dates=True)
@@ -275,7 +273,7 @@ def validate_evt_cmd(report_all, hash_, n_jobs, reduced_columns, progress, paths
         cols = None
 
     # dirs to file paths
-    files = expand_file_list(paths)
+    files = seaflowfile.expand_file_list(paths)
 
     file_ids = []
     for filepath in files:
@@ -349,7 +347,7 @@ def parquet_cmd(n_jobs, out_dir, progress, paths):
     Output files will be placed in appropriate day of year directories inside
     out-dir.
     """
-    in_files = [f for f in expand_file_list(paths)]
+    in_files = [f for f in seaflowfile.expand_file_list(paths)]
     parquet_files = []
     for f in in_files:
         sf = seaflowfile.SeaFlowFile(f)
@@ -411,7 +409,7 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
     elif paths[0].is_dir() and paths[1].is_dir():
         x_ids, x_paths = [], []
         y_ids, y_paths = [], []
-        for f in expand_file_list([str(paths[0])]):
+        for f in seaflowfile.expand_file_list([str(paths[0])]):
             try:
                 sf = seaflowfile.SeaFlowFile(f)
             except errors.FileError as e:
@@ -419,7 +417,7 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
             else:
                 x_ids.append(sf.file_id)
                 x_paths.append(f)
-        for f in expand_file_list([str(paths[1])]):
+        for f in seaflowfile.expand_file_list([str(paths[1])]):
             try:
                 sf = seaflowfile.SeaFlowFile(f)
             except errors.FileError as e:
@@ -484,16 +482,3 @@ def _compare_two_files(s, cols=None):
     s["err_y"] = y["err"]
 
     return s
-
-
-def expand_file_list(files_and_dirs):
-    """Convert directories in file list to EVT file paths."""
-    # Find files in directories
-    dirs = [f for f in files_and_dirs if os.path.isdir(f)]
-    files = [f for f in files_and_dirs if os.path.isfile(f)]
-
-    dfiles = []
-    for d in dirs:
-        dfiles = dfiles + seaflowfile.find_evt_files(d)
-
-    return files + dfiles

@@ -1,11 +1,11 @@
 """Do things to SFL data DataFrames"""
 from collections import OrderedDict
 import json
-import os
 import re
 import numpy as np
 import pandas as pd
 import pytz
+from pathlib import Path
 from . import errors as sfperrors
 from . import geo
 from . import time
@@ -299,20 +299,6 @@ def dedup(df):
     return (list(d.items()), df.drop_duplicates(subset="file", keep=False))
 
 
-def find_sfl_files(root):
-    """Find all files with .sfl extension beneath root.
-
-    Returns a list of sfl file paths relative to root.
-    """
-    root = os.path.expanduser(root)
-    sfl_paths = []
-    for dirpath, _dirnames, filenames in os.walk(root):
-        for f in filenames:
-            if f.endswith(".sfl"):
-                sfl_paths.append(os.path.join(dirpath, f))
-    return sorted(sfl_paths)
-
-
 def fix(df):
     """Return a copy of df ready for db import.
 
@@ -447,8 +433,7 @@ def make_json_serializable(v):
 
 
 def parse_sfl_filename(fn):
-    fn = os.path.basename(fn)
-    m = re.match(r"^(?P<cruise>.+)_(?P<inst>[^_]+).sfl$", fn)
+    m = re.match(r"^(?P<cruise>.+)_(?P<inst>[^_]+).sfl$", Path(fn).name)
     if m:
         return (m.group('cruise'), m.group('inst'))
     return ()

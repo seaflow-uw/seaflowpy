@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 import gzip
 import io
-import os
 import zlib
 from pathlib import Path
 
@@ -47,15 +46,16 @@ def file_open_r(path, fileobj=None, as_text=False):
     """
     # zlib is faster than gzip for decompression of EVT data on MacOS, and
     # comparable on Linux.
+    path = Path(path)
     if fileobj:
-        if path.endswith('.gz'):
+        if path.suffix == '.gz':
             zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
             data = zobj.decompress(fileobj.read())
             if not as_text:
                 yield io.BytesIO(data)
             else:
                 yield io.TextIOWrapper(io.BytesIO(data))
-        elif path.endswith('.zst'):
+        elif path.suffix == '.zst':
             dctx = zstandard.ZstdDecompressor()
             with dctx.stream_reader(fileobj) as stream_reader:
                 if not as_text:
@@ -68,7 +68,7 @@ def file_open_r(path, fileobj=None, as_text=False):
             else:
                 yield io.TextIOWrapper(fileobj)
     else:
-        if path.endswith('.gz'):
+        if path.suffix == '.gz':
             with io.open(path, 'rb') as fileobj:
                 zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
                 data = zobj.decompress(fileobj.read())
@@ -76,7 +76,7 @@ def file_open_r(path, fileobj=None, as_text=False):
                     yield io.BytesIO(data)
                 else:
                     yield io.TextIOWrapper(io.BytesIO(data))
-        elif path.endswith('.zst'):
+        elif path.suffix == '.zst':
             with io.open(path, 'rb') as fileobj:
                 dctx = zstandard.ZstdDecompressor()
                 stream_reader = dctx.stream_reader(fileobj)
@@ -113,10 +113,11 @@ def file_open_w(path):
     -------
     Context manager for writable file-like object.
     """
-    if path.endswith('.gz'):
+    path = Path(path)
+    if path.suffix == '.gz':
         with gzip.open(path, mode='wb', compresslevel=9) as fh:
             yield fh
-    elif path.endswith('.zst'):
+    elif path.suffix == '.zst':
         cctx = zstandard.ZstdCompressor()
         with open(path, 'wb') as fh:
             with cctx.stream_writer(fh) as compressor:
@@ -127,7 +128,8 @@ def file_open_w(path):
 
 
 def read_evt_metadata(path):
-    if path.endswith(".parquet"):
+    path = Path(path)
+    if path.suffix == ".parquet":
         with file_open_r(path) as fh:
             return read_evt_parquet_metadata(fh)
     else:
@@ -335,7 +337,8 @@ def read_evt(path, dtype=DEFAULT_EVT_DTYPE):
         "df": SeaFlow event pandas.DataFrame
     }
     """
-    if path.endswith(".parquet"):
+    path = Path(path)
+    if path.suffix == ".parquet":
         df = pd.read_parquet(path)
         if (df.dtypes != dtype).any():
             df = df.astype(dtype)
@@ -389,7 +392,7 @@ def write_labview(df, path):
         Output file path. If this ends with '.gz' data will be gzip compressed.
     """
     # Make sure directory necessary directory tree exists
-    util.mkdir_p(os.path.dirname(path))
+    Path(path).parent.mkdir(exist_ok=True, parents=True)
 
     # Open output file
     with file_open_w(path) as fh:
@@ -433,9 +436,9 @@ def write_evt_labview(df, path, outdir, gz=True):
         return
 
     sfile = SeaFlowFile(path)
-    outpath = os.path.join(outdir, sfile.file_id)
+    outpath = Path(outdir) / sfile.file_id
     if gz:
-        outpath = outpath + ".gz"
+        outpath = Path(str(outpath) + ".gz")
     # Only keep columns we intend to write to file
     write_labview(df[particleops.COLUMNS], outpath)
 
@@ -462,8 +465,9 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
         return
 
     # Make sure directory necessary directory tree exists
-    util.mkdir_p(outdir)
-    outpath = os.path.join(outdir, date.isoformat().replace(":", "-")) + f".{window_size}.opp.parquet"
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True, parents=True)
+    outpath = outdir / (date.isoformat().replace(":", "-") + f".{window_size}.opp.parquet")
     df = pd.concat(opp_dfs, ignore_index=True)
     # Linearize data columns
     df = particleops.linearize_particles(df, columns=["D1", "D2", "fsc_small", "pe", "chl_small"])

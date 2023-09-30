@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import click
 import numpy as np
@@ -13,14 +13,14 @@ def cli(v1dir, v2dir):
     v2files = []
     for f in v1files:
         sf = sfp.seaflowfile.SeaFlowFile(f)
-        v2files.append(os.path.join(v2dir, sf.dayofyear, sf.filename_orig))
+        v2files.append(Path(v2dir) / sf.dayofyear / sf.filename_orig)
     for v1, v2 in zip(v1files, v2files):
         convert_v1_to_v2(v1, v2)
 
 
 def convert_v1_to_v2(v1path, v2path):
     print(f"converting {v1path} to {v2path}")
-    sfp.util.mkdir_p(os.path.dirname(v2path))
+    Path(v2path).parent.mkdir(exist_ok=True, parents=True)
     try:
         df1 = sfp.fileio.read_evt_labview(v1path)["df"]
     except sfp.errors.FileError as e:

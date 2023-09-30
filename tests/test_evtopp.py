@@ -1,6 +1,5 @@
 from builtins import str
 from builtins import object
-from pathlib import Path
 import gzip
 import io
 import os
@@ -55,8 +54,8 @@ def tmpout(tmpdir):
     return {
         "db_one": db_one,
         "db_plan": db_plan,
-        "oppdir": str(tmpdir.join("oppdir")),
-        "tmpdir": str(tmpdir),
+        "oppdir": tmpdir.join("oppdir"),
+        "tmpdir": tmpdir,
         "evt_df": sfp.fileio.read_evt(str(evt_path))["df"],
         "evt_path": evt_path,
         "file_dates": pd.read_parquet("tests/file_dates.parquet")
@@ -110,7 +109,7 @@ class TestOpenV1:
         assert list(data["df"]) == sfp.particleops.COLUMNS
 
     def test_read_evt_truncated_gz(self, tmpout):
-        truncpath = os.path.join(tmpout["tmpdir"], "2014-07-04T00-03-02+00-00.gz")
+        truncpath = tmpout["tmpdir"] / "2014-07-04T00-03-02+00-00.gz"
         with open("tests/testcruise_evt/2014_185/2014-07-04T00-03-02+00-00.gz", "rb") as infh:
             with open(truncpath, "wb") as outfh:
                 outfh.write(infh.read(400000))
@@ -185,7 +184,7 @@ class TestOpenV2:
         assert list(data["df"]) == sfp.particleops.COLUMNS2
 
     def test_read_evt_truncated_gz_v2(self, tmpout):
-        truncpath = os.path.join(tmpout["tmpdir"], "2014-07-04T00-03-02+00-00.gz")
+        truncpath = tmpout["tmpdir"] / "2014-07-04T00-03-02+00-00.gz"
         with open("tests/testcruise_evt_v2/2014_185/2014-07-04T00-03-02+00-00.gz", "rb") as infh:
             with open(truncpath, "wb") as outfh:
                 outfh.write(infh.read(100000))
@@ -426,14 +425,14 @@ class TestOutput:
 
     def test_binary_evt_output(self, tmpout):
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-        evtdir = os.path.join(tmpout["tmpdir"], "evtdir")
+        evtdir = tmpout["tmpdir"] / "evtdir"
         evt_df = sfp.fileio.read_evt(tmpout["evt_path"])["df"]
 
         # Output to binary uncompressed file
         sfp.fileio.write_evt_labview(evt_df, sfile.file_id, evtdir, gz=False)
         # Make sure EVT binary file written can be read back as EVT and
         # DataFrame is the the same
-        out_evt_path = os.path.join(evtdir, sfile.file_id)
+        out_evt_path = evtdir / sfile.file_id
         reread_evt_df = sfp.fileio.read_evt(out_evt_path)["df"]
         npt.assert_array_equal(evt_df, reread_evt_df)
         # Check that output evt binary file matches input file
@@ -443,14 +442,14 @@ class TestOutput:
 
     def test_binary_evt_output_gz(self, tmpout):
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-        evtdir = os.path.join(tmpout["tmpdir"], "evtdir")
+        evtdir = tmpout["tmpdir"] / "evtdir"
         evt_df = sfp.fileio.read_evt(tmpout["evt_path"])["df"]
 
         # Output to gzipped binary file
         sfp.fileio.write_evt_labview(evt_df, sfile.file_id, evtdir)
         # Make sure EVT binary file written can be read back as EVT and
         # DataFrame is the the same
-        out_evt_path = os.path.join(evtdir, sfile.file_id + ".gz")
+        out_evt_path = evtdir / (sfile.file_id + ".gz")
         reread_evt_df = sfp.fileio.read_evt(out_evt_path)["df"]
         npt.assert_array_equal(evt_df, reread_evt_df)
         # Check that output evt binary file matches input file
@@ -468,13 +467,13 @@ class TestMultiFileFilter(object):
         sfp.filterevt.filter_evt_files(
             tmpout["file_dates"],
             dbpath=tmpout["db_one"],
-            opp_dir=str(tmpout["oppdir"]),
+            opp_dir=tmpout["oppdir"],
             worker_count=jobs
         )
 
         opp_dfs = [
-            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet")),
-            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T01-00-00+00-00.1H.opp.parquet"))
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T01-00-00+00-00.1H.opp.parquet")
         ]
         expected_opp_dfs = [
             pd.read_parquet("tests/testcruise_opp_one_param/2014-07-04T00-00-00+00-00.1H.opp.parquet"),
@@ -507,8 +506,8 @@ class TestMultiFileFilter(object):
         )
 
         opp_dfs = [
-            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T00-00-00+00-00.1H.opp.parquet")),
-            pd.read_parquet(os.path.join(tmpout["oppdir"], "2014-07-04T01-00-00+00-00.1H.opp.parquet"))
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T01-00-00+00-00.1H.opp.parquet")
         ]
         expected_opp_dfs = [
             pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T00-00-00+00-00.1H.opp.parquet"),
@@ -541,8 +540,8 @@ class TestMultiFileFilter(object):
             max_particles_per_file=1
         )
 
-        assert not (Path(tmpout["oppdir"]) / "2014-07-04T00-00-00+00-00.1H.opp.parquet").exists()
-        assert not (Path(tmpout["oppdir"]) / "2014-07-04T01-00-00+00-00.1H.opp.parquet").exists()
+        assert not (tmpout["oppdir"] / "2014-07-04T00-00-00+00-00.1H.opp.parquet").exists()
+        assert not (tmpout["oppdir"] / "2014-07-04T01-00-00+00-00.1H.opp.parquet").exists()
 
         # Check data stored in opp table are correct
         opp_table = sfp.db.get_opp_table(tmpout["db_plan"])

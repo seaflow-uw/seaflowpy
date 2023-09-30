@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from glob import glob
+from pathlib import Path
 import botocore
 import click
 import pandas as pd
@@ -103,8 +103,8 @@ def sfl_fix_event_rate_cmd(sfl_file, events_file):
 
 
 @sfl_cmd.command('fix-underway')
-@click.argument('sfl-file', nargs=1, type=click.Path(exists=True, readable=True))
-@click.argument('cruisemic-dir', nargs=1, type=click.Path(exists=True, readable=True))
+@click.argument('sfl-file', nargs=1, type=click.Path(exists=True, readable=True, path_type=Path))
+@click.argument('cruisemic-dir', nargs=1, type=click.Path(exists=True, readable=True, path_type=Path))
 def sfl_fix_underway_cmd(sfl_file, cruisemic_dir):
     """
     Replace SFL underway data with data from cruisemic.
@@ -116,7 +116,7 @@ def sfl_fix_underway_cmd(sfl_file, cruisemic_dir):
     df_sfl = sfl.fix(df_sfl)
 
     # Read cruisemic metadata file to find underway data
-    meta_glob = glob(os.path.join(cruisemic_dir, "metadata*"))
+    meta_glob = [str(p) for p in cruisemic_dir.glob("metadata*")]
     if len(meta_glob) != 1:
         raise click.ClickException("could not find geo-file")
     with fileio.file_open_r(meta_glob[0], as_text=True) as metafh:
@@ -131,8 +131,8 @@ def sfl_fix_underway_cmd(sfl_file, cruisemic_dir):
     cond_col = meta['ConductivityCol']
 
     # Read underway data
-    geo_glob = glob(os.path.join(cruisemic_dir, geo_filename) + "*")
-    thermo_glob = glob(os.path.join(cruisemic_dir, thermo_filename) + "*")
+    geo_glob = [str(p) for p in cruisemic_dir.glob(f"{geo_filename}*")]
+    thermo_glob = [str(p) for p in cruisemic_dir.glob(f"{thermo_filename}*")]
     if len(geo_glob) != 1:
         raise click.ClickException("could not find cruisemic geo data file")
     if len(thermo_glob) != 1:
@@ -297,6 +297,6 @@ def sfl_validate_cmd(report_all, sfl_file):
             raise click.ClickException(str(e))
         errors = sfl.check(df)
         if len(errors) > 0:
-            sfl.print_tsv_errors(errors, sys.stdout, os.path.basename(f),
+            sfl.print_tsv_errors(errors, sys.stdout, Path(f).name,
                                  print_all=report_all, header=need_header)
         need_header = False

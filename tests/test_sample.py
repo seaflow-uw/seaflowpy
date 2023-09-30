@@ -1,5 +1,4 @@
 import datetime
-import os
 
 import numpy as np
 import pandas as pd
@@ -30,14 +29,14 @@ def tmpout(tmpdir):
     return {
         "evtpaths": evtpaths,
         "file_ids": file_ids,
-        "tmpdir": str(tmpdir),
+        "tmpdir": tmpdir,
         "dates": dates_lookup
     }
 
 
 class TestSample:
     def test_sample_evt_single(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"], 20000, outpath, noise_filter=False, seed=12345
         )
@@ -52,7 +51,7 @@ class TestSample:
         assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) > 0
 
     def test_sample_evt_single_noise_filter(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"], 20000, outpath, noise_filter=True, seed=12345
         )
@@ -67,7 +66,7 @@ class TestSample:
         assert len(df[(df["D1"] == 0) & (df["D2"] == 0) & (df["fsc_small"] == 0)]) == 0
 
     def test_sample_evt_single_saturation_filter(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"], 20000, outpath, saturation_filter=True, seed=12345
         )
@@ -81,7 +80,7 @@ class TestSample:
         assert len(df.index) == 20000
 
     def test_sample_evt_single_noise_and_saturation_filter(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"], 20000, outpath, noise_filter=True, saturation_filter=True, seed=12345
         )
@@ -95,7 +94,7 @@ class TestSample:
         assert len(df.index) == 20000
 
     def test_sample_evt_single_noise_and_saturation_and_min_filter(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"], 20000, outpath, noise_filter=True, saturation_filter=True, min_fsc=25000, seed=12345
         )
@@ -110,7 +109,7 @@ class TestSample:
         assert np.min(df["fsc_small"]) >= 25000
 
     def test_sample_evt_single_min_filter(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"],
             20000,
@@ -133,7 +132,7 @@ class TestSample:
         assert np.min(df["chl_small"]) >= 25000
 
     def test_sample_evt_single_empty(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"],
             20000,
@@ -153,7 +152,7 @@ class TestSample:
         assert len(df.index) == 0
 
     def test_sample_evt_single_dates(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "test.gz")
+        outpath = tmpout["tmpdir"] / "test.gz"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"],
             20000,
@@ -173,7 +172,7 @@ class TestSample:
         assert df.tail(10000)["date"].unique()[0].isoformat() == "2014-07-04T00:03:02+00:00"
 
     def test_sample_evt_multi(self, tmpout):
-        outpath = os.path.join(tmpout["tmpdir"], "testdir")
+        outpath = tmpout["tmpdir"] / "testdir"
         results, errs = sfp.sample.sample(
             tmpout["evtpaths"], 20000, outpath, multi=True, seed=12345
         )

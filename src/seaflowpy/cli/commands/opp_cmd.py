@@ -1,6 +1,4 @@
 import datetime
-import glob
-import os
 import pathlib
 import sys
 
@@ -50,7 +48,7 @@ def opp_cmd():
 
 
 @opp_cmd.command('sample')
-@click.option('-o', '--outpath', type=click.Path(), required=True,
+@click.option('-o', '--outpath', type=click.Path(path_type=pathlib.Path), required=True,
     help="""Output path for parquet file with subsampled event data.""")
 @click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_positive,
     help='Target number of events to keep.')
@@ -74,9 +72,9 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
     which will be searched for OPP files.
     COUNT events will be randomly selected from all data.
     """
-    files = sorted(expand_file_list(files))
+    files = sorted(seaflowfile.expand_file_list(files))
     if files:
-        timestamps = [os.path.basename(f).split(".")[0] for f in files]
+        timestamps = [pathlib.Path(f).name.split(".")[0] for f in files]
         timestamps = [seaflowfile.timestamp_from_filename(ts) for ts in timestamps]
         timestamps = [datetime.datetime.fromisoformat(ts) for ts in timestamps]
         files_df = pd.DataFrame({"path": files, "date": timestamps})
@@ -95,8 +93,7 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
         if max_date is not None:
             files_df = files_df[files_df.date <= max_date]
 
-        outdir = os.path.dirname(outpath)
-        pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
+        outpath.parent.mkdir(parents=True, exist_ok=True)
 
         df = pd.concat([pd.read_parquet(f) for f in files_df.path], ignore_index=True)
         if min_date is not None:
@@ -114,15 +111,3 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
         print("{} particles selected with time range {} - {} ".format(len(sub), sub.date.min().isoformat(), sub.date.max().isoformat()), file=sys.stderr)
     else:
         print("0 particles in time range", file=sys.stderr)
-
-
-def expand_file_list(files_and_dirs):
-    """Convert directories in file list to OPP file paths."""
-    # Find files in directories
-    dirs = [f for f in files_and_dirs if os.path.isdir(f)]
-    files = [f for f in files_and_dirs if os.path.isfile(f)]
-    dfiles = []
-    for d in dirs:
-        dfiles = dfiles + glob.glob(f"{d}/*.opp.parquet")
-        dfiles = dfiles + glob.glob(f"{d}/**/*.opp.parquet")
-    return files + dfiles

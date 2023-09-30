@@ -1,10 +1,9 @@
-import os
 import re
+from pathlib import Path
 
 import pandas as pd
 from . import errors
 from . import time
-from . import util
 
 
 dayofyear_re = r'^\d{1,4}_\d{1,3}$'
@@ -135,7 +134,7 @@ def create_dayofyear_directory(dt):
 
 
 def timestamp_from_filename(filename):
-    filename_to_first_dot = os.path.basename(filename).split(".")[0]
+    filename_to_first_dot = Path(filename).name.split(".")[0]
     m = re.match(new_file_re, filename_to_first_dot)
     if m:
         # New style EVT/SFL filenames, e.g.
@@ -149,7 +148,7 @@ def timestamp_from_filename(filename):
 def parse_path(file_path):
     """Return a dict with entries for 'dayofyear' dir and 'file' name"""
     d = {"dayofyear": '', "file": ''}
-    parts = util.splitpath(file_path)
+    parts = Path(file_path).parts
     d["file"] = parts[-1]
     if len(parts) > 1:
         if re.match(dayofyear_re, parts[-2]):
@@ -183,7 +182,7 @@ def filtered_file_list(total_list, filter_list):
 
 def find_evt_files(root_dir):
     """Return a chronologically sorted list of EVT file paths in root_dir."""
-    files = util.find_files(root_dir)
+    files = [str(p) for p in Path(root_dir).rglob("*")]
     files = keep_evt_files(files)
     return sorted_files(files)
 
@@ -271,3 +270,15 @@ def date_evt_files(evt_paths, sfl_df=None):
             data["path"].append(path)
             data["date"].append(sff.date)
     return pd.DataFrame(data)[["date", "file_id", "path"]]
+
+
+def expand_file_list(files_and_dirs):
+    """Convert directories in file list to EVT file paths."""
+    dirs = [f for f in files_and_dirs if Path(f).is_dir()]
+    files = [f for f in files_and_dirs if Path(f).is_file()]
+
+    dfiles = []
+    for d in dirs:
+        dfiles = dfiles + find_evt_files(d)
+
+    return files + dfiles
