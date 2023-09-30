@@ -28,6 +28,8 @@ class SeaFlowFile:
         self.filename = parts["file"]
         if parts["file"].endswith(".gz"):
             self.filename_orig = self.filename[:-len(".gz")]
+        elif parts["file"].endswith(".zst"):
+            self.filename_orig = self.filename[:-len(".zst")]
         elif parts["file"].endswith(".parquet"):
             self.filename_orig = self.filename[:-len(".parquet")]
         else:
@@ -91,18 +93,13 @@ class SeaFlowFile:
         return create_dayofyear_directory(self.date)
 
     @property
-    def isgz(self):
-        """Is file gzipped?"""
-        return self.path and self.filename.endswith(".gz")
-
-    @property
     def is_old_style(self):
         """Is this old style file? e.g. 2014_185/1.evt."""
         return bool(re.match(old_file_re, self.filename_orig))
 
     @property
     def is_new_style(self):
-        """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00.gz"""
+        """Is this a new style file? e.g. 2018_082/2018-03-23T00-00-00+00-00"""
         return bool(re.match(new_file_re, self.filename_orig))
 
     @property

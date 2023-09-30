@@ -9,6 +9,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+import zstandard
 from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
@@ -24,9 +25,10 @@ def file_open_r(path, fileobj=None, as_text=False):
 
     Data read from the return value of this function will come from path or
     preferentially fileobj if provided. If path is provided and ends with '.gz'
-    data will be considered gzip compressed even if read from fileobj. All
-    resources opened by this function (input file handles) or open resources
-    passed to this function (fileobj) will be cleaned up by context managers.
+    or '.zst' data will be considered gzip or zstandard compressed even if read
+    from fileobj. All resources opened by this function (input file handles) or
+    open resources passed to this function (fileobj) will be cleaned up by
+    context managers.
     The return value of this function should always be used within a 'with'
     block.
 
@@ -47,13 +49,19 @@ def file_open_r(path, fileobj=None, as_text=False):
     # comparable on Linux.
     if fileobj:
         if path.endswith('.gz'):
-            gzdata = fileobj.read()
             zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
-            data = zobj.decompress(gzdata)
+            data = zobj.decompress(fileobj.read())
             if not as_text:
                 yield io.BytesIO(data)
             else:
                 yield io.TextIOWrapper(io.BytesIO(data))
+        elif path.endswith('.zst'):
+            dctx = zstandard.ZstdDecompressor()
+            with dctx.stream_reader(fileobj) as stream_reader:
+                if not as_text:
+                    yield stream_reader
+                else:
+                    yield io.TextIOWrapper(stream_reader)
         else:
             if not as_text:
                 yield fileobj
@@ -62,19 +70,26 @@ def file_open_r(path, fileobj=None, as_text=False):
     else:
         if path.endswith('.gz'):
             with io.open(path, 'rb') as fileobj:
-                gzdata = fileobj.read()
                 zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
-                data = zobj.decompress(gzdata)
+                data = zobj.decompress(fileobj.read())
                 if not as_text:
                     yield io.BytesIO(data)
                 else:
                     yield io.TextIOWrapper(io.BytesIO(data))
+        elif path.endswith('.zst'):
+            with io.open(path, 'rb') as fileobj:
+                dctx = zstandard.ZstdDecompressor()
+                stream_reader = dctx.stream_reader(fileobj)
+                if not as_text:
+                    yield stream_reader
+                else:
+                    yield io.TextIOWrapper(stream_reader)
         else:
             if not as_text:
-                with io.open(path, 'rb') as fh:
+                with open(path, 'rb') as fh:
                     yield fh
             else:
-                with io.open(path, 'r') as fh:
+                with open(path, 'r') as fh:
                     yield fh
 
 
@@ -101,8 +116,13 @@ def file_open_w(path):
     if path.endswith('.gz'):
         with gzip.open(path, mode='wb', compresslevel=9) as fh:
             yield fh
+    elif path.endswith('.zst'):
+        cctx = zstandard.ZstdCompressor()
+        with open(path, 'wb') as fh:
+            with cctx.stream_writer(fh) as compressor:
+                yield compressor
     else:
-        with io.open(path, 'wb') as fh:
+        with open(path, 'wb') as fh:
             yield fh
 
 

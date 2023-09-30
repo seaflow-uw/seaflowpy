@@ -101,6 +101,13 @@ class TestOpenV1:
         assert len(data["df"].index) == 500000
         assert data["version"] == "v1"
         assert list(data["df"]) == sfp.particleops.COLUMNS
+    
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_zst(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt/2021_014/2021-01-14T00-21-03+00-00.zst")
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "v1"
+        assert list(data["df"]) == sfp.particleops.COLUMNS
 
     def test_read_evt_truncated_gz(self, tmpout):
         truncpath = os.path.join(tmpout["tmpdir"], "2014-07-04T00-03-02+00-00.gz")
@@ -166,6 +173,13 @@ class TestOpenV2:
     @pytest.mark.benchmark(group="evt-read")
     def test_read_evt_valid_gz_v2(self, benchmark):
         data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00.gz")
+        assert len(data["df"].index) == 500000
+        assert data["version"] == "v2"
+        assert list(data["df"]) == sfp.particleops.COLUMNS2
+
+    @pytest.mark.benchmark(group="evt-read")
+    def test_read_evt_valid_zst_v2(self, benchmark):
+        data = benchmark(sfp.fileio.read_evt, "tests/test_evt_read_benchmark/evt_v2/2021_014/2021-01-14T00-21-03+00-00.zst")
         assert len(data["df"].index) == 500000
         assert data["version"] == "v2"
         assert list(data["df"]) == sfp.particleops.COLUMNS2

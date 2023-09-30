@@ -24,6 +24,7 @@ pandas = "^2.1.0"
 pyarrow = "^13.0.0"
 sqlalchemy = "^2.0.21"
 tsdataformat = "^2.0.2"
+zstandard = "^0.21.0"
 
 [tool.poetry.group.test]
 optional = true
