@@ -16,6 +16,8 @@ def test_invalid_filename():
         _ = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.vct.gz")
     with pytest.raises(sfp.errors.FileError):
         _ = sfp.seaflowfile.SeaFlowFile("foo/bar/2014-07-04T00-00-02+00-00.sfl")
+    with pytest.raises(sfp.errors.FileError):
+        _ = sfp.seaflowfile.SeaFlowFile("")
 
 def test_invalid_filename_date():
     with pytest.raises(sfp.errors.FileError):
@@ -363,9 +365,10 @@ def test_keep_evt_files():
         "testcruise/2014_185/2014-07-04T00-00-02+00-00",
         "testcruise/2014_185/2014-07-04T00-03-02+00-00.gz",
         "testcruise/2014_185/2014-07-04T00-06-02+00-00.parquet",
+        ""
     ]
     parsed = sfp.seaflowfile.keep_evt_files(files)
-    assert parsed == (files[:2] + files[3:])
+    assert parsed == (files[:2] + files[3:6])
 
 def test_find_evt_files():
     files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")

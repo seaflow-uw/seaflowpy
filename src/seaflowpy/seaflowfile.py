@@ -149,7 +149,8 @@ def parse_path(file_path):
     """Return a dict with entries for 'dayofyear' dir and 'file' name"""
     d = {"dayofyear": '', "file": ''}
     parts = Path(file_path).parts
-    d["file"] = parts[-1]
+    if len(parts) > 0:
+        d["file"] = parts[-1]
     if len(parts) > 1:
         if re.match(dayofyear_re, parts[-2]):
             d["dayofyear"] = parts[-2]
