@@ -209,9 +209,9 @@ def timeselect_evt_files(sfiles, tstart, tend):
     -----------
     sfiles: iterable of seaflowfile.SeaFlowFile
         Any files without dates will not be selected.
-    tstart: str
+    tstart: datetime.datetime
         Start datetime. Pass None to remove lower bound.
-    tend: str
+    tend: datetime.datetime
         End datetime. Pass None to remove upper bound.
 
     Returns
