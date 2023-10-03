@@ -64,12 +64,12 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
     # Adjust worker count
     worker_count = min(len(files_by_hour), worker_count)
 
-    print(f"creating work list", flush=True)
+    print("creating work list", flush=True)
     # Create work generator
     work_list = []
     for name, group in files_by_hour:
         if len(group) > 0:
-            work = copy.copy(work_template)
+            work = copy.deepcopy(work_template)
             work["files_df"] = group.copy()
             work["window_start_date"] = name
             work["filter_params"] = {}
@@ -77,21 +77,18 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
                 work["filter_params"][file_id] = filter_params[file_id]
             work_list.append(work)
 
-    # print("", flush=True)
-    # print(f"Filtering {len(files_df)} EVT files. Progress for 50th quantile every ~ {every}%", flush=True)
-    # reporter = WorkReporter(len(files_df), every)
-    # for work_result in map(do_filter, work_list):
-    #     reporter.register(work_result)
-    #     save_to_db(work_result)
-    # reporter.finalize()
-    
     print("", flush=True)
     print(f"Filtering {len(files_df)} EVT files. Progress for 50th quantile every ~ {every}%", flush=True)
     reporter = WorkReporter(len(files_df), every)
-    with Pool(processes=worker_count) as pool:
-        for work_result in pool.imap(do_filter, work_list):
+    if worker_count == 1:
+        for work_result in map(do_filter, work_list):
             reporter.register(work_result)
             save_to_db(work_result)
+    else:
+        with Pool(processes=worker_count) as pool:
+            for work_result in pool.imap(do_filter, work_list):
+                reporter.register(work_result)
+                save_to_db(work_result)
     reporter.finalize()
 
     # Switch to joblib when this issue is resolved
@@ -132,10 +129,11 @@ def do_filter(work):
         except Exception as e:
             result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
             evt_df = particleops.empty_df()
-        if row_count > work["max_particles_per_file"]:
-            result["error"] = f"{row_count} records in {row['path']} is > limit of {work['max_particles_per_file']}, will not filter"
-            evt_df = particleops.empty_df()
-        elif not result["error"]:
+        else:
+            if row_count > work["max_particles_per_file"]:
+                result["error"] = f"{row_count} records in {row['path']} is > limit of {work['max_particles_per_file']}, will not filter"
+                evt_df = particleops.empty_df()
+        if not result["error"]:
             # Particle count below limit and file is probably readable, read it
             try:
                 data = fileio.read_evt(row["path"])
