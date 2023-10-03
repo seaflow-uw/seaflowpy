@@ -326,7 +326,7 @@ def _idkey(id_series):
         try:
             sf = seaflowfile.SeaFlowFile(id_)
         except errors.FileError:
-            return id_
+            return (0, 0, id_)
         else:
             return sf.sort_key
 
