@@ -3,7 +3,7 @@ import datetime
 import pytz
 
 
-def parse_date(date_str, assume_utc=True):
+def parse_date(date_str: str, assume_utc: bool=True) -> datetime.datetime:
     """
     Parse a SeaFlow timestamp.
 
@@ -22,6 +22,6 @@ def parse_date(date_str, assume_utc=True):
     return date
 
 
-def seaflow_rfc3339(date):
+def seaflow_rfc3339(date: datetime.datetime):
     """Standard SeaFlow RFC3339 timestamp."""
     return date.isoformat(timespec='seconds')

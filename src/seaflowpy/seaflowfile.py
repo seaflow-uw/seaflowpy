@@ -22,6 +22,7 @@ class SeaFlowFile:
         will be raised.
         """
         self.path = path
+        self.date = None
 
         parts = parse_path(self.path)
         self.filename = parts["file"]
@@ -38,15 +39,12 @@ class SeaFlowFile:
             raise errors.FileError("Filename doesn't look like a SeaFlow EVT file")
 
         if self.is_new_style:
-            err = None
             try:
                 timestamp = timestamp_from_filename(self.filename_orig)
                 self.date = time.parse_date(timestamp)
             except ValueError as e:
-                err = e
-            if err:
-                raise errors.FileError(str(err))
-            if date is not None and self.date != date:
+                raise errors.FileError(e) from e
+            if date is not None and self.date is not None and self.date != date:
                 raise ValueError(
                     "parsed date does not match date argument, {} != {}".format(
                         self.date.isoformat(timespec="seconds"),
@@ -188,7 +186,7 @@ def find_evt_files(root_dir):
     return sorted_files(files)
 
 
-def keep_evt_files(files):
+def keep_evt_files(files: list[str]) -> list[str]:
     """Filter list of files to only keep EVT files."""
     files_list = []
     for f in files:

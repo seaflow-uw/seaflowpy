@@ -234,6 +234,13 @@ class WorkReporter:
         self.signal_count_block = 0  # EVT signal (not noise) particles in this block
         self.saturated_count_block = 0  # particles saturating D1 or D2
         self.opp_count_block = 0  # OPP particles in this block
+        self.ratio_noise_block = 0.0  # noise ratio in this block
+        self.ratio_saturated_block = 0.0  # saturated ratio in this block
+        self.ratio_evtopp_block = 0.0  # OPP/EVT ratio in this block
+
+        self.ratio_noise = 0.0  # total noise ratio
+        self.ratio_saturated = 0.0  # total saturated ratio
+        self.ratio_evtopp = 0.0  # total EVT/OPP ratio
 
         self.t0 = time.time()
 
