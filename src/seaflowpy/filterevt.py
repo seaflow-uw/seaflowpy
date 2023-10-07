@@ -120,31 +120,28 @@ def do_filter(work):
 
         filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
 
+        evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
         # First check that particle count is below limit
         try:
             row_count = fileio.read_evt_metadata(row['path'])["rowcnt"]
         except (errors.FileError, IOError) as e:
             result["error"] = f"Could not parse file {row['path']}: {e}"
-            evt_df = particleops.empty_df()
         except Exception as e:
             result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
-            evt_df = particleops.empty_df()
         else:
             if row_count > work["max_particles_per_file"]:
                 result["error"] = f"{row_count} records in {row['path']} is > limit of {work['max_particles_per_file']}, will not filter"
-                evt_df = particleops.empty_df()
         if not result["error"]:
             # Particle count below limit and file is probably readable, read it
             try:
                 data = fileio.read_evt(row["path"])
+                # Set EVT dataframe with real data
                 evt_df = data["df"]
                 result["all_count"] = len(evt_df)
             except (errors.FileError, IOError) as e:
                 result["error"] = f"Could not parse file {row['path']}: {e}"
-                evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
             except Exception as e:
                 result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
-                evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
 
         # Filter
         try:
