@@ -187,7 +187,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
             print(err, file=sys.stderr)
         print("", file=sys.stderr)
 
-    if sfl_df:
+    if sfl_df is not None:
         print("{} entries found in SFL file".format(len(sfl_df)), file=sys.stderr)
     print("{} input files".format(len(files)), file=sys.stderr)
     print("{} files within time window".format(len(evt)), file=sys.stderr)

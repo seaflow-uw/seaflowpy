@@ -346,8 +346,8 @@ def read_filter_params_csv(path):
     }
     try:
         df = pd.read_csv(path, **defaults)
-    except pd.errors.ParserError:
-        raise errors.FileError("could not parse {} as csv filter paramater file".format(path))
+    except pd.errors.ParserError as e:
+        raise errors.FileError("could not parse {} as csv filter paramater file".format(path)) from e
     # Fix column names
     df.columns = [c.replace('.', '_') for c in df.columns]
     # Make sure serial numbers are treated as strings
