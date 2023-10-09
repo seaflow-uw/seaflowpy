@@ -175,24 +175,24 @@ def manifest_cmd(verbose, sfl_file, evt_dir):
     if evt_dir.startswith("s3://"):
         try:
             _, _, bucket, evt_dir = evt_dir.split("/", 3)
-        except ValueError:
-            raise click.ClickException("could not parse bucket and folder from S3 EVT-DIR")
+        except ValueError as e:
+            raise click.ClickException("could not parse bucket and folder from S3 EVT-DIR") from e
         try:
             files = cloud.get_s3_file_list(bucket, evt_dir)
-        except botocore.exceptions.NoCredentialsError:
+        except botocore.exceptions.NoCredentialsError as e:
             print('Please configure aws first:', file=sys.stderr)
             print('  $ pip install awscli', file=sys.stderr)
             print('  then', file=sys.stderr)
             print('  $ aws configure', file=sys.stderr)
-            raise click.Abort()
+            raise click.Abort() from e
         except sfperrors.S3Error as e:
-            raise click.ClickException(e)
+            raise click.ClickException(str(e)) from e
         found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files))
     else:
         try:
             found_evt_files = seaflowfile.find_evt_files(evt_dir)
         except OSError as e:
-            raise click.ClickException(e)
+            raise click.ClickException(str(e)) from e
 
     df = sfl.read_file(sfl_file)
     sfl_evt_ids = [seaflowfile.SeaFlowFile(f).file_id for f in df['file']]

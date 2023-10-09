@@ -30,8 +30,8 @@ def validate_timestamp(ctx, param, value):
     if value is not None:
         try:
             value = time.parse_date(value, assume_utc=False)
-        except ValueError:
-            raise click.BadParameter('unable to parse timestamp.')
+        except ValueError as e:
+            raise click.BadParameter('unable to parse timestamp.') from e
     return value
 
 def validate_hours(ctx, param, value):

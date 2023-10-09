@@ -76,7 +76,7 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
     try:
         errors = db.import_sfl(sfl_file, db_file, force=False)
     except SeaFlowpyError as e:
-        raise click.ClickException(e)
+        raise click.ClickException(str(e)) from e
     if len(errors) > 0:
         if json:
             sfl.print_json_errors(errors, sys.stdout, sfl_file, print_all=verbose)
@@ -105,7 +105,7 @@ def db_import_filter_params_cmd(plan, clear, filter_file, db_file):
     try:
         db.import_filter_params(filter_file, db_file, plan=plan, clear=clear)
     except SeaFlowpyError as e:
-        raise click.ClickException(e)
+        raise click.ClickException(str(e)) from e
 
 
 @db_cmd.command('import-gating-params')
@@ -128,7 +128,7 @@ def db_import_gating_params_cmd(in_prefix, db_file):
             db_file
         )
     except SeaFlowpyError as e:
-        raise click.ClickException(e)
+        raise click.ClickException(str(e)) from e
 
 
 @db_cmd.command('export-gating-params')
@@ -148,7 +148,7 @@ def db_export_gating_params_cmd(db_file, out_prefix):
     try:
         db.export_gating_params(db_file, out_prefix)
     except SeaFlowpyError as e:
-        raise click.ClickException(e)
+        raise click.ClickException(str(e)) from e
 
 
 @db_cmd.command('import-outlier')
@@ -159,7 +159,7 @@ def db_import_outlier_cmd(in_file, db_file):
     try:
         db.import_outlier(in_file, db_file)
     except SeaFlowpyError as e:
-        raise click.ClickException(e)
+        raise click.ClickException(str(e)) from e
 
 
 @db_cmd.command('export-outlier')
@@ -183,6 +183,6 @@ def db_create_filter_plan_cmd(db_file):
         filter_plan_df = db.create_filter_plan(db_file)
         db.save_df(filter_plan_df, "filter_plan", db_file, clear=True)
     except SeaFlowpyError as e:
-        raise click.ClickException(e)
+        raise click.ClickException(str(e)) from e
     print("Saved a new filter plan")
     print(filter_plan_df.to_string(index=False))

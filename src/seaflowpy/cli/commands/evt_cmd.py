@@ -99,7 +99,7 @@ def evt_cmd():
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
-                   min_date, max_date, tail_hours, multi, noise_filter, process_count, 
+                   min_date, max_date, tail_hours, multi, noise_filter, process_count,
                    saturation_filter, seed, sfl_path, verbose, files):
     """
     Sample a subset of events in EVT files.
