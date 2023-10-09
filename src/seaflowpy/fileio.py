@@ -12,13 +12,12 @@ import zstandard
 from . import errors
 from . import particleops
 from .seaflowfile import SeaFlowFile
-from . import util
 
 DEFAULT_EVT_DTYPE = np.float32
 PARQUET_EVT_DTYPE = np.float32
 
 @contextmanager
-def file_open_r(path, fileobj=None, as_text=False):
+def file_open_r(path, fileobj=None):
     """
     Open path or fileobj for reading as a context manager.
 
@@ -37,8 +36,6 @@ def file_open_r(path, fileobj=None, as_text=False):
         File path.
     fileobj: io.BytesIO, optional
         Open file object.
-    as_text: bool, default False
-        Return a file-like object of strings rather than bytes
 
     Returns
     -------
@@ -51,46 +48,27 @@ def file_open_r(path, fileobj=None, as_text=False):
         if path.suffix == '.gz':
             zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
             data = zobj.decompress(fileobj.read())
-            if not as_text:
-                yield io.BytesIO(data)
-            else:
-                yield io.TextIOWrapper(io.BytesIO(data))
+            yield io.BytesIO(data)
         elif path.suffix == '.zst':
             dctx = zstandard.ZstdDecompressor()
             with dctx.stream_reader(fileobj) as stream_reader:
-                if not as_text:
-                    yield stream_reader
-                else:
-                    yield io.TextIOWrapper(stream_reader)
+                yield stream_reader
         else:
-            if not as_text:
-                yield fileobj
-            else:
-                yield io.TextIOWrapper(fileobj)
+            yield fileobj
     else:
         if path.suffix == '.gz':
             with io.open(path, 'rb') as fileobj:
                 zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
                 data = zobj.decompress(fileobj.read())
-                if not as_text:
-                    yield io.BytesIO(data)
-                else:
-                    yield io.TextIOWrapper(io.BytesIO(data))
+                yield io.BytesIO(data)
         elif path.suffix == '.zst':
             with io.open(path, 'rb') as fileobj:
                 dctx = zstandard.ZstdDecompressor()
                 stream_reader = dctx.stream_reader(fileobj)
-                if not as_text:
-                    yield stream_reader
-                else:
-                    yield io.TextIOWrapper(stream_reader)
+                yield stream_reader
         else:
-            if not as_text:
-                with open(path, 'rb') as fh:
-                    yield fh
-            else:
-                with open(path, 'r') as fh:
-                    yield fh
+            with open(path, 'rb') as fh:
+                yield fh
 
 
 @contextmanager

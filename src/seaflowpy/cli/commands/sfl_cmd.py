@@ -116,10 +116,10 @@ def sfl_fix_underway_cmd(sfl_file, cruisemic_dir):
     df_sfl = sfl.fix(df_sfl)
 
     # Read cruisemic metadata file to find underway data
-    meta_glob = [str(p) for p in cruisemic_dir.glob("metadata*")]
+    meta_glob = [p for p in cruisemic_dir.glob("metadata*")]
     if len(meta_glob) != 1:
         raise click.ClickException("could not find geo-file")
-    with fileio.file_open_r(meta_glob[0], as_text=True) as metafh:
+    with meta_glob[0].open("r", encoding="utf-8") as metafh:
         meta = json.load(metafh)
 
     geo_filename = meta['GeoFeed']
@@ -131,18 +131,18 @@ def sfl_fix_underway_cmd(sfl_file, cruisemic_dir):
     cond_col = meta['ConductivityCol']
 
     # Read underway data
-    geo_glob = [str(p) for p in cruisemic_dir.glob(f"{geo_filename}*")]
-    thermo_glob = [str(p) for p in cruisemic_dir.glob(f"{thermo_filename}*")]
+    geo_glob = [p for p in cruisemic_dir.glob(f"{geo_filename}*")]
+    thermo_glob = [p for p in cruisemic_dir.glob(f"{thermo_filename}*")]
     if len(geo_glob) != 1:
         raise click.ClickException("could not find cruisemic geo data file")
     if len(thermo_glob) != 1:
         raise click.ClickException("could not find cruisemic thermosalinograph file")
-    with fileio.file_open_r(geo_glob[0], as_text=True) as geo_fh:
+    with geo_glob[0].open("r", encoding="utf-8") as geo_fh:
         geo_df = tsdataformat.read_tsdata(geo_fh, convert="time")
         geo_df["lat"] = geo_df[lat_col].astype(float)
         geo_df["lon"] = geo_df[lon_col].astype(float)
         geo_df = geo_df[["time", "lat", "lon"]]
-    with fileio.file_open_r(thermo_glob[0], as_text=True) as thermo_fh:
+    with thermo_glob[0].open("r", encoding="utf-8") as thermo_fh:
         thermo_df = tsdataformat.read_tsdata(thermo_fh, convert="time")
         thermo_df["ocean_tmp"] = thermo_df[temp_col].astype(float)
         thermo_df["salinity"] = thermo_df[sal_col].astype(float)
