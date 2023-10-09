@@ -303,7 +303,7 @@ def validate_evt_cmd(report_all, hash_, n_jobs, reduced_columns, progress, paths
     if report_all:
         results_output = results
     else:
-        results_output = results.loc[results['err'] == '']
+        results_output = results.loc[~results['err'].isna()]
 
     if len(results_output):
         results_output.to_string(index=False, buf=sys.stdout)
