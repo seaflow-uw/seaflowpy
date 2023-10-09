@@ -119,8 +119,9 @@ def do_filter(work):
         }
 
         filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
-
         evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
+        row_count = 0
+
         # First check that particle count is below limit
         try:
             row_count = fileio.read_evt_metadata(row['path'])["rowcnt"]
@@ -134,9 +135,8 @@ def do_filter(work):
         if not result["error"]:
             # Particle count below limit and file is probably readable, read it
             try:
-                data = fileio.read_evt(row["path"])
                 # Set EVT dataframe with real data
-                evt_df = data["df"]
+                evt_df = fileio.read_evt(row["path"])["df"]
                 result["all_count"] = len(evt_df)
             except (errors.FileError, IOError) as e:
                 result["error"] = f"Could not parse file {row['path']}: {e}"
