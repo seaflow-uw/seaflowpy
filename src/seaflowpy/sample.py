@@ -8,6 +8,9 @@ from seaflowpy import particleops
 from seaflowpy import seaflowfile
 from seaflowpy import util
 
+# Collumns to keep in subsampling output
+SAMPLE_COLUMNS = ["D1", "D2", "fsc_small", "pe", "chl_small"]
+
 
 def random_select(things, fraction, seed=None):
     """
@@ -161,8 +164,13 @@ def sample(
     results = list(
         itertools.chain.from_iterable([r["results"] for r in mp_results])
     )
-    df = pd.concat([r["df"] for r in mp_results], ignore_index=True)
-    if dates:
+    to_concat = [r["df"] for r in mp_results if len(r["df"])]
+    if len(to_concat):
+        df = pd.concat([r["df"] for r in mp_results], ignore_index=True)
+    else:
+        df = particleops.empty_df()[SAMPLE_COLUMNS]
+        df["file_id"] = None
+    if dates and len(df):
         df["date"] = df["file_id"].map(dates)
     df["file_id"] = df["file_id"].astype("category")
     assert len(df.index) == sum([r["events_postsampling"] for r in results])
@@ -219,7 +227,6 @@ def sample_many_to_one(
             }, ...]
         }
     """
-    columns = ["D1", "D2", "fsc_small", "pe", "chl_small"]
     results = []
 
     for f in evtpaths:
@@ -240,7 +247,7 @@ def sample_many_to_one(
             saturation_filter=saturation_filter,
             seed=seed,
         )
-        result["df"] = result["df"][columns]
+        result["df"] = result["df"][SAMPLE_COLUMNS]
         file_id = seaflowfile.SeaFlowFile(f).file_id
         result["df"]["file_id"] = file_id
         result["file_id"] = file_id
@@ -248,11 +255,16 @@ def sample_many_to_one(
         results.append(result)
 
     if len(results):
-        df = pd.concat([r["df"] for r in results], ignore_index=True)
+        to_concat = [r["df"] for r in results if len(r["df"])]
+        if len(to_concat) == 0:
+            df = particleops.empty_df()[SAMPLE_COLUMNS]
+            df["file_id"] = None
+        else:
+            df = pd.concat(to_concat, ignore_index=True)
         for r in results:
             del r["df"]
     else:
-        df = particleops.empty_df()[columns]
+        df = particleops.empty_df()[SAMPLE_COLUMNS]
         df["file_id"] = None
 
     return {
