@@ -5,45 +5,24 @@ A Python package for SeaFlow flow cytometer data.
 ## Table of Contents
 
 1. [Install](#install)
-1. [Read EVT/OPP/VCT Files](#evtoppvct)
 1. [Command-line Interface](#cli)
 1. [Configuration](#configuration)
-1. [Integration with R](#rintegration)
 1. [Testing](#testing)
-1. [Development](#development)
 
 <a name="install"></a>
 
 ## Install
 
-This package is compatible with Python 3.7 and 3.8.
+This package is compatible with Python 3.10 and 3.11
 
 ### Source
 
-This will clone the repo and create a new virtual environment `seaflowpy`.
-`venv` can be replaced with `virtualenv`, `conda`, etc.
-
-```sh
-git clone https://github.com/armbrustlab/seaflowpy
-cd seaflowpy
-[[ -d ~/venvs ]] || mkdir ~/venvs
-python3 -m venv ~/venvs/seaflowpy
-source ~/venvs/seaflowpy/bin/activate
-pip3 install -U pip setuptools wheel
-pip3 install -r requirements-test.txt
-pip3 install .
-# Confirm the seaflowpy command-line tool is accessible
-seaflowpy version
-# Make sure basic tests pass
-pytest
-# Leave the new virtual environment
-deactivate
-```
+To install this project from a clone of the repo use poetry with `poetry install`.
 
 ### PyPI
 
 ```sh
-pip3 install seaflowpy
+pip install seaflowpy
 ```
 
 ### Docker
@@ -55,38 +34,7 @@ docker pull ctberthiaume/seaflowpy
 docker run -it ctberthiaume/seaflowpy seaflowpy version
 ```
 
-The Docker build file is in this repo at `/Dockerfile`. The build process for the Docker image is detailed in `/build.sh`.
-
-<a name="evtoppvct"></a>
-
-## Read EVT/OPP/VCT Files
-
-All file reading functions will return a `pandas.DataFrame` of particle data.
-Gzipped EVT, OPP, or VCT files can be read if they end with a ".gz" extension.
-For these code examples assume `seaflowpy` has been imported as `sfp`
-and `pandas` has been imported as `pd`, e.g.
-
-```python
-import pandas as pd
-import seaflowpy as sfp
-```
-
-and `*_filepath` has been set to the correct data file.
-
-Read an EVT file
-
-```python
-evt = sfp.fileio.read_evt_labview(evt_filepath)
-```
-
-Read an OPP file as an Apache Arrow Parquet file, select the 50% quantile, and subset columns.
-VCT files created with `popcycle` are also standard Parquet files and can be read in a similar fashion.
-
-```python
-opp = pd.read_parquet(opp_filepath)
-opp50 = opp[opp["q50"]]
-opp50 = opp50[['fsc_small', 'chl_small', 'pe']]
-```
+The Docker build file is in this repo at `/Dockerfile`. The build process for the Docker image is detailed in `/build-docker.sh`.
 
 <a name="cli"></a>
 
@@ -150,85 +98,9 @@ aws configure
 This will store AWS configuration in `~/.aws` which `seaflowpy` will use to
 access Seaflow data in S3 storage.
 
-<a name="rintegration"></a>
-
-## Integration with R
-
-To call `seaflowpy` from R, update the PATH environment variable in
-`~/.Renviron`. For example:
-
-```sh
-PATH=${PATH}:${HOME}/venvs/seaflowpy/bin
-```
-
 <a name="testing"></a>
 
 ## Testing
 
 Seaflowpy uses `pytest` for testing. Tests can be run from this directory as
-`pytest` to test the installed version of the package, or run `tox` to install
-the source into a temporary virtual environment for testing.
-
-<a name="development"></a>
-
-## Development
-
-### Source code structure
-
-This project follows the [Git feature branch workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow).
-Active development happens on the `develop` branch and on feature branches which are eventually merged into `develop`.
-
-### Build
-
-To build source tarball, wheel, and Docker image, run `./build.sh`. This will
-
-* create `seaflowpy-dist` with source tarball and wheel file (created during Docker build)
-
-* Docker image named `seaflowpy:<version>`
-
-To remove all build files, run `rm -rf ./seaflowpy-dist`.
-
-### Updating requirements files
-
-Create a new virtual environment
-
-```sh
-python3 -m venv newenv
-source newenv/bin/activate
-```
-
-Update pip, wheel, setuptools
-
-```sh
-pip3 install -U pip wheel setuptools
-```
-
-And install `seaflowpy` and freeze  the requirements
-
-```sh
-pip3 install . && \
-pytest && \
-pip3 freeze | grep -v seaflowpy >requirements.txt
-```
-
-Then install test dependencies, test, and freeze
-
-```sh
-pip3 install pytest pytest-benchmark && \
-pytest && \
-pip3 freeze | grep -v seaflowpy >requirements-test.txt
-```
-
-Then install dev dependencies, test, and freeze
-
-```sh
-pip3 install pylint twine jupyterlab && \
-pytest && \
-pip3 freeze | grep -v seaflowpy >requirements-dev.txt
-```
-
-Leave the virtual environment
-
-```sh
-deactivate
-```
+`pytest` to test the installed version of the package.
