@@ -5,11 +5,11 @@ import sqlite3
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 import numpy as np
 import pandas as pd
 import pyarrow as pa
-from sqlalchemy import and_, create_engine, MetaData, or_, Table
+from sqlalchemy import create_engine, MetaData, or_, Table
 from sqlalchemy.exc import ArgumentError, NoSuchTableError, OperationalError
 from . import errors
 from . import particleops

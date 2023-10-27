@@ -23,7 +23,7 @@ ENV VIRTUAL_ENV=/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 RUN apt-get update -qq \
-    && apt-get install -qq -y git \
+    && apt-get install -qq -y git sqlite3 zst \
     && rm -rf /var/lib/apt/lists/* \
     && adduser --quiet --disabled-password --gecos '' seaflow
 
