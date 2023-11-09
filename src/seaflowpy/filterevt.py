@@ -121,6 +121,7 @@ def do_filter(work):
         filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
         evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
         row_count = 0
+        max_particles_per_file_reject = False
 
         # First check that particle count is below limit
         try:
@@ -131,7 +132,9 @@ def do_filter(work):
             result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
         else:
             if row_count > work["max_particles_per_file"]:
-                result["error"] = f"{row_count} records in {row['path']} is > limit of {work['max_particles_per_file']}, will not filter"
+                result["error"] = f"{row_count} records in {row['path']} > limit ({work['max_particles_per_file']}), will not filter"
+                max_particles_per_file_reject = True
+                result["all_count"] = row_count
         if not result["error"]:
             # Particle count below limit and file is probably readable, read it
             try:
@@ -157,7 +160,8 @@ def do_filter(work):
             result["noise_count"] = len(evt_df[evt_df["noise"]].index)
             result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
             result["opp_count"] = len(opp_df[opp_df["q50"]])
-            result["evt_count"] = result["all_count"] - result["noise_count"]
+            if not max_particles_per_file_reject:
+                result["evt_count"] = result["all_count"] - result["noise_count"]
             result["filter_id"] = filter_params["id"][0]
 
         work["results"].append(result)

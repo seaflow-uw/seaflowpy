@@ -546,7 +546,7 @@ class TestMultiFileFilter(object):
         # Check data stored in opp table are correct
         opp_table = sfp.db.get_opp_table(tmpout["db_plan"])
         assert len(opp_table) == 24
-        assert opp_table["all_count"].sum() == 0
+        assert opp_table["all_count"].sum() == 600000
         assert opp_table["evt_count"].sum() == 0
         assert opp_table["opp_count"].sum() == 0
 
