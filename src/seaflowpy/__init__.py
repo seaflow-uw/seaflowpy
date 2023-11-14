@@ -9,6 +9,7 @@ from . import geo
 from . import particleops
 from . import plan
 from . import sample
+from . import seaflowfile
 from . import sfl
 from . import time
 from . import util
