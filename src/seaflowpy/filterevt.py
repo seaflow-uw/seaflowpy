@@ -45,7 +45,6 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
 
     work_template = {
         "files_df": None,  # fill in later
-        "cloud_config_items": None,
         "dbpath": dbpath,
         "opp_dir": opp_dir,
         "filter_params": None,  # fill in later from db,

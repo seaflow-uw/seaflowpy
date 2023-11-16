@@ -17,7 +17,13 @@ This package is compatible with Python 3.10 and 3.11
 
 ### Source
 
-To install this project from a clone of the repo use poetry with `poetry install`.
+To install this project from a clone of the repo use poetry
+
+```
+poetry self add poetry-plugin-export
+poetry self add "poetry-dynamic-versioning[plugin]"
+poetry install
+```
 
 ### PyPI
 

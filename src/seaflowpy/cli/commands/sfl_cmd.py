@@ -2,14 +2,13 @@ import json
 import os
 import sys
 from pathlib import Path
-import botocore
+from subprocess import CalledProcessError, check_output
+
 import click
 import pandas as pd
 import tsdataformat
-from seaflowpy import cloud
 from seaflowpy import db
 from seaflowpy import errors as sfperrors
-from seaflowpy import fileio
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
 
@@ -162,9 +161,10 @@ def manifest_cmd(verbose, sfl_file, evt_dir):
     """
     Compares files in SFL-FILE with files in EVT-DIR.
 
-    If EVT-DIR begins with 's3://s3-bucket-name' then files will located in S3.
-    To configure credentials for S3 access use the 'aws' command-line tool from
-    the 'awscli' Python package.
+    If EVT-DIR matches the pattern 'myhost:path/to/cruise', then files will be
+    searched for on the remote SSH host 'myhost' at remote path
+    'path/to/criuse'. 'myhost' should be a valid host alias in the user's
+    ~/.ssh/config file.
 
     It's normal for about one file per day to be missing from the SFL file or
     EVT day of year folder, especially around midnight.
@@ -172,21 +172,14 @@ def manifest_cmd(verbose, sfl_file, evt_dir):
     To read from STDIN use '-' for SFL_FILE. Prints a file list diff to STDOUT.
     """
     found_evt_ids = []
-    if evt_dir.startswith("s3://"):
+    host_parts = evt_dir.split(":", 1)
+    if len(host_parts) == 2 and host_parts[0].find("/") == -1:
+        click.echo(f"Connecting to remote SSH host {host_parts[0]}, with cruise path {host_parts[1]}")
         try:
-            _, _, bucket, evt_dir = evt_dir.split("/", 3)
-        except ValueError as e:
-            raise click.ClickException("could not parse bucket and folder from S3 EVT-DIR") from e
-        try:
-            files = cloud.get_s3_file_list(bucket, evt_dir)
-        except botocore.exceptions.NoCredentialsError as e:
-            print('Please configure aws first:', file=sys.stderr)
-            print('  $ pip install awscli', file=sys.stderr)
-            print('  then', file=sys.stderr)
-            print('  $ aws configure', file=sys.stderr)
-            raise click.Abort() from e
-        except sfperrors.S3Error as e:
+            output = check_output(["ssh", host_parts[0], "find", host_parts[1], "-type", "f"], encoding="utf-8")
+        except CalledProcessError as e:
             raise click.ClickException(str(e)) from e
+        files = output.split("\n")
         found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files))
     else:
         try:

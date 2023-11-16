@@ -1,6 +1,5 @@
 import logging
 
-from . import cloud
 from . import db
 from . import errors
 from . import fileio
