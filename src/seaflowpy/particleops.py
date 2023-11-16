@@ -12,7 +12,7 @@ CHANNEL_COLUMNS = COLUMNS[2:]  # flow cytometer channel data columns
 COLUMNS2 = [
     "pulse_width", "chl_small", "D1", "D2", "fsc_small", "pe", "evt_rate"
 ]
-CHANNEL_COLUMNS2 = COLUMNS[1:6]  # flow cytometer channel data columns
+CHANNEL_COLUMNS2 = COLUMNS2[1:6]  # flow cytometer channel data columns
 
 # Reduced column set for Parquet EVT files
 REDUCED_COLUMNS = ["D1", "D2", "fsc_small", "pe", "chl_small"]
