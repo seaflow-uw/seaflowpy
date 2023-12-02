@@ -22,6 +22,6 @@ def parse_date(date_str: str, assume_utc: bool=True) -> datetime.datetime:
     return date
 
 
-def seaflow_rfc3339(date: datetime.datetime):
+def seaflow_rfc3339(date: datetime.datetime) -> str:
     """Standard SeaFlow RFC3339 timestamp."""
     return date.isoformat(timespec='seconds')

@@ -1,3 +1,4 @@
+import datetime
 import re
 from pathlib import Path
 
@@ -124,7 +125,7 @@ class SeaFlowFile:
         return (year, day, file_key)
 
 
-def create_dayofyear_directory(dt):
+def create_dayofyear_directory(dt: datetime.datetime) -> str:
     """Create SeaFlow day of year directory from a datetime object"""
     if dt:
         return "{}_{}".format(dt.year, dt.strftime('%j'))
@@ -141,6 +142,18 @@ def timestamp_from_filename(filename):
         # Parse RFC 3339 date string
         return "{date}T{hours}:{minutes}:{seconds}{tzhours}:{tzminutes}".format(**m.groupdict())
     raise ValueError('filename does not look like a new-style SeaFlow file')
+
+
+def file_id_from_datetime(dt: datetime.datetime) -> str:
+    """Return a file ID string from a UTC timezone aware datetime object"""
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        raise ValueError("dt must be timezone aware datetime.datetime")
+    if str(dt.tzinfo) != "UTC":
+        raise ValueError("dt.tzinfo must be 'UTC'")
+    rfc3339 = time.seaflow_rfc3339(dt)
+    doy = create_dayofyear_directory(dt)
+    file_id = f"{doy}/{rfc3339.replace(':', '-')}"
+    return file_id
 
 
 def parse_path(file_path):

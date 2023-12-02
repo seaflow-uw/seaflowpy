@@ -510,3 +510,18 @@ def test_date_evt_files():
     hash_result = pd.util.hash_pandas_object(files_df, index=False).sum()
     hash_answer = pd.util.hash_pandas_object(answer_df, index=False).sum()
     assert hash_result == hash_answer
+
+
+def test_file_id_from_datetime():
+    dt1 = pd.Timestamp('2014-07-04 00:00:02+0000', tz='UTC').to_pydatetime()
+    file_id1 = sfp.seaflowfile.file_id_from_datetime(dt1)
+    assert file_id1 == '2014_185/2014-07-04T00-00-02+00-00'
+
+    dt2 = pd.Timestamp('2014-07-04 00:00:02+0000', tz='UTC').to_pydatetime()
+    dt2 = dt2.replace(tzinfo=None)
+    with pytest.raises(ValueError):
+        _ = sfp.seaflowfile.file_id_from_datetime(dt2)
+
+    dt3 = pd.Timestamp('2014-07-04 00:00:02+0000', tz='US/Pacific').to_pydatetime()
+    with pytest.raises(ValueError):
+        _ = sfp.seaflowfile.file_id_from_datetime(dt3)
