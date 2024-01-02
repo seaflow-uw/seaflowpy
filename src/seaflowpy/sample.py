@@ -170,8 +170,12 @@ def sample(
     else:
         df = particleops.empty_df()[SAMPLE_COLUMNS]
         df["file_id"] = None
-    if dates and len(df):
-        df["date"] = df["file_id"].map(dates)
+    if dates:
+        if len(df):
+            df["date"] = df["file_id"].map(dates)
+        else:
+            # Make sure the empty DataFrame has a date column if requested
+            df["date"] = None
     df["file_id"] = df["file_id"].astype("category")
     assert len(df.index) == sum([r["events_postsampling"] for r in results])
     df.to_parquet(outpath)
