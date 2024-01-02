@@ -72,7 +72,7 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
     which will be searched for OPP files.
     COUNT events will be randomly selected from all data.
     """
-    files = sorted(seaflowfile.expand_file_list(files))
+    files = sorted(seaflowfile.expand_file_list2(files))
     if files:
         timestamps = [pathlib.Path(f).name.split(".")[0] for f in files]
         timestamps = [seaflowfile.timestamp_from_filename(ts) for ts in timestamps]
