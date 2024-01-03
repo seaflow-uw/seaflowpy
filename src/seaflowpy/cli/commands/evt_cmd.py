@@ -14,6 +14,7 @@ from seaflowpy import particleops
 from seaflowpy import sample
 from seaflowpy import sfl
 from seaflowpy import time
+from seaflowpy import util
 
 
 
@@ -117,7 +118,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
 
     # Get file to date mappings from SFL file
-    files = seaflowfile.keep_evt_files(seaflowfile.expand_file_list(files))
+    files = seaflowfile.keep_evt_files(util.expand_file_list(files))
     files = seaflowfile.sorted_files(files)
     if sfl_path:
         sfl_df = sfl.read_file(sfl_path, convert_dates=True)
@@ -219,7 +220,7 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
     which will be searched for EVT files.
     """
     logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=logging.INFO)
-    files = seaflowfile.keep_evt_files(seaflowfile.expand_file_list(files))
+    files = seaflowfile.keep_evt_files(util.expand_file_list(files))
     files = seaflowfile.sorted_files(files)
     if sfl_path:
         sfl_df = sfl.read_file(sfl_path, convert_dates=True)
@@ -248,6 +249,8 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
 @evt_cmd.command('validate')
 @click.option('-a', '--all', 'report_all', is_flag=True,
     help='Show information for all files. If not specified then only files errors are printed.')
+@click.option('--filter-by-name', is_flag=True,
+    help="Exclude files that don't have EVT-like names.")
 @click.option('--hash', 'hash_', is_flag=True,
     help='Hash the contents of each EVT with joblib.hash()')
 @click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
@@ -256,7 +259,7 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
 @click.option('-p', '--progress', is_flag=True,
     help='Print progress')
 @click.argument('paths', nargs=-1, type=click.Path(exists=True))
-def validate_evt_cmd(report_all, hash_, n_jobs, reduced_columns, progress, paths):
+def validate_evt_cmd(report_all, filter_by_name, hash_, n_jobs, reduced_columns, progress, paths):
     """
     Examines EVT files.
 
@@ -273,7 +276,9 @@ def validate_evt_cmd(report_all, hash_, n_jobs, reduced_columns, progress, paths
         cols = None
 
     # dirs to file paths
-    files = seaflowfile.expand_file_list(paths)
+    files = util.expand_file_list(paths)
+    if filter_by_name:
+        files = seaflowfile.keep_evt_files(files)
 
     file_ids = []
     for filepath in files:
@@ -347,7 +352,8 @@ def parquet_cmd(n_jobs, out_dir, progress, paths):
     Output files will be placed in appropriate day of year directories inside
     out-dir.
     """
-    in_files = [f for f in seaflowfile.expand_file_list(paths)]
+    in_files = [f for f in util.expand_file_list(paths)]
+    in_files = seaflowfile.keep_evt_files(in_files)
     parquet_files = []
     for f in in_files:
         sf = seaflowfile.SeaFlowFile(f)
@@ -409,7 +415,11 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
     elif paths[0].is_dir() and paths[1].is_dir():
         x_ids, x_paths = [], []
         y_ids, y_paths = [], []
-        for f in seaflowfile.expand_file_list([str(paths[0])]):
+        x_file_paths = util.expand_file_list([str(paths[0])])
+        x_file_paths = seaflowfile.keep_evt_files(x_file_paths)
+        y_file_paths = util.expand_file_list([str(paths[1])])
+        y_file_paths = seaflowfile.keep_evt_files(y_file_paths)
+        for f in x_file_paths:
             try:
                 sf = seaflowfile.SeaFlowFile(f)
             except errors.FileError as e:
@@ -417,7 +427,8 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
             else:
                 x_ids.append(sf.file_id)
                 x_paths.append(f)
-        for f in seaflowfile.expand_file_list([str(paths[1])]):
+        
+        for f in y_file_paths:
             try:
                 sf = seaflowfile.SeaFlowFile(f)
             except errors.FileError as e:

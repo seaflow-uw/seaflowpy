@@ -7,6 +7,7 @@ import pandas as pd
 
 from seaflowpy import seaflowfile
 from seaflowpy import time
+from seaflowpy import util
 
 
 def validate_positive(ctx, param, value):
@@ -72,7 +73,7 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
     which will be searched for OPP files.
     COUNT events will be randomly selected from all data.
     """
-    files = sorted(seaflowfile.expand_file_list(files))
+    files = sorted(util.expand_file_list(files))
     if files:
         timestamps = [pathlib.Path(f).name.split(".")[0] for f in files]
         timestamps = [seaflowfile.timestamp_from_filename(ts) for ts in timestamps]

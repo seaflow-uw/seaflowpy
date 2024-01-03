@@ -282,15 +282,3 @@ def date_evt_files(evt_paths, sfl_df=None):
             data["path"].append(path)
             data["date"].append(sff.date)
     return pd.DataFrame(data)[["date", "file_id", "path"]]
-
-
-def expand_file_list(files_and_dirs):
-    """Convert directories in file list to EVT file paths."""
-    dirs = [f for f in files_and_dirs if Path(f).is_dir()]
-    files = [f for f in files_and_dirs if Path(f).is_file()]
-
-    dfiles = []
-    for d in dirs:
-        dfiles = dfiles + find_evt_files(d)
-
-    return files + dfiles

@@ -77,3 +77,19 @@ def zerodiv(x, y):
     except ZeroDivisionError:
         answer = 0.0
     return answer
+
+
+def expand_file_list(files_and_dirs: list[str]) -> list[str]:
+    """
+    Return files_and_dirs with directories replaced by the files they contain
+    
+    For example, ["file1", "file2", "dir1"] becomes
+    ["file1", "file2", "dir1/file3"]. This function does not recurse into
+    subdirectories.
+    """
+    dirs = [f for f in files_and_dirs if Path(f).is_dir()]
+    files = [f for f in files_and_dirs if Path(f).is_file()]
+    dfiles = []
+    for d in dirs:
+        dfiles = dfiles + [str(p) for p in Path(d).glob("**/*") if p.is_file()]
+    return files + dfiles
