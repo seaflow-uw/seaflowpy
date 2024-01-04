@@ -166,16 +166,14 @@ def sample(
     )
     to_concat = [r["df"] for r in mp_results if len(r["df"])]
     if len(to_concat):
-        df = pd.concat([r["df"] for r in mp_results], ignore_index=True)
+        df = pd.concat(to_concat, ignore_index=True)
     else:
         df = particleops.empty_df()[SAMPLE_COLUMNS]
         df["file_id"] = None
+        df["date"] = None
     if dates:
         if len(df):
             df["date"] = df["file_id"].map(dates)
-        else:
-            # Make sure the empty DataFrame has a date column if requested
-            df["date"] = None
     df["file_id"] = df["file_id"].astype("category")
     assert len(df.index) == sum([r["events_postsampling"] for r in results])
     df.to_parquet(outpath)
@@ -226,7 +224,7 @@ def sample_many_to_one(
                 "msg": any errors encountered while processing this file,
                 "file_id": input EVT file ID,
                 "events": event count in original file,
-                "events_postfilter": event count after applying min val / noise filters,
+                "events_postfilter": event count after applying min val / noise / sat filters,
                 "events_postsampling": event count after subsampling
             }, ...]
         }
@@ -252,9 +250,10 @@ def sample_many_to_one(
             seed=seed,
         )
         result["df"] = result["df"][SAMPLE_COLUMNS]
-        file_id = seaflowfile.SeaFlowFile(f).file_id
-        result["df"]["file_id"] = file_id
-        result["file_id"] = file_id
+        sff = seaflowfile.SeaFlowFile(f)
+        result["df"]["file_id"] = sff.file_id
+        result["df"]["date"] = sff.date
+        result["file_id"] = sff.file_id
         result["msg"] = msg
         results.append(result)
 
@@ -263,6 +262,7 @@ def sample_many_to_one(
         if len(to_concat) == 0:
             df = particleops.empty_df()[SAMPLE_COLUMNS]
             df["file_id"] = None
+            df["date"] = None
         else:
             df = pd.concat(to_concat, ignore_index=True)
         for r in results:
@@ -270,6 +270,7 @@ def sample_many_to_one(
     else:
         df = particleops.empty_df()[SAMPLE_COLUMNS]
         df["file_id"] = None
+        df["date"] = None
 
     return {
         "df": df,
