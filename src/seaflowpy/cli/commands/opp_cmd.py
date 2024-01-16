@@ -74,6 +74,8 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
     COUNT events will be randomly selected from all data.
     """
     files = sorted(util.expand_file_list(files))
+    df = pd.DataFrame()
+    sub = pd.DataFrame()
     if files:
         timestamps = [pathlib.Path(f).name.split(".")[0] for f in files]
         timestamps = [seaflowfile.timestamp_from_filename(ts) for ts in timestamps]
@@ -93,22 +95,22 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
             files_df = files_df[files_df.date + datetime.timedelta(hours=1) >= min_date]
         if max_date is not None:
             files_df = files_df[files_df.date <= max_date]
+        
+        if len(files_df):
+            outpath.parent.mkdir(parents=True, exist_ok=True)
 
-        outpath.parent.mkdir(parents=True, exist_ok=True)
+            df = pd.concat([pd.read_parquet(f) for f in files_df.path], ignore_index=True)
+            if min_date is not None:
+                df = df[df.date >= min_date]
+            if max_date is not None:
+                df = df[df.date <= max_date]
+            count = min(count, len(df))
+            if seed is not None:
+                sub = df.sample(n=count, random_state=seed)
+            else:
+                sub = df.sample(n=count)
+            sub.to_parquet(outpath)
 
-        df = pd.concat([pd.read_parquet(f) for f in files_df.path], ignore_index=True)
-        if min_date is not None:
-            df = df[df.date >= min_date]
-        if max_date is not None:
-            df = df[df.date <= max_date]
-        count = min(count, len(df))
-        if seed is not None:
-            sub = df.sample(n=count, random_state=seed)
-        else:
-            sub = df.sample(n=count)
-        sub.to_parquet(outpath)
-
-        print("{} particles in time range".format(len(df)), file=sys.stderr)
+    print("{} particles in time range".format(len(df)), file=sys.stderr)
+    if len(sub):
         print("{} particles selected with time range {} - {} ".format(len(sub), sub.date.min().isoformat(), sub.date.max().isoformat()), file=sys.stderr)
-    else:
-        print("0 particles in time range", file=sys.stderr)
