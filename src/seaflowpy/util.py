@@ -1,6 +1,5 @@
 from functools import wraps
 from pathlib import Path
-from signal import getsignal, signal, SIGPIPE, SIG_DFL
 import sys
 
 
@@ -39,35 +38,6 @@ def quantile_str(q):
     part, display it.
     """
     return "{0}".format(str(q) if q % 1 else int(q))
-
-
-def suppress_sigpipe(f):
-    """Decorator to handle SIGPIPE cleanly.
-
-    Prevent Python from turning SIGPIPE into an exception and printing an
-    uncatchable error message. Note, if the wrapped function depends on the
-    default behavior of Python when handling SIGPIPE this decorator may have
-    unintended effects."""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        orig_handler = getsignal(SIGPIPE)
-        signal(SIGPIPE, SIG_DFL)
-        try:
-            f(*args, **kwargs)
-        finally:
-            signal(SIGPIPE, orig_handler)  # restore original Python SIGPIPE handler
-    return wrapper
-
-
-def quiet_keyboardinterrupt(f):
-    """Decorator to exit quietly on keyboard interrupt."""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            f(*args, **kwargs)
-        except KeyboardInterrupt:
-            sys.exit()
-    return wrapper
 
 
 def zerodiv(x, y):

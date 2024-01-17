@@ -439,7 +439,6 @@ def parse_sfl_filename(fn):
     return ()
 
 
-@util.suppress_sigpipe
 def print_json_errors(errors, fh, filename, print_all=True):
     errors_output = []
     errors_seen = set()
@@ -454,7 +453,6 @@ def print_json_errors(errors, fh, filename, print_all=True):
     fh.write("\n")
 
 
-@util.suppress_sigpipe
 def print_tsv_errors(errors, fh, filename, print_all=True, header=True,):
     errors_output = []
     errors_seen = set()
@@ -524,7 +522,6 @@ def read_file(
     return df
 
 
-@util.suppress_sigpipe
 def save_to_file(df, outpath, convert_colnames=True, all_columns=False):
     """Write SFL dataframe to a csv file.
 
