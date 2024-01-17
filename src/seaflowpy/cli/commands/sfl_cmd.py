@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import sys
@@ -11,6 +12,7 @@ from seaflowpy import db
 from seaflowpy import errors as sfperrors
 from seaflowpy import seaflowfile
 from seaflowpy import sfl
+from seaflowpy.time import seaflow_rfc3339
 
 
 
@@ -293,3 +295,26 @@ def sfl_validate_cmd(report_all, sfl_file):
             sfl.print_tsv_errors(errors, sys.stdout, Path(f).name,
                                  print_all=report_all, header=need_header)
         need_header = False
+
+
+
+@sfl_cmd.command('time-range')
+@click.option("-b", "--buffer", type=int, default=0, help="Minutes to add to start and end timestamps.")
+@click.option("-f", "--files-only", is_flag=True, help="Only report file dates.")
+@click.argument('sfl-file', metavar='SFL', nargs=1, type=click.Path(exists=True))
+def sfl_time_range_cmd(buffer: int, files_only: bool, sfl_file: str):
+    """
+    Print timestamps SFL data range as "<start_RFC3339> <end_RFC3339>".
+    The end timestamps will be the timestamp of the last file + its duration.
+    """
+    buffer_delta = datetime.timedelta(minutes=buffer)
+    df = sfl.read_file(sfl_file, convert_dates=True, convert_numerics=True)
+    if len(df):
+        df = df.sort_values(by="date")
+        start = df["date"].iloc[0]
+        end = df["date"].iloc[-1]
+        if not files_only:
+            end = end + datetime.timedelta(seconds=df["file_duration"].iloc[-1])
+        start -= buffer_delta
+        end += buffer_delta
+        print(f"{seaflow_rfc3339(start)} {seaflow_rfc3339(end)}")
