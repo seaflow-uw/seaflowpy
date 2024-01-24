@@ -208,7 +208,7 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     help="""Only consider the most recent N hours of data. Unsets --max-date.
             If --min-date is also provided it will be used if it is more recent
             than <last date - N hours>.""")
-@click.option('-S', '--sfl', 'sfl_path', type=click.Path(),
+@click.option('--sfl', 'sfl_path', type=click.Path(),
     help="""SFL file that can be used to associate dates with EVT files. Useful when
             sampling undated EVT files.""")
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
@@ -344,19 +344,26 @@ def _idkey(id_series):
     help='Output directory')
 @click.option('-p', '--progress', is_flag=True,
     help='Print progress')
+@click.option('--sfl', 'sfl_path', type=click.Path(),
+    help="""SFL file that can be used to associate dates with EVT files.""")
 @click.argument('paths', nargs=-1, type=click.Path(exists=True, path_type=str))
-def parquet_cmd(n_jobs, out_dir, progress, paths):
+def parquet_cmd(n_jobs, out_dir, progress, paths, sfl_path):
     """
     Convert binary EVT files to reduced Parquet.
 
     Output files will be placed in appropriate day of year directories inside
     out-dir.
     """
-    in_files = [f for f in util.expand_file_list(paths)]
-    in_files = seaflowfile.keep_evt_files(in_files)
+    in_files = seaflowfile.keep_evt_files(util.expand_file_list(paths))
+    if sfl_path:
+        sfl_df = sfl.read_file(sfl_path, convert_dates=True)
+        sfl_df = sfl.fix(sfl_df)  # ensure valid file_ids in file column
+    else:
+        sfl_df = None
+    evt = seaflowfile.date_evt_files(in_files, sfl_df)
     parquet_files = []
-    for f in in_files:
-        sf = seaflowfile.SeaFlowFile(f)
+    for row in evt.itertuples(index=False):
+        sf = seaflowfile.SeaFlowFile(row.path, date=row.date)
         parquet_files.append(str(out_dir / sf.dayofyear / f"{sf.filename_orig}.parquet"))
     print('Converting %d input EVT files' % (len(in_files),), file=sys.stderr)
     if progress:
