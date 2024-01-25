@@ -417,10 +417,10 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
     ID, and files with unparsable names are ignored. If both arguments are files
     then file name parsing is not performed.
 
-    Equality is determined by joblib.hash() output. A TSV table of results is
-    printed to STDOUT for EVT dataframes that differ. If --all, all files are
-    reported, even those that match. Read and parsing errors are printed to
-    STDERR.
+    Equality is determined by MD5 of df.to_numpy().tobytes(). A TSV table of
+    results is printed to STDOUT for EVT dataframes that differ. If --all,
+    all files are reported, even those that match. Read and parsing errors are
+    printed to STDERR.
     """
     if paths[0].is_file() and paths[1].is_file():
         # Ignore IDs to allow comparison between files with arbitrary names
