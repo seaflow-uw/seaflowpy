@@ -252,7 +252,7 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
 @click.option('--filter-by-name', is_flag=True,
     help="Exclude files that don't have EVT-like names.")
 @click.option('--hash', 'hash_', is_flag=True,
-    help='Hash the contents of each EVT with joblib.hash()')
+    help='MD5 hash each EVT, with contents expressed as df.to_numpy().tobytes()')
 @click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
 @click.option('-r', '--reduced-columns', is_flag=True,
     help=f'Hash on the reduced column set {particleops.REDUCED_COLUMNS}')
@@ -361,17 +361,24 @@ def parquet_cmd(n_jobs, out_dir, progress, paths, sfl_path):
     else:
         sfl_df = None
     evt = seaflowfile.date_evt_files(in_files, sfl_df)
+    print(f"Found {len(in_files)} EVT files", file=sys.stderr)
+    if sfl_path:
+        print(f"Matched {len(evt)} EVT files to SFL entries", file=sys.stderr)
     parquet_files = []
     for row in evt.itertuples(index=False):
+        if not pathlib.Path(row.path).exists():
+            raise FileNotFoundError(f"No such file or directory: '{row.path}'")
         sf = seaflowfile.SeaFlowFile(row.path, date=row.date)
         parquet_files.append(str(out_dir / sf.dayofyear / f"{sf.filename_orig}.parquet"))
-    print('Converting %d input EVT files' % (len(in_files),), file=sys.stderr)
-    if progress:
-        verbose = 1
-    else:
-        verbose = 0
-    parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
-    args = zip(in_files, parquet_files)
+    evt["parquet"] = parquet_files
+
+    with pd.option_context("display.max_colwidth", 200):
+        print(evt.head(), file=sys.stderr)
+        print("...")
+        print(evt.tail(), file=sys.stderr)
+
+    parallel = Parallel(n_jobs=n_jobs, verbose=1 if progress else 0)
+    args = zip(evt["path"].to_list(), evt["parquet"].to_list())
     results = parallel(delayed(_binary_to_parquet)(*a) for a in args)
     error_lines = [f"  {r[0]}: {r[1]}" for r in results if r[1] is not None]
     if error_lines:
@@ -386,7 +393,7 @@ def parquet_cmd(n_jobs, out_dir, progress, paths, sfl_path):
 
 def _binary_to_parquet(infile, outfile):
     try:
-        fileio.binary_to_parquet(infile, outfile)
+        fileio.binary_to_parquet(infile, outfile, empty_output=True)
     except (errors.FileError, IOError) as e:
         return (infile, e)
     return (infile, None)

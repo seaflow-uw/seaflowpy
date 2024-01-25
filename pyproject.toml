@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "seaflowpy"
-version = "0.0.0"
+version = "13.1.4"
 description = "A Python library for SeaFlow data"
 authors = ["Chris Berthiaume <chrisbee@uw.edu>"]
 readme = "README.md"
@@ -39,10 +39,6 @@ optional = true
 pylint = "^2.17.5"
 jupyterlab = "^4.0.6"
 
-[tool.poetry-dynamic-versioning]
-enable = true
-pattern = '^(?P<base>\d+(\.\d+)*)$'
-
 [build-system]
-requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -487,8 +487,14 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
     df.to_parquet(outpath, compression="snappy", index=False, engine="pyarrow")
 
 
-def binary_to_parquet(infile, outfile):
-    df = read_evt(infile, dtype=PARQUET_EVT_DTYPE)["df"][particleops.REDUCED_COLUMNS]
+def binary_to_parquet(infile, outfile, empty_output=True):
+    try:
+        df = read_evt(infile, dtype=PARQUET_EVT_DTYPE)["df"][particleops.REDUCED_COLUMNS]
+    except (errors.FileError, IOError) as e:
+        if empty_output:
+            df = pd.DataFrame(columns=particleops.REDUCED_COLUMNS, dtype=PARQUET_EVT_DTYPE)
+        else:
+            raise e
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(outfile)
 
@@ -512,10 +518,10 @@ def validate_evt_file(f, checksum=True, cols=None):
         if checksum:
             if cols:
                 try:
-                    data["hash"] = joblib.hash(df[cols].reset_index(drop=True))
+                    data["hash"] = joblib.hash(df[cols].to_numpy().tobytes(), hash_name="md5")
                 except KeyError as e:
                     data["err"] = str(e)
             else:
-                data["hash"] = joblib.hash(df.reset_index(drop=True))
+                data["hash"] = joblib.hash(df.to_numpy().tobytes(), hash_name="md5")
 
     return pd.Series(data)
