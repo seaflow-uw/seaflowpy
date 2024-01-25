@@ -193,7 +193,7 @@ def read_labview(path, columns=None, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
     fileobj: io.BytesIO, optional
         Open file object.
     dtype: numpy.dtype, optional
-        dtype for numberic columns in EVT dataframe.
+        dtype for numeric columns in EVT dataframe.
 
     Returns
     -------
@@ -285,7 +285,7 @@ def read_evt_labview(path, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
     fileobj: io.BytesIO, optional
         Open file object.
     dtype: numpy.dtype, optional
-        dtype for numberic columns in EVT dataframe.
+        dtype for numeric columns in EVT dataframe.
 
     Returns
     -------
@@ -299,14 +299,14 @@ def read_evt_labview(path, fileobj=None, dtype=DEFAULT_EVT_DTYPE):
 
 def read_evt(path, dtype=DEFAULT_EVT_DTYPE):
     """
-    Read EVT file as raw binary, gzipped binary, or reduced Parquet.
+    Read EVT file as raw binary, gz binary, Parquet.
 
     Parameters
     ----------
     path: str
         File path.
     dtype: numpy.dtype, optional
-        dtype for numberic columns in EVT dataframe.
+        dtype for numeric columns in EVT dataframe.
 
     Returns
     -------
