@@ -199,10 +199,13 @@ def find_evt_files(root_dir):
     return sorted_files(files)
 
 
-def keep_evt_files(files: list[str]) -> list[str]:
+def keep_evt_files(files: list[str], require_exists: bool=True) -> list[str]:
     """Filter list of files to only keep EVT files."""
     files_list = []
     for f in files:
+        if require_exists:
+            if not Path(f).exists():
+                raise FileNotFoundError(f"No such file or directory: '{f}'")
         try:
             _ = SeaFlowFile(f)
         except errors.FileError:

@@ -182,7 +182,7 @@ def manifest_cmd(verbose, sfl_file, evt_dir):
         except CalledProcessError as e:
             raise click.ClickException(str(e)) from e
         files = output.split("\n")
-        found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files))
+        found_evt_files = seaflowfile.sorted_files(seaflowfile.keep_evt_files(files, require_exists=False))
     else:
         try:
             found_evt_files = seaflowfile.find_evt_files(evt_dir)

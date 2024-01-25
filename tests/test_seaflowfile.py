@@ -367,8 +367,11 @@ def test_keep_evt_files():
         "testcruise/2014_185/2014-07-04T00-06-02+00-00.parquet",
         ""
     ]
-    parsed = sfp.seaflowfile.keep_evt_files(files)
+    parsed = sfp.seaflowfile.keep_evt_files(files, require_exists=False)
     assert parsed == (files[:2] + files[3:6])
+
+    with pytest.raises(FileNotFoundError):
+        _ = sfp.seaflowfile.keep_evt_files(files)
 
 def test_find_evt_files():
     files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
