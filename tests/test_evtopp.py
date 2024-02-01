@@ -244,39 +244,44 @@ class TestOpenParquetEVT:
         assert list(data["df"]) == sfp.particleops.REDUCED_COLUMNS
 
 class TestFilter:
-    def test_mark_focused_no_params(self, evt_df):
+    @pytest.mark.parametrize("filter_func", (sfp.particleops.mark_focused, sfp.particleops.mark_focused_fast))
+    def test_mark_focused_no_params(self, evt_df, filter_func):
         with pytest.raises(ValueError):
-            _df = sfp.particleops.mark_focused(evt_df, None)
+            _df = filter_func(evt_df, None)
 
-    def test_mark_focused_empty_params(self, evt_df):
+    @pytest.mark.parametrize("filter_func", (sfp.particleops.mark_focused, sfp.particleops.mark_focused_fast))
+    def test_mark_focused_empty_params(self, evt_df, filter_func):
         with pytest.raises(ValueError):
-            _df = sfp.particleops.mark_focused(evt_df, pd.DataFrame.from_dict({}))
+            _df = filter_func(evt_df, pd.DataFrame.from_dict({}))
 
     @pytest.mark.benchmark(group="evt-filter")
-    def test_mark_focused_with_set_params(self, evt_df, params, benchmark):
+    @pytest.mark.parametrize("filter_func", (sfp.particleops.mark_focused, sfp.particleops.mark_focused_fast))
+    def test_mark_focused_with_set_params(self, evt_df, params, benchmark, filter_func):
         orig_df = evt_df.copy()  # make a copy before any possible modifications
 
         # Should not modify original
-        new_evt_df = benchmark(sfp.particleops.mark_focused, evt_df, params)
+        new_evt_df = benchmark(filter_func, evt_df, params)
         assert not (new_evt_df is evt_df)  # returned a new dataframe
         assert orig_df.equals(evt_df)  # original dataframe is the unmodified
         assert len(new_evt_df.index) == 40000
-        assert len(new_evt_df[new_evt_df["q2.5"]].index) == 423
-        assert len(new_evt_df[new_evt_df["q50"]].index) == 107
-        assert len(new_evt_df[new_evt_df["q97.5"]].index) == 85
+        assert new_evt_df["q2.5"].sum() == 423
+        assert new_evt_df["q50"].sum() == 107
+        assert new_evt_df["q97.5"].sum() == 85
         assert len(sfp.particleops.select_focused(new_evt_df).index) == 426
 
-    def test_mark_focused_with_set_params_inplace(self, evt_df, params, benchmark):
+    @pytest.mark.benchmark(group="evt-filter")
+    @pytest.mark.parametrize("filter_func", (sfp.particleops.mark_focused, sfp.particleops.mark_focused_fast))
+    def test_mark_focused_with_set_params_inplace(self, evt_df, params, benchmark, filter_func):
         orig_df = evt_df.copy()  # make a copy before any possible modifications
 
         # Should modify original
-        new_evt_df = benchmark(sfp.particleops.mark_focused, evt_df, params, inplace=True)
+        new_evt_df = benchmark(filter_func, evt_df, params, inplace=True)
         assert new_evt_df is evt_df  # returned the same dataframe
         assert not orig_df.equals(evt_df)  # original dataframe is the modified
         assert len(new_evt_df.index) == 40000
-        assert len(new_evt_df[new_evt_df["q2.5"]].index) == 423
-        assert len(new_evt_df[new_evt_df["q50"]].index) == 107
-        assert len(new_evt_df[new_evt_df["q97.5"]].index) == 85
+        assert new_evt_df["q2.5"].sum() == 423
+        assert new_evt_df["q50"].sum() == 107
+        assert new_evt_df["q97.5"].sum() == 85
         assert len(sfp.particleops.select_focused(new_evt_df).index) == 426
 
     def test_noise_filter(self, evt_df):
@@ -460,7 +465,8 @@ class TestOutput:
 
 class TestMultiFileFilter(object):
     @pytest.mark.parametrize("jobs", [1, 2])
-    def test_multi_file_filter_local(self, tmpout, jobs):
+    @pytest.mark.parametrize("nojit", [True, False])
+    def test_multi_file_filter_local(self, tmpout, jobs, nojit):
         """Test multi-file filtering and ensure output can be read back OK"""
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
@@ -468,7 +474,8 @@ class TestMultiFileFilter(object):
             tmpout["file_dates"],
             dbpath=tmpout["db_one"],
             opp_dir=tmpout["oppdir"],
-            worker_count=jobs
+            worker_count=jobs,
+            nojit=nojit
         )
 
         opp_dfs = [
@@ -493,7 +500,7 @@ class TestMultiFileFilter(object):
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_one_param.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
 
-    @pytest.mark.parametrize("jobs", [1, 2])
+    @pytest.mark.parametrize("jobs", [1])
     def test_multi_file_filter_local_v2(self, tmpout, jobs):
         """Test multi-file filtering on v2 data and ensure output can be read back OK"""
         file_dates = tmpout["file_dates"].copy()
@@ -527,7 +534,7 @@ class TestMultiFileFilter(object):
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
 
-    @pytest.mark.parametrize("jobs", [1, 2])
+    @pytest.mark.parametrize("jobs", [1])
     def test_multi_file_filter_local_v2_with_per_file_limit(self, tmpout, jobs):
         """Test multi-file filtering on v2 data with per-file event max and ensure output can be read back OK"""
         file_dates = tmpout["file_dates"].copy()

@@ -125,7 +125,7 @@ class SeaFlowFile:
         return (year, day, file_key)
 
 
-def create_dayofyear_directory(dt: datetime.datetime) -> str:
+def create_dayofyear_directory(dt: datetime.datetime | None) -> str:
     """Create SeaFlow day of year directory from a datetime object"""
     if dt:
         return "{}_{}".format(dt.year, dt.strftime('%j'))

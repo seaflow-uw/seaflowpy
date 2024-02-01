@@ -1,4 +1,8 @@
+import time
+
+import numba
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from . import util
 
@@ -61,6 +65,30 @@ def empty_df(v2=False):
     return pd.DataFrame(dtype=float, columns=cols)
 
 
+def evt_as_np(df: pd.DataFrame) -> dict[str, npt.NDArray[np.float32]]:
+    dtype = "float32"
+    data = dict()
+    data["d1"] = df["D1"].astype(dtype).to_numpy()
+    data["d2"] = df["D2"].astype(dtype).to_numpy()
+    data["fsc"] = df["fsc_small"].astype(dtype).to_numpy()
+    return data
+
+
+def params_as_np(df: pd.DataFrame) -> dict[str, npt.NDArray[np.float32]]:
+    dtype = "float32"
+    data = dict()
+    df = df.reset_index(drop=True)
+    if len(df["width"].unique()) != 1:
+        # May as well check
+        raise ValueError("only one width allowed in params df")
+    data["width"] = df["width"].astype(dtype).to_numpy()
+    data["snotch"] = np.array([df["notch_small_D1"].astype(dtype).to_numpy(), df["notch_small_D2"].astype(dtype).to_numpy()]).T
+    data["lnotch"] = np.array([df["notch_large_D1"].astype(dtype).to_numpy(), df["notch_large_D2"].astype(dtype).to_numpy()]).T
+    data["soffset"] = np.array([df["offset_small_D1"].astype(dtype).to_numpy(), df["offset_small_D2"].astype(dtype).to_numpy()]).T
+    data["loffset"] = np.array([df["offset_large_D1"].astype(dtype).to_numpy(), df["offset_large_D2"].astype(dtype).to_numpy()]).T
+    return data
+
+
 def mark_focused(df, params, inplace=False):
     """
     Mark focused particle data.
@@ -110,7 +138,7 @@ def mark_focused(df, params, inplace=False):
     # sensitivity difference. Assume width is same for all quantiles so just
     # grab first width value and calculate aligned particles once
     assert len(params["width"].unique()) == 1  # may as well check
-    width = params.loc[0, "width"]
+    width = params.at[0, "width"]
     alignedD1 = df["D1"].values < (df["D2"].values + width)
     alignedD2 = df["D2"].values < (df["D1"].values + width)
     aligned = ~df["noise"] & ~df["saturated"] & alignedD1 & alignedD2
@@ -130,6 +158,99 @@ def mark_focused(df, params, inplace=False):
         df[colname] = opp_selector
 
     return df
+
+
+def mark_focused_fast(df, params, inplace=False):
+    """
+    Mark focused particle data.
+
+    Adds boolean cols for noise, saturation, and focused particles by quantile.
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        SeaFlow raw event DataFrame.
+    params: pandas.DataFrame
+        Filtering parameters as pandas DataFrame.
+    inplace: bool, default False
+        Add new booleans columns to and return input DataFrame. If False,
+        add new columns to and return a copy of the input DataFrame, leaving the
+        original unmodified.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Reference to or copy of input DataFrame with new boolean columns.
+    """
+    # Check parameters
+    param_keys = [
+        "width", "notch_small_D1", "notch_small_D2", "notch_large_D1",
+        "notch_large_D2", "offset_small_D1", "offset_small_D2",
+        "offset_large_D1", "offset_large_D2", "quantile"
+    ]
+    if params is None:
+        raise ValueError("Must provide filtering parameters")
+    for k in param_keys:
+        if not k in params.columns:
+            raise ValueError(f"Missing filter parameter {k} in mark_focused")
+    # Make sure params have 0-based indexing
+    params = params.reset_index(drop=True)
+
+    if not inplace:
+        df = df.copy()
+
+    # Filter for aligned/focused particles
+    #
+    # Filter aligned particles (D1 = D2), with correction for D1 D2
+    # sensitivity difference. Assume width is same for all quantiles so just
+    # grab first width value and calculate aligned particles once
+    d1, d2, fsc = evt_as_np(df).values()
+    width, snotch, lnotch, soffset, loffset = params_as_np(params).values()
+    res = filter_np_jit(d1, d2, fsc, width[0], snotch, lnotch, soffset, loffset)
+    df["noise"] = res[0]
+    df["saturated"] = res[1]
+    df["q2.5"] = res[2]
+    df["q50"] = res[3]
+    df["q97.5"] = res[4]
+    return df
+
+
+@numba.jit(nopython=True, fastmath=True, parallel=False)
+def filter_np_jit(
+        d1: npt.NDArray[np.float32],
+        d2: npt.NDArray[np.float32],
+        fsc: npt.NDArray[np.float32],
+        width: np.float32,
+        snotch: npt.NDArray[np.float32],
+        lnotch: npt.NDArray[np.float32],
+        soffset: npt.NDArray[np.float32],
+        loffset: npt.NDArray[np.float32]
+    ) -> list[npt.NDArray[np.bool_]]:
+    if fsc.shape[0] == 0:
+        return [
+            np.zeros(0, dtype=np.bool_),
+            np.zeros(0, dtype=np.bool_),
+            np.zeros(0, dtype=np.bool_),
+            np.zeros(0, dtype=np.bool_),
+            np.zeros(0, dtype=np.bool_)
+        ]
+    noise = ~((fsc > 1) | (d1 > 1) | (d2 > 1))
+    sat = (d1 == np.max(d1)) | (d2 == np.max(d2))
+    aligned = ~noise & ~sat & (d1 < d2 + width) & (d2 < d1 + width)
+
+    # noise, sat, q2.5, q50, q97.5
+    results = [noise, sat]
+    i = 0
+    while i < 3:
+        results.append(
+            aligned &
+            (
+                ((d1 <= ((fsc * snotch[i, 0]) + soffset[i, 0])) & (d2 <= ((fsc * snotch[i, 1]) + soffset[i, 1]))) | 
+                ((d1 <= ((fsc * lnotch[i, 0]) + loffset[i, 0])) & (d2 <= ((fsc * lnotch[i, 1]) + loffset[i, 1])))
+            )
+        )
+        i += 1
+    return results
 
 
 def mark_noise(df):
@@ -177,7 +298,7 @@ def mark_saturated(df, cols=None):
     if len(df.index) == 0:
         return np.full(len(df.index), False)
     else:
-        idx = False
+        idx = np.zeros(len(df.index), dtype=np.bool_)
         for col in cols:
             idx = (idx | (df[col].values == df[col].values.max()))
         return idx

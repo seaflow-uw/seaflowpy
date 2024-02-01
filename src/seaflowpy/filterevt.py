@@ -1,8 +1,12 @@
+from __future__ import annotations
 import copy
 import logging
 import sys
 import time
 from multiprocessing import Pool
+from typing import TYPE_CHECKING, TypedDict
+if TYPE_CHECKING:
+    import datetime
 
 import pandas as pd
 # from joblib import Parallel, parallel_config, delayed
@@ -21,7 +25,8 @@ max_particles_per_file_default = 50000 * 180  # max event rate (per sec) 50k
 
 
 def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
-                     max_particles_per_file=max_particles_per_file_default, window_size="1H"):
+                     max_particles_per_file=max_particles_per_file_default, window_size="1H",
+                     nojit=False):
     """Filter a list of EVT files.
 
     Positional arguments:
@@ -35,6 +40,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         every - Percent progress output resolution
         window_size - Time window for grouping filtering EVT file sets,
             expressed as pandas time offsets.
+        nojit - Don't use the numba.jit core filtering implementation
     """
     if not dbpath:
         raise ValueError("Must provide db path to filter_evt_files()")
@@ -51,6 +57,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         "max_particles_per_file": max_particles_per_file,
         "window_size": window_size,
         "window_start_date": None,
+        "nojit": nojit,
         "errors": [],  # global errors outside of processing single files
         "results": []
     }
@@ -104,9 +111,53 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
     # reporter.finalize()
 
 
+class FileTiming(TypedDict):
+    """Class to track per-file filtering performance timings (sec)"""
+    file_id: str
+    read: float
+    focused: float
+    select: float
+    total: float
+
+
+class WindowTiming(TypedDict):
+    """Class to track per-time-window filtering performance timings (sec)"""
+    window: datetime.datetime
+    filter: float
+    db_prep: float
+    write_opp: float
+    total: float
+
+
+class Timings(TypedDict):
+    files: list[FileTiming]
+    windows: list[WindowTiming]
+
+
 def do_filter(work):
-    """Filter one EVT file, save to sqlite3, return filter stats"""
+    """Filter EVT files, save OPP parquet, return filtering stats"""
+    if work["nojit"]:
+        filter_func = particleops.mark_focused
+    else:
+        filter_func = particleops.mark_focused_fast
+    # Track timing off different steps in the filtering process to aid
+    # in performance optimizations.
+    timings: Timings = { "files": [], "windows": [] }
+
+    t0 = time.perf_counter()
     for date, row in work["files_df"].iterrows():
+        t0_loop = time.perf_counter()
+        file_timing: FileTiming = {
+            "file_id": row["file_id"],
+            "read": 0,
+            "focused": 0,
+            "select": 0,
+            "total": 0
+        }
+        timings["files"].append(file_timing)
+
+        filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
+
         result = {
             "error": "",
             "all_count": 0,
@@ -114,10 +165,10 @@ def do_filter(work):
             "saturated_count": 0,
             "opp": None,
             "file_id": row["file_id"],
-            "path": row["path"]
+            "path": row["path"],
+            "filter_id": filter_params.at[0, "id"]
         }
 
-        filter_params = work["filter_params"][row["file_id"]].reset_index(drop=True)
         evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
         row_count = 0
         max_particles_per_file_reject = False
@@ -144,11 +195,17 @@ def do_filter(work):
                 result["error"] = f"Could not parse file {row['path']}: {e}"
             except Exception as e:
                 result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
+        
+        file_timing["read"] = time.perf_counter() - t0_loop
+        t1_loop = time.perf_counter()
 
         # Filter
         try:
-            evt_df = particleops.mark_focused(evt_df, filter_params, inplace=True)
+            evt_df = filter_func(evt_df, filter_params, inplace=True)
+            file_timing["focused"] = time.perf_counter() - t1_loop
+            t2_loop = time.perf_counter()
             opp_df = particleops.select_focused(evt_df)
+            file_timing["select"] = time.perf_counter() - t2_loop
         except Exception as e:
             result["error"] = f"Unexpected error when marking and selecting focused particles in file {row['path']}: {e}"
         else:
@@ -161,11 +218,20 @@ def do_filter(work):
             result["opp_count"] = len(opp_df[opp_df["q50"]])
             if not max_particles_per_file_reject:
                 result["evt_count"] = result["all_count"] - result["noise_count"]
-            result["filter_id"] = filter_params["id"][0]
-
         work["results"].append(result)
+        file_timing["total"] = time.perf_counter() - t0_loop
+
+    window_timing: WindowTiming = {
+        "window": work["window_start_date"],
+        "filter": time.perf_counter() - t0,
+        "db_prep": 0,
+        "write_opp": 0,
+        "total": 0
+    }
+    timings["windows"].append(window_timing)
 
     # Prep db data
+    t1 = time.perf_counter()
     work["opp_stat_dfs"], work["outlier_vals"] = [], []
     for r in work["results"]:
         work["opp_stat_dfs"].append(
@@ -181,7 +247,9 @@ def do_filter(work):
             "file": SeaFlowFile(r["file_id"]).file_id,
             "flag": 0
         })
+    window_timing["db_prep"] = time.perf_counter() - t1
 
+    t2 = time.perf_counter()
     # Save OPP file
     # Only include OPP files with data in all quantiles
     good_opps = []
@@ -198,10 +266,14 @@ def do_filter(work):
             )
     else:
         work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
+    window_timing["write_opp"] = time.perf_counter() - t2
 
     # Erase OPP from payload
     for r in work["results"]:
         del r["opp"]
+    
+    window_timing["total"] = time.perf_counter() - t0
+    work["timings"] = timings
 
     return work
 
@@ -245,9 +317,14 @@ class WorkReporter:
         self.ratio_saturated = 0.0  # total saturated ratio
         self.ratio_evtopp = 0.0  # total EVT/OPP ratio
 
+        self.timings = []
+
         self.t0 = time.time()
 
     def register(self, work):
+        if work["timings"]:
+            self.timings.append(work["timings"])
+
         self.files_left -= len(work["files_df"])
 
         if work["errors"]:
@@ -321,3 +398,17 @@ class WorkReporter:
             )
         print(summary_text)
         print(f"{self.files_ok} / {self.file_count} EVT files parsed successfully")
+
+        # Timing
+        file_timings, window_timings = [], []
+        for tim in self.timings:
+            file_timings.extend(tim["files"])
+            window_timings.extend(tim["windows"])
+        file_timings_df = pd.DataFrame(file_timings)
+        window_timings_df = pd.DataFrame(window_timings)
+        print("")
+        print("Per-file performance timings totals (sec)")
+        print(file_timings_df.select_dtypes("float").agg(["median", "sum"]).to_string())
+        print("")
+        print("Per-time-window performance timings totals (sec)")
+        print(window_timings_df.select_dtypes("float").agg(["median", "sum"]).to_string())
