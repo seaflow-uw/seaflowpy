@@ -47,15 +47,15 @@ def validate_resolution(ctx, param, value):
 @click.option('-m', '--max-particles-per-file', type=int, default=filterevt.max_particles_per_file_default,
     show_default=True, metavar='N', callback=validate_limit,
     help='Only filter files with an event count <= this limit.')
-@click.option('--nojit', is_flag=True,
-    help="Don't use numba.jit core filtering implementation")
 @click.option('-o', '--opp-dir', metavar='DIR',
     help='Directory in which to save OPP files. Will be created if does not exist.')
 @click.option('-p', '--process-count', default=1, show_default=True, metavar='N', callback=validate_process_count,
     help='Number of processes to use in filtering.')
 @click.option('-r', '--resolution', default=10.0, show_default=True, metavar='N', callback=validate_resolution,
     help='Progress update resolution by %%.')
-def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, nojit, opp_dir, process_count, resolution):
+@click.option('--use-numba', is_flag=True,
+    help="Use numba filtering implementation")
+def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, process_count, resolution, use_numba):
     """Filter EVT data locally."""
     # Find cruise in db
     try:
@@ -77,12 +77,12 @@ def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, nojit, opp
         'limit': limit,
         'max_particles_per_file': max_particles_per_file,
         'db': dbpath,
-        'nojit': nojit,
         'opp_dir': opp_dir,
         'process_count': process_count,
         'resolution': resolution,
         'version': pkg_resources.get_distribution("seaflowpy").version,
-        'cruise': cruise
+        'cruise': cruise,
+        'use-numba': use_numba
     }
     to_delete = [k for k in v if v[k] is None]
     for k in to_delete:
@@ -141,7 +141,7 @@ def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, nojit, opp
                 worker_count=process_count,
                 every=resolution,
                 max_particles_per_file=max_particles_per_file,
-                nojit=nojit
+                use_numba=use_numba
             )
         except errors.SeaFlowpyError as e:
             raise click.ClickException(str(e))

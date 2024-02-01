@@ -26,7 +26,7 @@ max_particles_per_file_default = 50000 * 180  # max event rate (per sec) 50k
 
 def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
                      max_particles_per_file=max_particles_per_file_default, window_size="1H",
-                     nojit=False):
+                     use_numba=False):
     """Filter a list of EVT files.
 
     Positional arguments:
@@ -40,7 +40,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         every - Percent progress output resolution
         window_size - Time window for grouping filtering EVT file sets,
             expressed as pandas time offsets.
-        nojit - Don't use the numba.jit core filtering implementation
+        use_numba - Use numba filtering implementation
     """
     if not dbpath:
         raise ValueError("Must provide db path to filter_evt_files()")
@@ -57,7 +57,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         "max_particles_per_file": max_particles_per_file,
         "window_size": window_size,
         "window_start_date": None,
-        "nojit": nojit,
+        "use_numba": use_numba,
         "errors": [],  # global errors outside of processing single files
         "results": []
     }
@@ -85,7 +85,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
 
     print("", flush=True)
     print(f"Filtering {len(files_df)} EVT files. Progress for 50th quantile every ~ {every}%", flush=True)
-    reporter = WorkReporter(len(files_df), every)
+    reporter = WorkReporter(len(files_df), every, n_jobs=worker_count)
     if worker_count == 1:
         for work_result in map(do_filter, work_list):
             reporter.register(work_result)
@@ -136,10 +136,10 @@ class Timings(TypedDict):
 
 def do_filter(work):
     """Filter EVT files, save OPP parquet, return filtering stats"""
-    if work["nojit"]:
-        filter_func = particleops.mark_focused
-    else:
+    if work["use_numba"]:
         filter_func = particleops.mark_focused_fast
+    else:
+        filter_func = particleops.mark_focused
     # Track timing off different steps in the filtering process to aid
     # in performance optimizations.
     timings: Timings = { "files": [], "windows": [] }
@@ -291,7 +291,7 @@ def save_to_db(work):
 class WorkReporter:
     """Class to report on filtering work as it completes"""
 
-    def __init__(self, file_count, every):
+    def __init__(self, file_count, every, n_jobs=1):
         self.event_count = 0
         self.noise_count = 0
         self.signal_count = 0
@@ -302,6 +302,7 @@ class WorkReporter:
         self.files_ok = 0
         self.files_seen = 0
         self.every = every
+        self.n_jobs = n_jobs
 
         self.last = 0  # Last progress milestone in increments of every
         self.event_count_block = 0  # EVT particles in this block (between milestones)
@@ -404,11 +405,20 @@ class WorkReporter:
         for tim in self.timings:
             file_timings.extend(tim["files"])
             window_timings.extend(tim["windows"])
-        file_timings_df = pd.DataFrame(file_timings)
-        window_timings_df = pd.DataFrame(window_timings)
-        print("")
-        print("Per-file performance timings totals (sec)")
-        print(file_timings_df.select_dtypes("float").agg(["median", "sum"]).to_string())
-        print("")
-        print("Per-time-window performance timings totals (sec)")
-        print(window_timings_df.select_dtypes("float").agg(["median", "sum"]).to_string())
+        file_timings_df = pd.DataFrame(file_timings).select_dtypes("number")
+        file_timings_norm_df = file_timings_df / self.n_jobs
+        window_timings_df = pd.DataFrame(window_timings).select_dtypes("number")
+        window_timings_norm_df = window_timings_df / self.n_jobs
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+            print("")
+            print("Per-file performance timings totals (sec)")
+            print(file_timings_df.select_dtypes("float").agg(["median", "sum"]).to_string())
+            print("")
+            print(f"Divided by job count (/{self.n_jobs})")
+            print(file_timings_norm_df.select_dtypes("float").agg(["median", "sum"]).to_string())
+            print("#################################################")
+            print("Per-time-window performance timings totals (sec)")
+            print(window_timings_df.select_dtypes("float").agg(["median", "sum"]).to_string())
+            print("")
+            print(f"Divided by job count (/{self.n_jobs})")
+            print(window_timings_norm_df.select_dtypes("float").agg(["median", "sum"]).to_string())

@@ -465,8 +465,8 @@ class TestOutput:
 
 class TestMultiFileFilter(object):
     @pytest.mark.parametrize("jobs", [1, 2])
-    @pytest.mark.parametrize("nojit", [True, False])
-    def test_multi_file_filter_local(self, tmpout, jobs, nojit):
+    @pytest.mark.parametrize("use_numba", [False, True])
+    def test_multi_file_filter_local(self, tmpout, jobs, use_numba):
         """Test multi-file filtering and ensure output can be read back OK"""
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
@@ -475,7 +475,7 @@ class TestMultiFileFilter(object):
             dbpath=tmpout["db_one"],
             opp_dir=tmpout["oppdir"],
             worker_count=jobs,
-            nojit=nojit
+            use_numba=use_numba
         )
 
         opp_dfs = [
