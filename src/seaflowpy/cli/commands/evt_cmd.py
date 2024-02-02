@@ -297,7 +297,7 @@ def validate_evt_cmd(report_all, filter_by_name, hash_, n_jobs, reduced_columns,
         verbose = 0
     parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
     work_func = partial(_validate_evt_file, checksum=hash_, cols=cols)
-    results = pd.DataFrame(parallel(delayed(work_func)(r[1]) for r in work.iterrows()))
+    results = pd.DataFrame(list(parallel(delayed(work_func)(r[1]) for r in work.iterrows())))
     results.sort_values(by='id', key=_idkey, inplace=True)
 
     if len(results):
@@ -369,7 +369,7 @@ def parquet_cmd(n_jobs, out_dir, progress, paths, sfl_path):
         if not pathlib.Path(row.path).exists():
             raise FileNotFoundError(f"No such file or directory: '{row.path}'")
         sf = seaflowfile.SeaFlowFile(row.path, date=row.date)
-        parquet_files.append(str(out_dir / sf.dayofyear / f"{sf.filename_orig}.parquet"))
+        parquet_files.append(str(out_dir / sf.path_dayofyear / f"{sf.filename_orig}.parquet"))
     evt["parquet"] = parquet_files
 
     with pd.option_context("display.max_colwidth", 200):
@@ -380,14 +380,14 @@ def parquet_cmd(n_jobs, out_dir, progress, paths, sfl_path):
     parallel = Parallel(n_jobs=n_jobs, verbose=1 if progress else 0)
     args = zip(evt["path"].to_list(), evt["parquet"].to_list())
     results = parallel(delayed(_binary_to_parquet)(*a) for a in args)
-    error_lines = [f"  {r[0]}: {r[1]}" for r in results if r[1] is not None]
+    error_lines = [f"  {r[0]}: {r[1]}" for r in results if r and (r[1] is not None)]
     if error_lines:
         print('Errors:', file=sys.stderr)
         print(
             '\n'.join(error_lines),
             file=sys.stderr
         )
-    ok = len([r for r in results if r[1] is None])
+    ok = len([r for r in results if r and (r[1] is None)])
     print('Converted %d / %d files' % (ok, len(in_files)), file=sys.stderr)
 
 
@@ -463,7 +463,7 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
     m = x_files.merge(y_files, how='outer', on='id', indicator=True)
     if m['id'].duplicated().any():
         print('the following File IDs were duplicated in at least one dir and will be ignored', file=sys.stderr)
-        m.loc[m['id'].duplicated(), ['id', 'path_x', 'path_y']].to_string(index=False, bug=sys.stderr)
+        m.loc[m['id'].duplicated(), ['id', 'path_x', 'path_y']].to_string(index=False, buf=sys.stderr)
         m = m.loc[~m['id'].duplicated()]
 
     if progress:
@@ -472,7 +472,7 @@ def compare_evt_cmd(report_all, n_jobs, progress, reduced_columns, paths):
         verbose = 0
     parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
     work_func = partial(_compare_two_files, cols=cols)
-    m_hashed = pd.DataFrame(parallel(delayed(work_func)(r[1]) for r in m.iterrows()))
+    m_hashed = pd.DataFrame(list(parallel(delayed(work_func)(r[1]) for r in m.iterrows())))
     m_hashed.sort_values(by='id', key=_idkey, inplace=True)
 
     if report_all:
