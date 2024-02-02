@@ -215,7 +215,7 @@ def mark_focused_fast(df, params, inplace=False):
     return df
 
 
-@numba.jit(nopython=True, fastmath=True, parallel=False)
+@numba.jit(nopython=True, fastmath=False, parallel=False)
 def filter_np_jit(
         d1: npt.NDArray[np.float32],
         d2: npt.NDArray[np.float32],
