@@ -1,9 +1,8 @@
 import click
-import pkg_resources
+import seaflowpy as sfp
 
-version_str = pkg_resources.get_distribution("seaflowpy").version
 
 @click.command()
 def version_cmd():
     """Displays version."""
-    click.echo(version_str)
+    click.echo(sfp.__version__)
