@@ -27,76 +27,37 @@ def test_data(tmpdir):
 
 def test_import_filter_params(test_data):
     testdb = test_data["db_sfl_meta"]
-    csvpath = "tests/filterparams.csv"
+    filter_tsv = "tests/testcruise.filter_params.filter.tsv"
+    filter_plan_tsv = "tests/testcruise.filter_params.filter_plan.tsv"
+    filter2_tsv = "tests/testcruise.filter_params.filter2.tsv"
+    filter_plan2_tsv = "tests/testcruise.filter_params.filter_plan2.tsv"
     types = defaultdict(
         lambda: "float64[pyarrow]",
         cruise=pd.ArrowDtype(pa.string()),
-        instrument=pd.ArrowDtype(pa.string())
+        instrument=pd.ArrowDtype(pa.string()),
+        id=pd.ArrowDtype(pa.string()),
+        date=pd.ArrowDtype(pa.string())
     )
 
     # Import one set of params
-    expect = pd.read_csv(csvpath, dtype=types, dtype_backend="pyarrow")
-    expect = expect.drop(columns=["instrument", "cruise"])
-    expect.columns = [c.replace('.', '_') for c in expect.columns]
-    id1 = sfp.db.import_filter_params(csvpath, testdb, plan=False, clear=False)
-    got = sfp.db.get_filter_table(testdb)
-    got_ = got.drop(columns=["id", "date"])
-    pdt.assert_frame_equal(got_, expect)
-    assert len(got["id"].unique()) == 1
-    assert list(got["id"].unique()) == [id1]
+    expect_filter = pd.read_csv(filter_tsv, sep="\t", dtype=types, dtype_backend="pyarrow")
+    expect_filter = expect_filter.drop(columns=["instrument", "cruise"])
+    expect_filter_plan = pd.read_csv(filter_plan_tsv, sep="\t", dtype=pd.ArrowDtype(pa.string()), dtype_backend="pyarrow")
+    sfp.db.import_filter_params(filter_tsv, filter_plan_tsv, testdb)
+    got_filter = sfp.db.get_filter_table(testdb)
+    got_filter_plan = sfp.db.get_filter_plan_table(testdb)
+    pdt.assert_frame_equal(got_filter, expect_filter)
+    pdt.assert_frame_equal(got_filter_plan, expect_filter_plan)
 
-    # Append a second set of params
-    expect2 = (
-        pd.concat([expect, expect], ignore_index=True)
-        .sort_values(["quantile", "beads_fsc_small"])
-        .reset_index(drop=True)
-    )
-    id2 = sfp.db.import_filter_params(csvpath, testdb, plan=False, clear=False)
-    got = sfp.db.get_filter_table(testdb)
-    got_ = (
-        got.drop(columns=["id", "date"])
-        .sort_values(["quantile", "beads_fsc_small"])
-        .reset_index(drop=True)
-    )
-    pdt.assert_frame_equal(got_, expect2)
-    assert len(got["id"].unique()) == 2
-    assert sorted(list(got["id"].unique())) == sorted([id1, id2])
-
-    # Import a third set of params replacing all previous params, and create a
-    # filter_plan
-    id3 = sfp.db.import_filter_params(csvpath, testdb, plan=True, clear=True)
-    got = sfp.db.get_filter_table(testdb)
-    got_ = got.drop(columns=["id", "date"])
-    pdt.assert_frame_equal(got_, expect)
-    assert len(got["id"].unique()) == 1
-    assert list(got["id"].unique()) == [id3]
-
-    got = sfp.db.get_filter_plan_table(testdb)
-    expect = pd.DataFrame(
-        {"start_date": "2014-07-04T00:00:02+00:00", "filter_id": [id3]},
-        dtype=pd.ArrowDtype(pa.string())
-    )
-    print(got.info())
-    print(expect.info())
-    pdt.assert_frame_equal(got, expect)
-
-
-def test_import_filter_params_two_sets(test_data):
-    testdb = test_data["db_sfl_meta"]
-    types = defaultdict(
-        lambda: "float64[pyarrow]",
-        cruise=pd.ArrowDtype(pa.string()),
-        instrument=pd.ArrowDtype(pa.string())
-    )
-    expect = pd.read_csv("tests/filterparams.csv", dtype=types, dtype_backend="pyarrow")
-    expect = expect.drop(columns=["instrument", "cruise"])
-    expect.columns = [c.replace('.', '_') for c in expect.columns]
-    id_ = sfp.db.import_filter_params("tests/filterparams2.csv", testdb, plan=True, clear=False)
-    got = sfp.db.get_filter_table(testdb)
-    got_ = got.drop(columns=["id", "date"])
-    pdt.assert_frame_equal(got_, expect)
-    assert len(got["id"].unique()) == 1
-    assert got["id"][0] == id_
+    # Import another set, which should replace the first completely
+    expect_filter2 = pd.read_csv(filter2_tsv, sep="\t", dtype=types, dtype_backend="pyarrow")
+    expect_filter2 = expect_filter2.drop(columns=["instrument", "cruise"])
+    expect_filter_plan2 = pd.read_csv(filter_plan2_tsv, sep="\t", dtype=pd.ArrowDtype(pa.string()), dtype_backend="pyarrow")
+    sfp.db.import_filter_params(filter2_tsv, filter_plan2_tsv, testdb)
+    got_filter2 = sfp.db.get_filter_table(testdb)
+    got_filter_plan2 = sfp.db.get_filter_plan_table(testdb)
+    pdt.assert_frame_equal(got_filter2, expect_filter2)
+    pdt.assert_frame_equal(got_filter_plan2, expect_filter_plan2)
 
 
 def test_import_gating_params(test_data):
@@ -104,7 +65,6 @@ def test_import_gating_params(test_data):
     # and Python, R, and to some extent Pandas/SQLAlchemy loosely using types,
     # it's tricky to coerce dataframes into and out of the database to the exact
     # same dtypes. Match only on values instead.
-    csv_kwargs = {"sep": "\t", "dtype_backend": "pyarrow"}
     testdb = test_data["db_sfl_meta"]
     sfp.db.import_gating_params(
         "tests/testcruise.gating_params.gating.tsv",
@@ -113,15 +73,15 @@ def test_import_gating_params(test_data):
         testdb
     )
     got_gating_df = sfp.db.read_table("gating", testdb)
-    expect_gating_df = pd.read_csv("tests/testcruise.gating_params.gating.tsv", **csv_kwargs)
+    expect_gating_df = pd.read_csv("tests/testcruise.gating_params.gating.tsv", sep="\t", dtype_backend="pyarrow")
     pdt.assert_frame_equal(got_gating_df, expect_gating_df, check_dtype=False)
 
     got_poly_df = sfp.db.read_table("poly", testdb)
-    expect_poly_df = pd.read_csv("tests/testcruise.gating_params.poly.tsv", **csv_kwargs)
+    expect_poly_df = pd.read_csv("tests/testcruise.gating_params.poly.tsv", sep="\t", dtype_backend="pyarrow")
     pdt.assert_frame_equal(got_poly_df, expect_poly_df, check_dtype=False)
 
     got_gating_plan_df = sfp.db.read_table("gating_plan", testdb)
-    expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", **csv_kwargs)
+    expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", sep="\t", dtype_backend="pyarrow")
     pdt.assert_frame_equal(got_gating_plan_df, expect_gating_plan_df, check_dtype=False)
 
 
@@ -241,8 +201,49 @@ def test_create_filter_plan(test_data):
     pdt.assert_frame_equal(got, expect)
 
 
+def test_export_filter_params(test_data):
+    testdb = test_data["db_sfl_meta"]
+    sfp.db.import_filter_params(
+        "tests/testcruise.filter_params.filter.tsv",
+        "tests/testcruise.filter_params.filter_plan.tsv",
+        testdb
+    )
+    outprefix_path = test_data["tmpdir"] / "outprefix"
+    sfp.db.export_filter_params(testdb, outprefix_path)
+    
+    got_filter_df = pd.read_csv(f"{outprefix_path}.filter.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_filter_df = pd.read_csv("tests/testcruise.filter_params.filter.tsv", sep="\t", dtype_backend="pyarrow")
+    pdt.assert_frame_equal(got_filter_df, expect_filter_df, check_dtype=False)
+
+    got_filter_plan_df = pd.read_csv(f"{outprefix_path}.filter_plan.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_filter_plan_df = pd.read_csv("tests/testcruise.filter_params.filter_plan.tsv", sep="\t", dtype_backend="pyarrow")
+    pdt.assert_frame_equal(got_filter_plan_df, expect_filter_plan_df, check_dtype=False)
+
+    # Try again after removing filter_plan table, should create one from first
+    # sfl date
+    outprefix_path2 = test_data["tmpdir"] / "outprefix2"
+    engine = sqlalchemy.create_engine(f"sqlite:///{testdb}")
+    with engine.connect() as conn:
+        with conn.begin():
+            conn.execute(sqlalchemy.text("delete from filter_plan"))
+            conn.execute(sqlalchemy.text("delete from filter where id = 'a78bfaf2-0f84-4da9-bd19-e518e4e4529b'"))
+    engine.dispose()
+    df_tmp = pd.read_sql_table("filter_plan", f"sqlite:///{testdb}")
+    assert len(df_tmp) == 0
+    df_tmp = pd.read_sql_table("filter", f"sqlite:///{testdb}")
+    assert len(df_tmp["id"].unique()) == 1
+    sfp.db.export_filter_params(testdb, outprefix_path2)
+    got_filter_df2 = pd.read_csv(f"{outprefix_path2}.filter.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_filter_df2 = pd.read_csv("tests/testcruise.filter_params.filter.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_filter_df2 = expect_filter_df2[expect_filter_df2["id"] != "a78bfaf2-0f84-4da9-bd19-e518e4e4529b"]
+    pdt.assert_frame_equal(got_filter_df2, expect_filter_df2, check_dtype=False)
+
+    got_filter_plan_df2 = pd.read_csv(f"{outprefix_path2}.filter_plan.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_filter_plan_df2 = sfp.db.create_filter_plan(testdb)
+    pdt.assert_frame_equal(got_filter_plan_df2, expect_filter_plan_df2, check_dtype=False)
+
+
 def test_export_gating_params(test_data):
-    csv_kwargs = {"sep": "\t", "dtype_backend": "pyarrow"}
     testdb = test_data["db_sfl_meta"]
     sfp.db.import_gating_params(
         "tests/testcruise.gating_params.gating.tsv",
@@ -253,41 +254,16 @@ def test_export_gating_params(test_data):
     outprefix_path = test_data["tmpdir"] / "outprefix"
     sfp.db.export_gating_params(testdb, outprefix_path)
     
-    got_gating_df = pd.read_csv(f"{outprefix_path}.gating.tsv", **csv_kwargs)
-    expect_gating_df = pd.read_csv("tests/testcruise.gating_params.gating.tsv", **csv_kwargs)
+    got_gating_df = pd.read_csv(f"{outprefix_path}.gating.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_gating_df = pd.read_csv("tests/testcruise.gating_params.gating.tsv", sep="\t", dtype_backend="pyarrow")
     pdt.assert_frame_equal(got_gating_df, expect_gating_df, check_dtype=False)
 
-    got_poly_df = pd.read_csv(f"{outprefix_path}.poly.tsv", **csv_kwargs)
-    expect_poly_df = pd.read_csv("tests/testcruise.gating_params.poly.tsv", **csv_kwargs)
+    got_poly_df = pd.read_csv(f"{outprefix_path}.poly.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_poly_df = pd.read_csv("tests/testcruise.gating_params.poly.tsv", sep="\t", dtype_backend="pyarrow")
     pdt.assert_frame_equal(got_poly_df, expect_poly_df, check_dtype=False)
 
-    got_gating_plan_df = pd.read_csv(f"{outprefix_path}.gating_plan.tsv", **csv_kwargs)
-    expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", **csv_kwargs)
-    pdt.assert_frame_equal(got_gating_plan_df, expect_gating_plan_df, check_dtype=False)
-
-
-def test_export_gating_params(test_data):
-    csv_kwargs = {"sep": "\t", "dtype_backend": "pyarrow"}
-    testdb = test_data["db_sfl_meta"]
-    sfp.db.import_gating_params(
-        "tests/testcruise.gating_params.gating.tsv",
-        "tests/testcruise.gating_params.poly.tsv",
-        "tests/testcruise.gating_params.gating_plan.tsv",
-        testdb
-    )
-    outprefix_path = test_data["tmpdir"] / "outprefix"
-    sfp.db.export_gating_params(testdb, outprefix_path)
-    
-    got_gating_df = pd.read_csv(f"{outprefix_path}.gating.tsv", **csv_kwargs)
-    expect_gating_df = pd.read_csv("tests/testcruise.gating_params.gating.tsv", **csv_kwargs)
-    pdt.assert_frame_equal(got_gating_df, expect_gating_df, check_dtype=False)
-
-    got_poly_df = pd.read_csv(f"{outprefix_path}.poly.tsv", **csv_kwargs)
-    expect_poly_df = pd.read_csv("tests/testcruise.gating_params.poly.tsv", **csv_kwargs)
-    pdt.assert_frame_equal(got_poly_df, expect_poly_df, check_dtype=False)
-
-    got_gating_plan_df = pd.read_csv(f"{outprefix_path}.gating_plan.tsv", **csv_kwargs)
-    expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", **csv_kwargs)
+    got_gating_plan_df = pd.read_csv(f"{outprefix_path}.gating_plan.tsv", sep="\t", dtype_backend="pyarrow")
+    expect_gating_plan_df = pd.read_csv("tests/testcruise.gating_params.gating_plan.tsv", sep="\t", dtype_backend="pyarrow")
     pdt.assert_frame_equal(got_gating_plan_df, expect_gating_plan_df, check_dtype=False)
 
     # Try again after removing gating_plan table, should produce no output
@@ -295,8 +271,11 @@ def test_export_gating_params(test_data):
     outprefix_path2 = test_data["tmpdir"] / "outprefix2"
     engine = sqlalchemy.create_engine(f"sqlite:///{testdb}")
     with engine.connect() as conn:
-        conn.execute(sqlalchemy.text("drop table gating_plan"))
+        with conn.begin():
+            conn.execute(sqlalchemy.text("drop table gating_plan"))
     engine.dispose()
+    with pytest.raises(ValueError):
+        _ = pd.read_sql_table("gating_plan", f"sqlite:///{testdb}")
     with pytest.raises(sfp.errors.SeaFlowpyError):
         sfp.db.export_gating_params(testdb, outprefix_path2)
     assert not Path(f"{outprefix_path2}.gating.tsv").exists()
@@ -305,7 +284,6 @@ def test_export_gating_params(test_data):
 
 
 def test_export_outlier(test_data):
-    csv_kwargs = {"sep": "\t", "dtype_backend": "pyarrow"}
     testdb = test_data["db_empty"]
     sfp.db.save_df(
         pd.DataFrame({"file": ["a", "b", "c"], "flag": [0, 0, 0]}),
@@ -329,7 +307,7 @@ def test_export_outlier(test_data):
     )
     sfp.db.export_outlier(testdb, outfile2)
     assert outfile2.exists()
-    df = pd.read_csv(outfile2, **csv_kwargs)
+    df = pd.read_csv(outfile2, sep="\t", dtype_backend="pyarrow")
     assert df["file"].to_list() == ["a", "b", "c"]
     assert df["flag"].to_list() == [0, 1, 0]
 

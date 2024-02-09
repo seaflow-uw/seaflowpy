@@ -87,23 +87,40 @@ def db_import_sfl_cmd(force, json, verbose, sfl_file, db_file):
 
 
 @db_cmd.command('import-filter-params')
-@click.option('-p', '--plan',  is_flag=True,
-    help="""Create a filter plan for this set of parameters covering all files in SFL table.
-            Implies --clear.""")
-@click.option('-C', '--clear',  is_flag=True,
-    help='Clear existing filter table entries before importing.')
-@click.argument('filter-file', nargs=1, type=click.File())
-@click.argument('db-file', nargs=1, type=click.Path(writable=True))
-def db_import_filter_params_cmd(plan, clear, filter_file, db_file):
+@click.argument('in-prefix', nargs=1, type=str)
+@click.argument('db-file', nargs=1, type=click.Path(readable=True))
+def db_import_filter_params_cmd(in_prefix, db_file):
     """
     Imports filter parameters to database.
 
-    A new database will be created if it doesn't exist.
+    Inverse of export-filter-params. in-prefix should match two files
+    corresponding to two filter parameter db tables that will be
+    populated/overwritten: filter (in-prefix.filter.tsv) and
+    filter_plan (in-prefix.filter_plan.tsv).
     """
-    if plan:
-        clear = True
     try:
-        db.import_filter_params(filter_file, db_file, plan=plan, clear=clear)
+        db.import_filter_params(
+            f"{in_prefix}.filter.tsv",
+            f"{in_prefix}.filter_plan.tsv",
+            db_file
+        )
+    except SeaFlowpyError as e:
+        raise click.ClickException(str(e)) from e
+
+
+@db_cmd.command('export-filter-params')
+@click.argument('db-file', nargs=1, type=click.Path(readable=True))
+@click.argument('out-prefix', nargs=1, type=str)
+def db_export_filter_params_cmd(db_file, out_prefix):
+    """
+    Export filter parameters.
+
+    Two output TSV files will be created, representing the two gating
+    parameter db tables: filter (out-prefix.filter.tsv) and filter_plan
+    (out-prefix.filter_plan.tsv).
+    """
+    try:
+        db.export_filter_params(db_file, out_prefix)
     except SeaFlowpyError as e:
         raise click.ClickException(str(e)) from e
 
@@ -170,19 +187,3 @@ def db_import_outlier_cmd(in_file, db_file):
 def db_export_outlier_cmd(populated, db_file, out_file):
     """Export outlier table as TSV."""
     db.export_outlier(db_file, out_file, populated=populated)
-
-
-@db_cmd.command('create-filter-plan')
-@click.argument('db-file', nargs=1, type=click.Path(writable=True))
-def db_create_filter_plan_cmd(db_file):
-    """
-    Create a filter plan table if sfl and filter tables are populated, overwriting
-    any existing plan in the database.
-    """
-    try:
-        filter_plan_df = db.create_filter_plan(db_file)
-        db.save_df(filter_plan_df, "filter_plan", db_file, clear=True)
-    except SeaFlowpyError as e:
-        raise click.ClickException(str(e)) from e
-    print("Saved a new filter plan")
-    print(filter_plan_df.to_string(index=False))

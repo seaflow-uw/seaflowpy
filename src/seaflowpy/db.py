@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Union
 import numpy as np
 import pandas as pd
+from pandas.errors import DatabaseError
 import pyarrow as pa
 from sqlalchemy import create_engine, MetaData, or_, Table
 from sqlalchemy.exc import ArgumentError, NoSuchTableError, OperationalError
@@ -44,7 +45,7 @@ def read_table(table: str, dbpath: Union[str, Path]) -> pd.DataFrame:
             dbpath_to_url(dbpath),
             dtype_backend="pyarrow"
         )
-    except pd.io.sql.DatabaseError as e:
+    except DatabaseError as e:
         raise errors.SeaFlowpyError(e) from e
 
 
@@ -52,7 +53,7 @@ def read_sql(sql: str, dbpath: Union[str, Path]):
     """Read from Catch and handle error if table not present during pandas.read_sql()"""
     try:
         return pd.read_sql(sql, dbpath_to_url(dbpath), dtype_backend="pyarrow")
-    except (pd.io.sql.DatabaseError, OperationalError, NoSuchTableError) as e:
+    except (DatabaseError, OperationalError, NoSuchTableError) as e:
         raise errors.SeaFlowpyError(e) from e
 
 
@@ -93,7 +94,7 @@ def save_df(
                     if del_stmt is not None:
                         conn.execute(del_stmt)
                 df.to_sql(table, conn, index=False, if_exists="append")
-    except (NoSuchTableError, pd.io.sql.DatabaseError) as e:
+    except (NoSuchTableError, DatabaseError) as e:
         raise errors.SeaFlowpyError(f"error saving dataframe to db: {e}") from e
     finally:
         engine.dispose()
@@ -101,7 +102,11 @@ def save_df(
 
 def create_db(dbpath):
     """Create or complete database"""
-    schema_text = pkgutil.get_data(__name__, 'data/popcycle.sql').decode('UTF-8', 'ignore')
+    schema_bytes = pkgutil.get_data(__name__, 'data/popcycle.sql')
+    if schema_bytes is not None:
+        schema_text = schema_bytes.decode('UTF-8', 'ignore')
+    else:
+        raise errors.SeaFlowpyError("data/popcycle.sql file not found in seaflowpy package data")
     Path(dbpath).parent.mkdir(parents=True, exist_ok=True)
     executescript(dbpath, schema_text)
 
@@ -134,27 +139,27 @@ def save_filter_params(
 
 
 def import_filter_params(
-    filter_path: Union[str, Path],
-    dbpath: Union[str, Path],
-    plan: bool=True,
-    clear: bool=False
-) -> str:
-    types = defaultdict(
+    filter_path: str | Path,
+    filter_plan_path: str | Path,
+    dbpath: str | Path
+):
+    """Import filter paramters to database"""
+    filter_types = defaultdict(
         lambda: "float64[pyarrow]",
         cruise=pd.ArrowDtype(pa.string()),
-        instrument=pd.ArrowDtype(pa.string())
+        instrument=pd.ArrowDtype(pa.string()),
+        id=pd.ArrowDtype(pa.string()),
+        date=pd.ArrowDtype(pa.string())
     )
-    df = pd.read_csv(filter_path, dtype=types, dtype_backend="pyarrow")
-    df.columns = [c.replace('.', '_') for c in df.columns]
-    cruise = get_cruise(dbpath)
-    df = df[df.cruise == cruise]
-    if len(df) == 0:
-        raise errors.SeaFlowpyError('no filter parameters found for cruise %s' % cruise)
-    df = df.drop(columns=["instrument", "cruise"])
-    id_ = save_filter_params(df, dbpath, clear=clear)
-    if plan:
-        save_df(create_filter_plan(dbpath), "filter_plan", dbpath, clear=True)
-    return id_
+    filter_df = pd.read_csv(filter_path, sep="\t", dtype=filter_types, dtype_backend="pyarrow")
+    plan_df = pd.read_csv(filter_plan_path, sep="\t", dtype=pd.ArrowDtype(pa.string()), dtype_backend="pyarrow")
+    # Fix filter column names if necessary
+    filter_df.columns = [c.replace('.', '_') for c in filter_df.columns]
+    # Remove instrument and cruise columns if present
+    filter_df = filter_df.drop(columns=["instrument", "cruise"], errors="ignore")
+    # Save
+    save_df(filter_df, "filter", dbpath, clear=True)
+    save_df(plan_df, "filter_plan", dbpath, clear=True)
 
 
 def import_gating_params(
@@ -163,10 +168,11 @@ def import_gating_params(
     gating_plan_path: Union[str, Path],
     dbpath: Union[str, Path]
 ):
+    """Import gating parameters to database"""
     gating_df = pd.read_csv(gating_path, sep="\t", dtype_backend="pyarrow")
     poly_df = pd.read_csv(poly_path, sep="\t", dtype_backend="pyarrow")
     gating_plan_df = pd.read_csv(gating_plan_path, sep="\t", dtype_backend="pyarrow", dtype="string")
-
+    # Save
     save_df(gating_df, "gating", dbpath, clear=True)
     save_df(poly_df, "poly", dbpath, clear=True)
     save_df(gating_plan_df, "gating_plan", dbpath, clear=True)
@@ -243,6 +249,29 @@ def import_sfl(
 def import_outlier(outlier_path: Union[str, Path], dbpath: Union[str, Path]):
     df = pd.read_csv(outlier_path, sep="\t", dtype_backend="pyarrow")
     save_df(df, "outlier", dbpath, clear=True)
+
+
+def export_filter_params(dbpath: Union[str, Path], out_prefix: Union[str, Path]):
+    filter_df = get_filter_table(dbpath)
+    try:
+        filter_plan_df = get_filter_plan_table(dbpath)
+    except errors.SeaFlowpyError as e:
+        # Maybe this is an older db schema without gating_plan table
+        filter_plan_df = None
+
+    if filter_plan_df is None or len(filter_plan_df) == 0:
+        filter_plan_df = create_filter_plan(dbpath)
+        if len(filter_plan_df) == 0:
+            raise errors.SeaFlowpyError("could not create filter_plan from db")
+
+    Path(out_prefix).parent.mkdir(exist_ok=True, parents=True)
+    # cruise and instrument here
+    cruise = get_cruise(dbpath)
+    serial = get_serial(dbpath)
+    filter_df.insert(0, "cruise", cruise)
+    filter_df.insert(0, "instrument", serial)
+    filter_df.to_csv(f"{out_prefix}.filter.tsv", sep="\t", index=False)
+    filter_plan_df.to_csv(f"{out_prefix}.filter_plan.tsv", sep="\t", index=False)
 
 
 def export_gating_params(dbpath: Union[str, Path], out_prefix: Union[str, Path]):
@@ -352,27 +381,27 @@ def get_cruise(dbpath):
 
 
 def get_filter_table(dbpath):
-    sql = "SELECT * FROM filter ORDER BY date ASC, quantile ASC"
+    sql = "SELECT * FROM filter ORDER BY ROWID"
     return read_sql(sql, dbpath)
 
 
 def get_filter_plan_table(dbpath):
-    sql = "SELECT * FROM filter_plan ORDER BY start_date ASC"
+    sql = "SELECT * FROM filter_plan ORDER BY ROWID"
     return read_sql(sql, dbpath)
 
 
 def get_gating_table(dbpath):
-    sql = "SELECT * FROM gating ORDER BY date ASC"
+    sql = "SELECT * FROM gating ORDER BY ROWID"
     return read_sql(sql, dbpath)
 
 
 def get_gating_plan_table(dbpath):
-    sql = "SELECT * FROM gating_plan ORDER BY start_date ASC"
+    sql = "SELECT * FROM gating_plan ORDER BY ROWID"
     return read_sql(sql, dbpath)
 
 
 def get_poly_table(dbpath):
-    sql = "SELECT * FROM poly ORDER BY gating_id, pop, point_order ASC"
+    sql = "SELECT * FROM poly ORDER BY ROWID"
     return read_sql(sql, dbpath)
 
 
