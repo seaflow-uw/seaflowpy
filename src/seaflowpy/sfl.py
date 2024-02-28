@@ -428,7 +428,7 @@ def has_gga(df):
 def make_json_serializable(v):
     """Make sure v is JSON serializable if it's numpy type or plain object"""
     if isinstance(v, np.generic):
-        return np.asscalar(v)
+        return v.item()
     return v
 
 
