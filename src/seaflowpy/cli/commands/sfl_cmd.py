@@ -307,14 +307,14 @@ def sfl_time_range_cmd(buffer: int, files_only: bool, sfl_file: str):
     Print timestamps SFL data range as "<start_RFC3339> <end_RFC3339>".
     The end timestamps will be the timestamp of the last file + its duration.
     """
-    buffer_delta = datetime.timedelta(minutes=buffer)
+    buffer_delta = pd.Timedelta(minutes=buffer)
     df = sfl.read_file(sfl_file, convert_dates=True, convert_numerics=True)
     if len(df):
         df = df.sort_values(by="date")
         start = df["date"].iloc[0]
         end = df["date"].iloc[-1]
         if not files_only:
-            end = end + datetime.timedelta(seconds=df["file_duration"].iloc[-1])
+            end = end + pd.Timedelta(seconds=df["file_duration"].iloc[-1])
         start -= buffer_delta
         end += buffer_delta
         print(f"{seaflow_rfc3339(start)} {seaflow_rfc3339(end)}")
