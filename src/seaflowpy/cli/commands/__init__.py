@@ -5,4 +5,5 @@ from . import filter_cmd
 from . import opp_cmd
 from . import sds2sfl_cmd
 from . import sfl_cmd
+from . import vct_cmd
 from . import version_cmd

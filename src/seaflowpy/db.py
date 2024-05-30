@@ -480,6 +480,15 @@ def get_event_counts(dbpath):
     grouped = opp[["file", "all_count"]].groupby(["file"])
     return {name: group["all_count"].head(1).values[0] for name, group in grouped}
 
+def get_outliers_with_dates(dbpath):
+    sql = """
+    SELECT outlier.file, sfl.date, outlier.flag
+    FROM outlier
+    INNER JOIN sfl
+    ON outlier.file = sfl.file"""
+    df = read_sql(sql, dbpath)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
 
 def create_filter_plan(dbpath: Union[str, Path]) -> pd.DataFrame:
     """

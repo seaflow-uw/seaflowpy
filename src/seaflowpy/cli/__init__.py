@@ -6,6 +6,7 @@ from seaflowpy.cli.commands.filter_cmd import filter_cmd
 from seaflowpy.cli.commands.opp_cmd import opp_cmd
 from seaflowpy.cli.commands.sfl_cmd import sfl_cmd
 from seaflowpy.cli.commands.sds2sfl_cmd import sds2sfl_cmd
+from seaflowpy.cli.commands.vct_cmd import vct_cmd
 from seaflowpy.cli.commands.version_cmd import version_cmd
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
@@ -21,4 +22,5 @@ run.add_command(filter_cmd, 'filter')
 run.add_command(opp_cmd, 'opp')
 run.add_command(sds2sfl_cmd, 'sds2sfl')
 run.add_command(sfl_cmd, 'sfl')
+run.add_command(vct_cmd, 'vct')
 run.add_command(version_cmd, 'version')
