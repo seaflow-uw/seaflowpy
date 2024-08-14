@@ -67,6 +67,7 @@ def evt_cmd():
     help="""Output path for parquet file with subsampled event data.""")
 @click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_positive,
     help='Target number of events to keep.')
+@click.option('--cutoffs-file', type=click.Path(readable=True, path_type=pathlib.Path))
 @click.option('-f', '--file-fraction', type=float, default=0.1, show_default=True, callback=validate_file_fraction,
     help='Fraction of files to sample from, > 0 and <= 1. Using --multi sets this option to 1.')
 @click.option('--min-chl', type=int, default=0, show_default=True,
@@ -99,7 +100,7 @@ def evt_cmd():
 @click.option('-v', '--verbose', count=True,
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
-def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
+def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc, min_pe,
                    min_date, max_date, tail_hours, multi, noise_filter, process_count,
                    saturation_filter, seed, sfl_path, verbose, files):
     """
@@ -116,6 +117,17 @@ def sample_evt_cmd(outpath, count, file_fraction, min_chl, min_fsc, min_pe,
     else:
         loglevel = logging.DEBUG
     logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
+
+    # Read cutoffs file
+    if cutoffs_file is not None:
+        cutoffs = pd.read_csv(cutoffs_file, sep="\t")
+        min_fsc = int(cutoffs.loc[0, "min_fsc_small"])
+        min_pe = int(cutoffs.loc[0, "min_pe"])
+        min_chl = int(cutoffs.loc[0, "min_chl_small"])
+    logging.info(
+        "effective cutoffs are, min_fsc_small=%d, min_pe=%d, min_chl_small=%d",
+        min_fsc, min_pe, min_chl
+    )
 
     # Get file to date mappings from SFL file
     files = seaflowfile.keep_evt_files(util.expand_file_list(files))
