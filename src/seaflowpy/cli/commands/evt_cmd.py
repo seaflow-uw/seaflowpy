@@ -269,10 +269,15 @@ def dates_evt_cmd(min_date, max_date, tail_hours, sfl_path, files):
 @click.option('-n', '--n-jobs', default=1, type=int, help='worker jobs')
 @click.option('-r', '--reduced-columns', is_flag=True,
     help=f'Hash on the reduced column set {particleops.REDUCED_COLUMNS}')
+@click.option('-t', '--tsv', is_flag=True,
+    help="Print TSV output to STDOUT. Default is more human-readable space-separated.")
 @click.option('-p', '--progress', is_flag=True,
     help='Print progress')
 @click.argument('paths', nargs=-1, type=click.Path(exists=True))
-def validate_evt_cmd(report_all, filter_by_name, hash_, n_jobs, reduced_columns, progress, paths):
+def validate_evt_cmd(
+    report_all, filter_by_name, hash_, n_jobs, reduced_columns, tsv, progress,
+    paths
+):
     """
     Examines EVT files.
 
@@ -331,7 +336,11 @@ def validate_evt_cmd(report_all, filter_by_name, hash_, n_jobs, reduced_columns,
         results_output = results.loc[~results['err'].isna()]
 
     if len(results_output):
-        results_output.to_string(index=False, buf=sys.stdout)
+        if tsv:
+            results_output.to_csv(sys.stdout, sep="\t", index=False)
+        else:
+            results_output.to_string(index=False, buf=sys.stdout)
+
     print()
 
 
