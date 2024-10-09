@@ -2,6 +2,7 @@ import datetime
 import logging
 import pathlib
 import sys
+from typing import Any
 from functools import partial
 
 import click
@@ -15,7 +16,7 @@ from seaflowpy import sample
 from seaflowpy import sfl
 from seaflowpy import time
 from seaflowpy import util
-
+from tqdm import tqdm
 
 
 def validate_file_fraction(ctx, param, value):
@@ -307,9 +308,16 @@ def validate_evt_cmd(report_all, filter_by_name, hash_, n_jobs, reduced_columns,
         verbose = 1
     else:
         verbose = 0
-    parallel = Parallel(n_jobs=n_jobs, verbose=verbose)
+    parallel = Parallel(n_jobs=max(1, n_jobs), return_as="generator_unordered")
     work_func = partial(_validate_evt_file, checksum=hash_, cols=cols)
-    results = pd.DataFrame(list(parallel(delayed(work_func)(r[1]) for r in work.iterrows())))
+    with tqdm(desc="files", total=len(work), file=sys.stderr) as bar:
+        results_list = []
+        for i, res in enumerate(parallel(delayed(work_func)(r[1]) for r in work.iterrows())):
+            bar.update(1)
+            if i % 10 == 0:
+                bar.set_description(pathlib.Path(res["path"]).name)
+            results_list.append(res)
+        results = pd.DataFrame(results_list)
     results.sort_values(by='id', key=_idkey, inplace=True)
 
     if len(results):
@@ -327,14 +335,14 @@ def validate_evt_cmd(report_all, filter_by_name, hash_, n_jobs, reduced_columns,
     print()
 
 
-def _validate_evt_file(s, checksum=True, cols=None):
-    s = s.copy()
-    data = fileio.validate_evt_file(s['path'], checksum=checksum, cols=cols)
-    s['hash'] = data['hash']
-    s['count'] = data['count']
-    s['version'] = data['version']
-    s['err'] = data['err']
-    return s
+def _validate_evt_file(w: dict[str, Any], checksum=True, cols=None) -> dict[str, Any]:
+    w = w.copy()
+    data = fileio.validate_evt_file(w['path'], checksum=checksum, cols=cols)
+    w['hash'] = data['hash']
+    w['count'] = data['count']
+    w['version'] = data['version']
+    w['err'] = data['err']
+    return w
 
 
 def _idkey(id_series):
