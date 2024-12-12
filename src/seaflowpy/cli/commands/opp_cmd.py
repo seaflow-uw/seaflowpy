@@ -98,8 +98,12 @@ def sample_opp_cmd(outpath, count, min_date, max_date, tail_hours, seed,
         
         if len(files_df):
             outpath.parent.mkdir(parents=True, exist_ok=True)
-
-            df = pd.concat([pd.read_parquet(f) for f in files_df.path], ignore_index=True)
+            try:
+                opp_dfs = [pd.read_parquet(f) for f in files_df.path]
+            except Exception as e:
+                print("Error reading OPP files: {}".format(e), file=sys.stderr)
+                return
+            df = pd.concat(opp_dfs, ignore_index=True)
             if min_date is not None:
                 df = df[df.date >= min_date]
             if max_date is not None:

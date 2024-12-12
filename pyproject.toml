@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "seaflowpy"
-version = "14.3.2"
+version = "14.3.3"
 description = "A Python library for SeaFlow data"
 authors = ["Chris Berthiaume <chrisbee@uw.edu>"]
 readme = "README.md"
