@@ -1,45 +1,35 @@
-[tool.poetry]
+[project]
 name = "seaflowpy"
 version = "14.3.3"
 description = "A Python library for SeaFlow data"
-authors = ["Chris Berthiaume <chrisbee@uw.edu>"]
 readme = "README.md"
-license = "GPL-3.0-only"
-packages = [
-    { include = "seaflowpy", from = "src" },
+authors = [
+    { name = "Chris T. Berthiaume", email = "chrisbee@uw.edu" }
 ]
-include = [
-    { path = "tests", format = "sdist" },
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.8",
+    "joblib~=1.4.2",
+    "pandas[performance]~=2.2",
+    "pyarrow>=19.0.0",
+    "sqlalchemy>=2.0.38",
+    "tqdm>=4.67.1",
+    "tsdataformat>=3.1.0",
+    "zstandard>=0.23.0",
 ]
-
-[tool.poetry.scripts]
+[project.scripts]
 seaflowpy = "seaflowpy.cli:run"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-click = "^8.1.7"
-joblib = "1.4.2"
-pandas = {extras = ["performance"], version = "~2.1.4"}
-pyarrow = "^13.0.0"
-sqlalchemy = "^2.0.21"
-tsdataformat = "^3.0.0"
-zstandard = "^0.21.0"
-tqdm = "^4.66.4"
-
-[tool.poetry.group.test]
-optional = true
-
-[tool.poetry.group.test.dependencies]
-pytest = "^7.4.2"
-pytest-benchmark = "^4.0.0"
-
-[tool.poetry.group.dev]
-optional = true
-
-[tool.poetry.group.dev.dependencies]
-pylint = "^2.17.5"
-jupyterlab = "^4.0.6"
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+test = [
+    "pytest>=8.3.4",
+    "pytest-benchmark>=5.1.0",
+]
+dev = [
+    "jupyterlab>=4.3.5",
+    "ruff>=0.9.6",
+]
