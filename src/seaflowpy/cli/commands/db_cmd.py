@@ -1,10 +1,8 @@
 import sys
 import click
 import pandas as pd
-from pathlib import Path
 from seaflowpy import db
 from seaflowpy.errors import SeaFlowpyError
-from seaflowpy import fileio
 from seaflowpy import sfl
 
 # Subcommand aliases for backwards compatibility

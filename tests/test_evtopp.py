@@ -261,7 +261,7 @@ class TestFilter:
 
         # Should not modify original
         new_evt_df = benchmark(filter_func, evt_df, params)
-        assert not (new_evt_df is evt_df)  # returned a new dataframe
+        assert new_evt_df is not evt_df  # returned a new dataframe
         assert orig_df.equals(evt_df)  # original dataframe is the unmodified
         assert len(new_evt_df.index) == 40000
         assert new_evt_df["q2.5"].sum() == 423
@@ -288,7 +288,7 @@ class TestFilter:
         """Events with zeroes in all of D1, D2, and fsc_small are noise"""
         # There are events which could be considered noise (no signal in any of
         # D1, D2, or fsc_small
-        assert np.any((evt_df["D1"] == 0) & (evt_df["D2"] == 0) & (evt_df["fsc_small"] == 0)) == True
+        assert np.any((evt_df["D1"] == 0) & (evt_df["D2"] == 0) & (evt_df["fsc_small"] == 0))
 
         noise = sfp.particleops.mark_noise(evt_df)
         assert noise.sum() == 72
@@ -298,7 +298,7 @@ class TestFilter:
         assert len(signal_df.index) == 39928
 
         # No events are all zeroes D1, D2, and fsc_small
-        assert np.any((signal_df["D1"] == 0) & (signal_df["D2"] == 0) & (signal_df["fsc_small"] == 0)) == False
+        assert not np.any((signal_df["D1"] == 0) & (signal_df["D2"] == 0) & (signal_df["fsc_small"] == 0))
 
     def test_saturation_filter(self, evt_df):
         """Events with max D1 or max D2"""
@@ -319,7 +319,7 @@ class TestFilter:
                 "q97.5": [False, True, False]
             }
         )
-        assert sfp.particleops.all_quantiles(df) == True
+        assert sfp.particleops.all_quantiles(df)
 
         df = pd.DataFrame(
             {
@@ -329,7 +329,7 @@ class TestFilter:
                 "q97.5": [False, False, False]
             }
         )
-        assert sfp.particleops.all_quantiles(df) == False
+        assert not sfp.particleops.all_quantiles(df)
 
 
 class TestTransform:
@@ -386,7 +386,7 @@ class TestOutput:
         df = sfp.particleops.mark_focused(df, params, inplace=True)
 
         raw_count = len(df.index)
-        signal_count = len(df[df["noise"] == False].index)
+        signal_count = len(df[~df["noise"]].index)
 
         vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
         sfp.db.save_opp_to_db(vals, tmpout["db_one"])
@@ -394,7 +394,7 @@ class TestOutput:
         sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
 
         try:
-            opp_evt_ratio = len(df[df["q50"]].index) / len(df[df["noise"] == False].index)
+            opp_evt_ratio = len(df[df["q50"]].index) / len(df[~df["noise"]].index)
         except ZeroDivisionError:
             opp_evt_ratio = 0.0
 
@@ -413,7 +413,7 @@ class TestOutput:
         df = sfp.particleops.mark_focused(df, params, inplace=True)
 
         raw_count = len(df.index)
-        signal_count = len(df[df["noise"] == False].index)
+        signal_count = len(df[~df["noise"]].index)
 
         vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
         sfp.db.save_opp_to_db(vals, tmpout["db_one"])

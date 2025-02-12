@@ -9,7 +9,6 @@ from pathlib import Path
 from . import errors as sfperrors
 from . import geo
 from . import time
-from . import util
 from . import seaflowfile
 
 

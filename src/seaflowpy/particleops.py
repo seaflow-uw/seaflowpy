@@ -1,5 +1,3 @@
-import time
-
 import numba
 import numpy as np
 import numpy.typing as npt
@@ -120,7 +118,7 @@ def mark_focused(df, params, inplace=False):
     if params is None:
         raise ValueError("Must provide filtering parameters")
     for k in param_keys:
-        if not k in params.columns:
+        if k not in params.columns:
             raise ValueError(f"Missing filter parameter {k} in mark_focused")
     # Make sure params have 0-based indexing
     params = params.reset_index(drop=True)
@@ -191,7 +189,7 @@ def mark_focused_fast(df, params, inplace=False):
     if params is None:
         raise ValueError("Must provide filtering parameters")
     for k in param_keys:
-        if not k in params.columns:
+        if k not in params.columns:
             raise ValueError(f"Missing filter parameter {k} in mark_focused")
     # Make sure params have 0-based indexing
     params = params.reset_index(drop=True)

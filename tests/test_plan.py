@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-from seaflowpy import time
 from seaflowpy import plan
 
 # pylint: disable=redefined-outer-name

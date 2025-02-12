@@ -200,11 +200,11 @@ def import_sfl(
     if Path(dbpath).exists():
         try:
             cruise = get_cruise(dbpath)
-        except errors.SeaFlowpyError as e:
+        except errors.SeaFlowpyError:
             pass
         try:
             serial = get_serial(dbpath)
-        except errors.SeaFlowpyError as e:
+        except errors.SeaFlowpyError:
             pass
 
     # Try to read cruise and serial from filename if not already defined
@@ -255,7 +255,7 @@ def export_filter_params(dbpath: Union[str, Path], out_prefix: Union[str, Path])
     filter_df = get_filter_table(dbpath)
     try:
         filter_plan_df = get_filter_plan_table(dbpath)
-    except errors.SeaFlowpyError as e:
+    except errors.SeaFlowpyError:
         # Maybe this is an older db schema without gating_plan table
         filter_plan_df = None
 
@@ -279,7 +279,7 @@ def export_gating_params(dbpath: Union[str, Path], out_prefix: Union[str, Path])
     poly_df = get_poly_table(dbpath)
     try:
         gating_plan_df = get_gating_plan_table(dbpath)
-    except errors.SeaFlowpyError as e:
+    except errors.SeaFlowpyError:
         # Maybe this is an older db schema without gating_plan table
         gating_plan_df = None
 

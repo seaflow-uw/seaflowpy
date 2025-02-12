@@ -2,7 +2,7 @@ import datetime
 import logging
 import pathlib
 import sys
-from typing import Any
+from typing import Any, cast
 from functools import partial
 
 import click
@@ -122,9 +122,10 @@ def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc
     # Read cutoffs file
     if cutoffs_file is not None:
         cutoffs = pd.read_csv(cutoffs_file, sep="\t")
-        min_fsc = int(cutoffs.loc[0, "min_fsc_small"])
-        min_pe = int(cutoffs.loc[0, "min_pe"])
-        min_chl = int(cutoffs.loc[0, "min_chl_small"])
+        # Pylance 
+        min_fsc = cast(int, cutoffs["min_fsc_small"].astype(int).iloc[0])
+        min_pe = cast(int, cutoffs["min_pe"].astype(int).iloc[0])
+        min_chl = cast(int, cutoffs["min_chl_small"].astype(int).iloc[0])
     logging.info(
         "effective cutoffs are, min_fsc_small=%d, min_pe=%d, min_chl_small=%d",
         min_fsc, min_pe, min_chl
@@ -309,17 +310,13 @@ def validate_evt_cmd(
         else:
             file_ids.append(sff.file_id)
     work = pd.DataFrame({'id': file_ids, 'path': files})
-    if progress:
-        verbose = 1
-    else:
-        verbose = 0
     parallel = Parallel(n_jobs=max(1, n_jobs), return_as="generator_unordered")
     work_func = partial(_validate_evt_file, checksum=hash_, cols=cols)
     with tqdm(desc="files", total=len(work), file=sys.stderr) as bar:
         results_list = []
         for i, res in enumerate(parallel(delayed(work_func)(r[1]) for r in work.iterrows())):
             bar.update(1)
-            if i % 10 == 0:
+            if i % 10 == 0 and res is not None:
                 bar.set_description(pathlib.Path(res["path"]).name)
             results_list.append(res)
         results = pd.DataFrame(results_list)
@@ -395,7 +392,7 @@ def parquet_cmd(n_jobs, out_dir, progress, paths, sfl_path):
         print(f"Matched {len(evt)} EVT files to SFL entries", file=sys.stderr)
     parquet_files = []
     for row in evt.itertuples(index=False):
-        if not pathlib.Path(row.path).exists():
+        if not pathlib.Path(str(row.path)).exists():
             raise FileNotFoundError(f"No such file or directory: '{row.path}'")
         sf = seaflowfile.SeaFlowFile(row.path, date=row.date)
         parquet_files.append(str(out_dir / sf.path_dayofyear / f"{sf.filename_orig}.parquet"))

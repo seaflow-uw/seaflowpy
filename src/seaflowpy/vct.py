@@ -33,7 +33,7 @@ def curate(
         vct = vct.copy()
     vct = vct.rename(columns={pop_col: "pop"})
     vct = vct[vct[quant_col]]
-    if ignore_dates:
+    if ignore_dates is not None:
         vct = vct.loc[~vct["date"].isin(ignore_dates)]
     if refracs is not None:
         vct["diam"] = np.NaN
