@@ -3,7 +3,7 @@ import logging
 
 import click
 import pandas as pd
-import pkg_resources
+from importlib.metadata import version
 from seaflowpy import db
 from seaflowpy import errors
 from seaflowpy import filterevt
@@ -80,7 +80,7 @@ def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, p
         'opp_dir': opp_dir,
         'process_count': process_count,
         'resolution': resolution,
-        'version': pkg_resources.get_distribution("seaflowpy").version,
+        'version': version("seaflowpy"),
         'cruise': cruise,
         'use-numba': use_numba
     }

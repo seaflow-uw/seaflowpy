@@ -1,5 +1,5 @@
 import logging
-import pkg_resources
+from importlib.metadata import version
 
 from . import db
 from . import errors
@@ -15,6 +15,6 @@ from . import time
 from . import util
 from . import vct
 
-__version__ = pkg_resources.get_distribution("seaflowpy").version
+__version__ = version("seaflowpy")
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
