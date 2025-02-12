@@ -1,7 +1,8 @@
 [project]
 name = "seaflowpy"
-version = "14.4.0"
+version = "14.4.1"
 description = "A Python library for SeaFlow data"
+license = "MIT"
 readme = "README.md"
 authors = [
     { name = "Chris T. Berthiaume", email = "chrisbee@uw.edu" }
@@ -14,7 +15,7 @@ dependencies = [
     "pyarrow>=19.0.0",
     "sqlalchemy>=2.0.38",
     "tqdm>=4.67.1",
-    "tsdataformat>=3.1.0",
+    "tsdataformat>=3.1.1",
     "zstandard>=0.23.0",
 ]
 [project.scripts]
