@@ -19,13 +19,12 @@ from . import util
 
 logger = logging.getLogger(__name__)
 
-# Quantile list
-quantiles = [2.5, 50, 97.5]
-max_particles_per_file_default = 50000 * 180  # max event rate (per sec) 50k
-
+MAX_PARTICLES_PER_FILE_DEFAULT = 50000 * 180  # max event rate (per sec) 50k
+WINDOW_SIZE = "1H"
+RESAMPLE_WINDOW_SIZE = "1h"  # pandas frequency strings use 'h' for hour
 
 def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
-                     max_particles_per_file=max_particles_per_file_default, window_size="1H",
+                     max_particles_per_file=MAX_PARTICLES_PER_FILE_DEFAULT,
                      use_numba=False):
     """Filter a list of EVT files.
 
@@ -55,7 +54,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         "opp_dir": opp_dir,
         "filter_params": None,  # fill in later from db,
         "max_particles_per_file": max_particles_per_file,
-        "window_size": window_size,
+        "window_size": WINDOW_SIZE,
         "window_start_date": None,
         "use_numba": use_numba,
         "errors": [],  # global errors outside of processing single files
@@ -65,7 +64,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
     filter_params = db.get_filter_params_lookup(dbpath, files_df)
 
     # Group by window_size
-    files_by_hour = files_df.set_index("date").resample(window_size)
+    files_by_hour = files_df.set_index("date").resample(RESAMPLE_WINDOW_SIZE)
 
     # Adjust worker count
     worker_count = min(len(files_by_hour), worker_count)
@@ -261,7 +260,6 @@ def do_filter(work):
             fileio.write_opp_parquet(
                 good_opps,
                 work["window_start_date"],
-                work["window_size"],
                 work["opp_dir"]
             )
     else:

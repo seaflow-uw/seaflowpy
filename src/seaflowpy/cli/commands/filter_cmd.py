@@ -44,7 +44,7 @@ def validate_resolution(ctx, param, value):
     help='Popcycle SQLite3 db file with filter parameters and cruise name.')
 @click.option('-l', '--limit', type=int, metavar='N', callback=validate_limit,
     help='Limit number of files to process.')
-@click.option('-m', '--max-particles-per-file', type=int, default=filterevt.max_particles_per_file_default,
+@click.option('-m', '--max-particles-per-file', type=int, default=filterevt.MAX_PARTICLES_PER_FILE_DEFAULT,
     show_default=True, metavar='N', callback=validate_limit,
     help='Only filter files with an event count <= this limit.')
 @click.option('-o', '--opp-dir', metavar='DIR',

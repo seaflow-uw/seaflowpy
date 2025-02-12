@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 import zstandard
 from . import errors
 from . import particleops
+from .filterevt import WINDOW_SIZE
 from .seaflowfile import SeaFlowFile
 
 DEFAULT_EVT_DTYPE = np.float32
@@ -421,7 +422,7 @@ def write_evt_labview(df, path, outdir, gz=True):
     write_labview(df[particleops.COLUMNS], outpath)
 
 
-def write_opp_parquet(opp_dfs, date, window_size, outdir):
+def write_opp_parquet(opp_dfs, date, outdir):
     """
     Write an OPP Parquet file.
 
@@ -434,8 +435,6 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
         positions in original EVT DataFrames.
     date: pandas.Timestamp or datetime.datetime object
         Start timestamp for data in df.
-    window_size: pandas offset alias for time window covered by this file. Time
-        covered by this file is date + time_window.
     outdir: str
         Output directory.
     """
@@ -445,7 +444,7 @@ def write_opp_parquet(opp_dfs, date, window_size, outdir):
     # Make sure directory necessary directory tree exists
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
-    outpath = outdir / (date.isoformat().replace(":", "-") + f".{window_size}.opp.parquet")
+    outpath = outdir / (date.isoformat().replace(":", "-") + f".{WINDOW_SIZE}.opp.parquet")
     df = pd.concat(opp_dfs, ignore_index=True)
     # Linearize data columns
     df = particleops.linearize_particles(df, columns=["D1", "D2", "fsc_small", "pe", "chl_small"])
