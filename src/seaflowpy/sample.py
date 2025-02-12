@@ -126,7 +126,8 @@ def sample(
     else:
         n_per_file = n // len(evtpaths)
 
-    pool = mp.Pool(processes=process_count)
+    ctx = mp.get_context("spawn")
+    pool = ctx.Pool(processes=process_count)
 
     # Result handling callbacks for mp.async_apply
     mp_results, mp_errs = [], []

@@ -3,7 +3,7 @@ import copy
 import logging
 import sys
 import time
-from multiprocessing import Pool
+import multiprocessing as mp
 from typing import TYPE_CHECKING, TypedDict
 if TYPE_CHECKING:
     import datetime
@@ -90,7 +90,8 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
             reporter.register(work_result)
             save_to_db(work_result)
     else:
-        with Pool(processes=worker_count) as pool:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=worker_count) as pool:
             for work_result in pool.imap(do_filter, work_list):
                 reporter.register(work_result)
                 save_to_db(work_result)
