@@ -1767,7 +1767,7 @@ wheels = [
 
 [[package]]
 name = "seaflowpy"
-version = "14.4.1"
+version = "14.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

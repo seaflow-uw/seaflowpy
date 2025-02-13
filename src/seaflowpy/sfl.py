@@ -109,17 +109,23 @@ def check_date(df):
 
 
 def check_date_string(date):
-    """Confirm value is an RFC3339 string with UTC timezone as [+-]00:00"""
-    passed = False
+    """Confirm value is an RFC3339 string.
+     
+    Require a UTC timezone as [+-]00:00.
+    Require 'T' as date/time separator, not space.
+    """
+    # Check for T and not " " as separator
+    if len(date.split(" ")) == 2:
+        return False
+    # Check for parsable timestamp
     try:
         dt = time.parse_date(date)
     except ValueError:
-        pass
-    else:
-        if dt.tzinfo == pytz.UTC and (date.endswith('+00:00') or date.endswith('-00:00')):
-            passed = True
-    # Return true if any format is correct
-    return passed
+        return False
+    # Check for proper UTC tz specification
+    if not (dt.tzinfo == pytz.UTC and (date.endswith('+00:00') or date.endswith('-00:00'))):
+        return False
+    return True
 
 
 def check_file(df):
@@ -164,8 +170,11 @@ def check_file(df):
             for i, v in good_files["file"].items():
                 s = seaflowfile.SeaFlowFile(v)
                 d = good_files.loc[i, "date"]
-                if s.is_new_style and s.rfc3339 != d:
-                    errors.append(create_error(good_files, "file/date", msg="File and date don't match", row=i, val=f"{v} {d}"))
+                # Don't bother comparing file and date if date will get flagged
+                # by the date checker anyway.
+                if check_date_string(d):
+                    if s.is_new_style and s.rfc3339 != d:
+                        errors.append(create_error(good_files, "file/date", msg="File and date don't match", row=i, val=f"{v} {d}"))
 
     return errors
 
