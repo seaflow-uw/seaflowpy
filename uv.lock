@@ -1767,12 +1767,13 @@ wheels = [
 
 [[package]]
 name = "seaflowpy"
-version = "14.4.3"
+version = "14.4.4"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "joblib" },
     { name = "pandas", extra = ["performance"] },
+    { name = "psutil" },
     { name = "pyarrow" },
     { name = "sqlalchemy" },
     { name = "tqdm" },
@@ -1795,6 +1796,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.1.8" },
     { name = "joblib", specifier = "~=1.4.2" },
     { name = "pandas", extras = ["performance"], specifier = "~=2.2" },
+    { name = "psutil", specifier = ">=6.1.1" },
     { name = "pyarrow", specifier = ">=19.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.38" },
     { name = "tqdm", specifier = ">=4.67.1" },
