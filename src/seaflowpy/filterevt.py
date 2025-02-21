@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 if TYPE_CHECKING:
     import datetime
 
+import numpy as np
 import pandas as pd
 # from joblib import Parallel, parallel_config, delayed
 from . import db
@@ -20,11 +21,19 @@ from . import util
 logger = logging.getLogger(__name__)
 
 MAX_PARTICLES_PER_FILE_DEFAULT = 50000 * 180  # max event rate (per sec) 50k
+MAX_OPP_PER_FILE_DEFAULT = 20000
 WINDOW_SIZE = "1H"
 RESAMPLE_WINDOW_SIZE = "1h"  # pandas frequency strings use 'h' for hour
+# opp2 table flag meanings
+FLAG_OPP2_OK = 0              # file is OK
+FLAG_OPP2_EMPTY = 1           # empty or unreadable file
+FLAG_OPP2_EVT_HIGH = 2        # too many EVT events
+FLAG_OPP2_OPP_HIGH = 3        # too many OPP events
+FLAG_OPP2_EMPTY_QUANTILE = 4  # at least one quantile has no OPP particles
 
 def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
                      max_particles_per_file=MAX_PARTICLES_PER_FILE_DEFAULT,
+                     max_opp_per_file=MAX_OPP_PER_FILE_DEFAULT,
                      use_numba=False):
     """Filter a list of EVT files.
 
@@ -37,8 +46,8 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
     Keyword arguments:
         worker_count - number of worker processes to use
         every - Percent progress output resolution
-        window_size - Time window for grouping filtering EVT file sets,
-            expressed as pandas time offsets.
+        max_particles_per_file - EVT files with more events than this will not be filtered
+        max_opp_per_file - OPP counts per file above this limit (any quantile) will not be stored in Parquet files
         use_numba - Use numba filtering implementation
     """
     if not dbpath:
@@ -54,6 +63,7 @@ def filter_evt_files(files_df, dbpath, opp_dir, worker_count=1, every=10.0,
         "opp_dir": opp_dir,
         "filter_params": None,  # fill in later from db,
         "max_particles_per_file": max_particles_per_file,
+        "max_opp_per_file": max_opp_per_file,
         "window_size": WINDOW_SIZE,
         "window_start_date": None,
         "use_numba": use_numba,
@@ -163,6 +173,8 @@ def do_filter(work):
             "all_count": 0,
             "evt_count": 0,
             "saturated_count": 0,
+            "noise_count": 0,
+            "opp_count": [0, 0, 0],  # q2.5, q50, q97.5
             "opp": None,
             "file_id": row["file_id"],
             "path": row["path"],
@@ -171,21 +183,23 @@ def do_filter(work):
 
         evt_df = particleops.empty_df()  # doesn't matter if v1 or v2 column composition
         row_count = 0
-        max_particles_per_file_reject = False
+        opp2_flag = FLAG_OPP2_OK
 
         # First check that particle count is below limit
         try:
             row_count = fileio.read_evt_metadata(row['path'])["rowcnt"]
         except (errors.FileError, IOError) as e:
             result["error"] = f"Could not parse file {row['path']}: {e}"
+            opp2_flag = FLAG_OPP2_EMPTY
         except Exception as e:
             result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
+            opp2_flag = FLAG_OPP2_EMPTY
         else:
             if row_count > work["max_particles_per_file"]:
                 result["error"] = f"{row_count} records in {row['path']} > limit ({work['max_particles_per_file']}), will not filter"
-                max_particles_per_file_reject = True
+                opp2_flag = FLAG_OPP2_EVT_HIGH
                 result["all_count"] = row_count
-        if not result["error"]:
+        if opp2_flag == FLAG_OPP2_OK:
             # Particle count below limit and file is probably readable, read it
             try:
                 # Set EVT dataframe with real data
@@ -193,31 +207,47 @@ def do_filter(work):
                 result["all_count"] = len(evt_df)
             except (errors.FileError, IOError) as e:
                 result["error"] = f"Could not parse file {row['path']}: {e}"
+                opp2_flag = FLAG_OPP2_EMPTY
             except Exception as e:
-                result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
-        
+                result["error"] = f"Unexpected error when parsing file {row['file_id']}: {e}"
+                opp2_flag = FLAG_OPP2_EMPTY
+
         file_timing["read"] = time.perf_counter() - t0_loop
         t1_loop = time.perf_counter()
 
         # Filter
-        try:
+        if opp2_flag == FLAG_OPP2_OK:
+            # Only filter if everything is OK so far
             evt_df = filter_func(evt_df, filter_params, inplace=True)
             file_timing["focused"] = time.perf_counter() - t1_loop
             t2_loop = time.perf_counter()
             opp_df = particleops.select_focused(evt_df)
+            opp_counts = opp_df[["q2.5", "q50", "q97.5"]].sum()
+            result["opp_count"] = opp_counts.to_list()
+            if (opp_counts > work["max_opp_per_file"]).any():
+                # Too many OPP, don't save to Parquet
+                result["error"] = f"{row['file_id']} has too many OPP (({result['opp_count']} > {work['max_opp_per_file']}).any()), will not save to Parquet"
+                opp2_flag = FLAG_OPP2_OPP_HIGH
+            elif not particleops.all_quantiles(opp_df):
+                # At least one quantile has no OPP data, don't save to Parquet
+                result["error"] = f"At least one quantile has no OPP data in {row['file_id']}"
+                opp2_flag = FLAG_OPP2_EMPTY_QUANTILE
+            else:
+                # Pass OPP DF on to be saved
+                opp_df["date"] = date
+                opp_df["file_id"] = row["file_id"]
+                opp_df["filter_id"] = filter_params["id"][0]
+                result["opp"] = opp_df
             file_timing["select"] = time.perf_counter() - t2_loop
-        except Exception as e:
-            result["error"] = f"Unexpected error when marking and selecting focused particles in file {row['path']}: {e}"
-        else:
-            opp_df["date"] = date
-            opp_df["file_id"] = row["file_id"]
-            opp_df["filter_id"] = filter_params["id"][0]
-            result["opp"] = opp_df
+
+            # Record noise and saturated counts
             result["noise_count"] = len(evt_df[evt_df["noise"]].index)
             result["saturated_count"] = len(evt_df[evt_df["saturated"]].index)
-            result["opp_count"] = len(opp_df[opp_df["q50"]])
-            if not max_particles_per_file_reject:
-                result["evt_count"] = result["all_count"] - result["noise_count"]
+
+        if opp2_flag != FLAG_OPP2_EVT_HIGH:
+            # evt_count is only meaningful if we actually read the EVT
+            result["evt_count"] = result["all_count"] - result["noise_count"]
+        result["flag"] = opp2_flag
         work["results"].append(result)
         file_timing["total"] = time.perf_counter() - t0_loop
 
@@ -232,17 +262,39 @@ def do_filter(work):
 
     # Prep db data
     t1 = time.perf_counter()
-    work["opp_stat_dfs"], work["outlier_vals"] = [], []
+    work["opp_stat_dfs"] = []
+    work["opp2_stat_dfs"] = []
+    work["outlier_vals"] = []
     for r in work["results"]:
-        work["opp_stat_dfs"].append(
-            db.prep_opp(
-                r["file_id"],
-                r["opp"],
-                r["all_count"],
-                r["evt_count"],
-                r["filter_id"]
-            )
+        ratios = (
+            pd.Series(r["opp_count"])
+            .div(r["evt_count"], fill_value=0)
+            .replace([np.inf, -np.inf, np.nan], 0)
         )
+        opp_stat_df = pd.DataFrame({
+            "opp_count": r["opp_count"],
+            "opp_evt_ratio": ratios,
+            "quantile": [2.5, 50, 97.5],
+        })
+        opp_stat_df.insert(0, "file", r["file_id"])
+        opp_stat_df.insert(1, "all_count", r["all_count"])
+        opp_stat_df.insert(3, "evt_count", r["evt_count"])
+        opp_stat_df.insert(5, "filter_id", r["filter_id"])
+        work["opp_stat_dfs"].append(opp_stat_df)
+
+        work["opp2_stat_dfs"].append(pd.DataFrame([{
+            "file": r["file_id"],
+            "all_count": r["all_count"],
+            "evt_count": r["evt_count"],
+            "opp_count": r["opp_count"][1],  # q50
+            "opp_evt_ratio": ratios[1],  # q50
+            "noise_count": r["noise_count"],
+            "saturated_count": r["saturated_count"],
+            "filter_id": r["filter_id"],
+            "message": r["error"],
+            "file_flag": r["flag"]
+        }]))
+    
         work["outlier_vals"].append({
             "file": SeaFlowFile(r["file_id"]).file_id,
             "flag": 0
@@ -254,7 +306,7 @@ def do_filter(work):
     # Only include OPP files with data in all quantiles
     good_opps = []
     for r in work["results"]:
-        if (not r["error"]) and particleops.all_quantiles(r["opp"]):
+        if (r["flag"] == FLAG_OPP2_OK):
             good_opps.append(r["opp"])
     if (len(good_opps)):
         if work["opp_dir"]:
@@ -264,7 +316,7 @@ def do_filter(work):
                 work["opp_dir"]
             )
     else:
-        work["errors"].append(f"No OPPs had data in all quantiles for {work['window_start_date']}")
+        work["errors"].append(f"No OPP data to save for {work['window_start_date']}")
     window_timing["write_opp"] = time.perf_counter() - t2
 
     # Erase OPP from payload
@@ -281,8 +333,9 @@ def save_to_db(work):
     # Save to DB
     if work["dbpath"]:
         if work["opp_stat_dfs"]:
-            opp = pd.concat(work["opp_stat_dfs"], ignore_index=True)
-            db.save_df(opp, "opp", work["dbpath"], clear=False)
+            db.save_df(pd.concat(work["opp_stat_dfs"], ignore_index=True), "opp", work["dbpath"], clear=False)
+        if work["opp2_stat_dfs"]:
+            db.save_df(pd.concat(work["opp2_stat_dfs"], ignore_index=True), "opp2", work["dbpath"], clear=False)
         if work["outlier_vals"]:
             db.save_df(pd.DataFrame(work["outlier_vals"]), "outlier", work["dbpath"], clear=False)
 
@@ -343,7 +396,7 @@ class WorkReporter:
             self.noise_count_block += r["noise_count"]
             self.signal_count_block = self.event_count_block - self.noise_count_block
             self.saturated_count_block += r["saturated_count"]
-            self.opp_count_block += r["opp_count"]
+            self.opp_count_block += r["opp_count"][1]  # only q50
 
             # Print progress periodically
             perc = float(self.files_seen) / self.file_count * 100  # Percent completed

@@ -13,9 +13,7 @@ import pyarrow as pa
 from sqlalchemy import create_engine, MetaData, or_, Table
 from sqlalchemy.exc import ArgumentError, NoSuchTableError, OperationalError
 from . import errors
-from . import particleops
 from . import plan
-from .seaflowfile import SeaFlowFile
 from . import sfl
 
 
@@ -311,58 +309,6 @@ def save_opp_to_db(df: pd.DataFrame, dbpath: Union[str, Path]):
     save_df(df, "opp", dbpath, clear=False)
 
 
-def prep_opp(
-    file: str,
-    df: pd.DataFrame,
-    all_count: int,
-    evt_count: int,
-    filter_id: str
-) -> pd.DataFrame:
-    """Prepare aggregate statistics values for filtered particle data
-
-    The array returned by this function can be passed to save_opp_to_db.
-
-    Parameters
-    ----------
-    file: str
-        Path to SeaFlow file that was filtered. Used to get the canonical
-        SeaFlow file ID.
-        e.g. tests/testcruise_evt/2014_185/2014-07-04T00-00-02+00-00 will become
-        2014_185/2014-07-04T00-00-02+00-00.
-    df: pandas.DataFrame
-        SeaFlow particle data. Focused particle flag columns for each quantile
-        should be in columns "q<quantile>" e.g. q2.5 for the 2.5 quantile.
-    all_count: int
-        Event count in raw file.
-    evt_count: int
-        Events above noise floor in raw file.
-    filter_id: str
-        DB ID for filtering parameters used to create OPP.
-
-    Returns
-    -------
-    DataFrame of opp aggregate statistics matching opp table structure
-    """
-    vals = []
-    for _q_col, q, _q_str, q_df in particleops.quantiles_in_df(df):
-        opp_count = len(q_df.index)
-        try:
-            opp_evt_ratio = opp_count / evt_count
-        except ZeroDivisionError:
-            opp_evt_ratio = 0.0
-        vals.append({
-            "file": SeaFlowFile(file).file_id,
-            "all_count": all_count,
-            "opp_count": opp_count,
-            "evt_count": evt_count,
-            "opp_evt_ratio": opp_evt_ratio,
-            "filter_id": filter_id,
-            "quantile": q
-        })
-    df = pd.DataFrame(vals)
-    return df
-
-
 def save_sfl(df: pd.DataFrame, dbpath: Union[str, Path]):
     create_db(dbpath)
     cols = table_cols("sfl", dbpath)
@@ -455,6 +401,14 @@ def get_opp_table(dbpath, filter_id=""):
         sql = "SELECT * FROM opp ORDER BY file ASC, quantile ASC"
     else:
         sql = "SELECT * FROM opp WHERE filter_id = '{}' ORDER BY file ASC, quantile ASC".format(filter_id)
+    return read_sql(sql, dbpath)
+
+
+def get_opp2_table(dbpath, filter_id=""):
+    if filter_id == "":
+        sql = "SELECT * FROM opp2 ORDER BY file ASC"
+    else:
+        sql = "SELECT * FROM opp2 WHERE filter_id = '{}' ORDER BY file ASC".format(filter_id)
     return read_sql(sql, dbpath)
 
 

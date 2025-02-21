@@ -47,6 +47,9 @@ def validate_resolution(ctx, param, value):
 @click.option('-m', '--max-particles-per-file', type=int, default=filterevt.MAX_PARTICLES_PER_FILE_DEFAULT,
     show_default=True, metavar='N', callback=validate_limit,
     help='Only filter files with an event count <= this limit.')
+@click.option('-M', '--max-opp-per-file', type=int, default=filterevt.MAX_OPP_PER_FILE_DEFAULT,
+    show_default=True, metavar='N', callback=validate_limit,
+    help='Only write data to Parquet for 3-min files with <= this many OPP.')
 @click.option('-o', '--opp-dir', metavar='DIR',
     help='Directory in which to save OPP files. Will be created if does not exist.')
 @click.option('-p', '--process-count', default=1, show_default=True, metavar='N', callback=validate_process_count,
@@ -55,7 +58,8 @@ def validate_resolution(ctx, param, value):
     help='Progress update resolution by %%.')
 @click.option('--use-numba', is_flag=True,
     help="Use numba filtering implementation")
-def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, process_count, resolution, use_numba):
+def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file,
+               max_opp_per_file, opp_dir, process_count, resolution, use_numba):
     """Filter EVT data locally."""
     # Find cruise in db
     try:
@@ -76,6 +80,7 @@ def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, p
         'evt_dir': evt_dir,
         'limit': limit,
         'max_particles_per_file': max_particles_per_file,
+        'max_opp_per_file': max_opp_per_file,
         'db': dbpath,
         'opp_dir': opp_dir,
         'process_count': process_count,
@@ -141,6 +146,7 @@ def filter_cmd(delta, evt_dir, dbpath, limit, max_particles_per_file, opp_dir, p
                 worker_count=process_count,
                 every=resolution,
                 max_particles_per_file=max_particles_per_file,
+                max_opp_per_file=max_opp_per_file,
                 use_numba=use_numba
             )
         except errors.SeaFlowpyError as e:

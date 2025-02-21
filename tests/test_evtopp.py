@@ -4,7 +4,6 @@ import gzip
 import io
 import os
 import shutil
-import sqlite3
 import numpy as np
 import numpy.testing as npt
 import pandas as pd
@@ -378,56 +377,6 @@ class TestTransform:
         with pytest.raises(AssertionError):
             npt.assert_array_equal(orig_df, t_df)
 
-
-class TestOutput:
-    def test_sqlite3_opp_counts_and_params(self, tmpout, params):
-        sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-        df = tmpout["evt_df"]
-        df = sfp.particleops.mark_focused(df, params, inplace=True)
-
-        raw_count = len(df.index)
-        signal_count = len(df[~df["noise"]].index)
-
-        vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
-        sfp.db.save_opp_to_db(vals, tmpout["db_one"])
-        con = sqlite3.connect(tmpout["db_one"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-
-        try:
-            opp_evt_ratio = len(df[df["q50"]].index) / len(df[~df["noise"]].index)
-        except ZeroDivisionError:
-            opp_evt_ratio = 0.0
-
-        assert sf_file.file_id == sqlitedf["file"][1]
-        assert sqlitedf["filter_id"][1] == "UUID"
-        assert sqlitedf["quantile"][1] == 50
-        npt.assert_array_equal(
-            [107, 39928, 40000, opp_evt_ratio],
-            sqlitedf[["opp_count", "evt_count", "all_count", "opp_evt_ratio"]].values[1]
-        )
-
-
-    def test_sqlite3_opp_counts_and_params_empty(self, tmpout, params):
-        sf_file = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
-        df = sfp.particleops.empty_df()
-        df = sfp.particleops.mark_focused(df, params, inplace=True)
-
-        raw_count = len(df.index)
-        signal_count = len(df[~df["noise"]].index)
-
-        vals = sfp.db.prep_opp(sf_file.file_id, df, raw_count, signal_count, "UUID")
-        sfp.db.save_opp_to_db(vals, tmpout["db_one"])
-        con = sqlite3.connect(tmpout["db_one"])
-        sqlitedf = pd.read_sql_query("SELECT * FROM opp", con)
-
-        assert sf_file.file_id == sqlitedf["file"][1]
-        assert sqlitedf["filter_id"][1] == "UUID"
-        assert sqlitedf["quantile"][1] == 50
-        npt.assert_array_equal(
-            [0, 0, 0, 0.0],
-            sqlitedf[["opp_count", "evt_count", "all_count", "opp_evt_ratio"]].values[1]
-        )
-
     def test_binary_evt_output(self, tmpout):
         sfile = sfp.seaflowfile.SeaFlowFile(tmpout["evt_path"])
         evtdir = tmpout["tmpdir"] / "evtdir"
@@ -466,7 +415,7 @@ class TestOutput:
 class TestMultiFileFilter(object):
     @pytest.mark.parametrize("jobs", [1, 2])
     @pytest.mark.parametrize("use_numba", [False, True])
-    def test_multi_file_filter_local(self, tmpout, jobs, use_numba):
+    def test_multi_file_filter_one_param_local(self, tmpout, jobs, use_numba):
         """Test multi-file filtering and ensure output can be read back OK"""
         # python setup.py test doesn't play nice with pytest and
         # multiprocessing, so we use one core here
@@ -492,13 +441,57 @@ class TestMultiFileFilter(object):
         # Check numbers stored in opp table are correct
         opp_table = sfp.db.get_opp_table(tmpout["db_one"])
         expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_one_param.db")
-
         pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
 
         # Check that outlier table has entry for every file
         outlier_table = sfp.db.get_outlier_table(tmpout["db_one"])
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_one_param.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
+
+        # Check opp2 table, skipping message column. Assume that may change.
+        opp2_table = sfp.db.get_opp2_table(tmpout["db_one"]).drop("message", axis="columns")
+        expected_opp2_table = sfp.db.get_opp2_table("tests/testcruise_full_one_param.db").drop("message", axis="columns")
+        pdt.assert_frame_equal(opp2_table, expected_opp2_table, check_exact=False)
+
+    @pytest.mark.parametrize("jobs", [1, 2])
+    @pytest.mark.parametrize("use_numba", [False, True])
+    def test_multi_file_filter_local(self, tmpout, jobs, use_numba):
+        """Test multi-file filtering and ensure output can be read back OK"""
+        # python setup.py test doesn't play nice with pytest and
+        # multiprocessing, so we use one core here
+        sfp.filterevt.filter_evt_files(
+            tmpout["file_dates"],
+            dbpath=tmpout["db_plan"],
+            opp_dir=tmpout["oppdir"],
+            worker_count=jobs,
+            use_numba=use_numba
+        )
+
+        opp_dfs = [
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T01-00-00+00-00.1H.opp.parquet")
+        ]
+        expected_opp_dfs = [
+            pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T01-00-00+00-00.1H.opp.parquet")
+        ]
+        pdt.assert_frame_equal(opp_dfs[0], expected_opp_dfs[0], check_exact=False)
+        pdt.assert_frame_equal(opp_dfs[1], expected_opp_dfs[1], check_exact=False)
+
+        # Check numbers stored in opp table are correct
+        opp_table = sfp.db.get_opp_table(tmpout["db_plan"])
+        expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_plan.db")
+        pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
+
+        # Check that outlier table has entry for every file
+        outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])
+        expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
+        pdt.assert_frame_equal(outlier_table, expected_outlier_table)
+
+        # Check opp2 table, skipping message column. Assume that may change.
+        opp2_table = sfp.db.get_opp2_table(tmpout["db_plan"]).drop("message", axis="columns")
+        expected_opp2_table = sfp.db.get_opp2_table("tests/testcruise_full_plan.db").drop("message", axis="columns")
+        pdt.assert_frame_equal(opp2_table, expected_opp2_table, check_exact=False)
 
     @pytest.mark.parametrize("jobs", [1])
     def test_multi_file_filter_local_v2(self, tmpout, jobs):
@@ -526,13 +519,17 @@ class TestMultiFileFilter(object):
         # Check numbers stored in opp table are correct
         opp_table = sfp.db.get_opp_table(tmpout["db_plan"])
         expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_plan.db")
-
         pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
 
         # Check that outlier table has entry for every file
         outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
+
+        # Check opp2 table, skipping message column. Assume that may change.
+        opp2_table = sfp.db.get_opp2_table(tmpout["db_plan"]).drop("message", axis="columns")
+        expected_opp2_table = sfp.db.get_opp2_table("tests/testcruise_full_plan.db").drop("message", axis="columns")
+        pdt.assert_frame_equal(opp2_table, expected_opp2_table, check_exact=False)
 
     @pytest.mark.parametrize("jobs", [1])
     def test_multi_file_filter_local_v2_with_per_file_limit(self, tmpout, jobs):
@@ -561,3 +558,66 @@ class TestMultiFileFilter(object):
         outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])
         expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
         pdt.assert_frame_equal(outlier_table, expected_outlier_table)
+
+        # Check opp2 table
+        opp2_table = sfp.db.get_opp2_table(tmpout["db_plan"]).drop("message", axis="columns")
+        expected_opp2_table = sfp.db.get_opp2_table("tests/testcruise_full_plan.db").drop("message", axis="columns")
+        assert opp2_table["file"].equals(expected_opp2_table["file"])
+        assert opp2_table["all_count"].equals(expected_opp2_table["all_count"])
+        assert opp2_table["evt_count"].sum() == 0
+        assert opp2_table["opp_count"].sum() == 0
+        assert opp2_table["noise_count"].sum() == 0
+        assert opp2_table["saturated_count"].sum() == 0
+        assert opp2_table["file_flag"].to_list() == [2, 2, 1, 1, 1, 2, 2, 2]
+
+    @pytest.mark.parametrize("jobs", [1])
+    def test_multi_file_filter_local_v2_with_per_file_opp_limit(self, tmpout, jobs):
+        """Test multi-file filtering on v2 data with per-file opp max and ensure output can be read back OK"""
+        file_dates = tmpout["file_dates"].copy()
+        file_dates["path"] = file_dates["path_v2"]
+        sfp.filterevt.filter_evt_files(
+            file_dates,
+            dbpath=tmpout["db_plan"],
+            opp_dir=str(tmpout["oppdir"]),
+            worker_count=jobs,
+            max_particles_per_file=50000,
+            max_opp_per_file=400
+        )
+
+        # Only 2014_185/2014-07-04T00-00-02+00-00 should be absent from Parquet files
+        opp_dfs = [
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet(tmpout["oppdir"] / "2014-07-04T01-00-00+00-00.1H.opp.parquet")
+        ]
+        expected_opp_dfs = [
+            pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T00-00-00+00-00.1H.opp.parquet"),
+            pd.read_parquet("tests/testcruise_opp_plan/2014-07-04T01-00-00+00-00.1H.opp.parquet")
+        ]
+        expected_opp_dfs[0] = expected_opp_dfs[0].query("file_id != '2014_185/2014-07-04T00-00-02+00-00'")
+        expected_opp_dfs[0] = expected_opp_dfs[0].reset_index(drop=True)
+        expected_opp_dfs[0]["file_id"] = expected_opp_dfs[0]["file_id"].cat.remove_categories(["2014_185/2014-07-04T00-00-02+00-00"])
+        expected_opp_dfs[0]["filter_id"] = expected_opp_dfs[0]["filter_id"].cat.remove_categories(["2414efe1-a4ff-46da-a393-9180d6eab149"])
+        pdt.assert_frame_equal(opp_dfs[0], expected_opp_dfs[0], check_exact=False)
+        pdt.assert_frame_equal(opp_dfs[1], expected_opp_dfs[1], check_exact=False)
+
+        # opp table should be unchanged
+        opp_table = sfp.db.get_opp_table(tmpout["db_plan"])
+        expected_opp_table = sfp.db.get_opp_table("tests/testcruise_full_plan.db")
+        pdt.assert_frame_equal(opp_table, expected_opp_table, check_exact=False)
+
+        # Check that outlier table has entry for every file
+        outlier_table = sfp.db.get_outlier_table(tmpout["db_plan"])
+        expected_outlier_table = sfp.db.get_outlier_table("tests/testcruise_full_plan.db")
+        pdt.assert_frame_equal(outlier_table, expected_outlier_table)
+
+        # Check opp2 table. Only first file should be different in file_flag and message.
+        opp2_table = sfp.db.get_opp2_table(tmpout["db_plan"]).drop("message", axis="columns")
+        expected_opp2_table = sfp.db.get_opp2_table("tests/testcruise_full_plan.db").drop("message", axis="columns")
+        pdt.assert_frame_equal(
+            opp2_table.drop("file_flag", axis="columns"),
+            expected_opp2_table.drop("file_flag", axis="columns"),
+            check_exact=False
+        )
+        assert opp2_table["file_flag"].to_list() == [3, 0, 1, 1, 1, 4, 0, 0]
+
+
