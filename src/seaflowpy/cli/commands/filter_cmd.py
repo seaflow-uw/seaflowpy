@@ -18,8 +18,8 @@ logging_ch.setFormatter(
 logger.addHandler(logging_ch)
 
 def validate_limit(ctx, param, value):
-    if value is not None and value < 1:
-        raise click.BadParameter('if limit is set, it must be >= 1')
+    if value is not None and value < 0:
+        raise click.BadParameter('if limit is set, it must be >= 0')
     return value
 
 
@@ -42,14 +42,14 @@ def validate_resolution(ctx, param, value):
     help='EVT directory path (required unless --s3)')
 @click.option('-d', '--db', 'dbpath', required=True, metavar='FILE', type=click.Path(exists=True),
     help='Popcycle SQLite3 db file with filter parameters and cruise name.')
-@click.option('-l', '--limit', type=int, metavar='N', callback=validate_limit,
-    help='Limit number of files to process.')
+@click.option('-l', '--limit', type=int, default=0, metavar='N', callback=validate_limit,
+    help='Limit number of files to process. Set to 0 to disable.')
 @click.option('-m', '--max-particles-per-file', type=int, default=filterevt.MAX_PARTICLES_PER_FILE_DEFAULT,
     show_default=True, metavar='N', callback=validate_limit,
-    help='Only filter files with an event count <= this limit.')
+    help='Only filter files with an event count <= this limit. Set to 0 to disable.')
 @click.option('-M', '--max-opp-per-file', type=int, default=filterevt.MAX_OPP_PER_FILE_DEFAULT,
     show_default=True, metavar='N', callback=validate_limit,
-    help='Only write data to Parquet for 3-min files with <= this many OPP.')
+    help='Only write data to Parquet for 3-min files with <= this many OPP. Set to 0 to disable.')
 @click.option('-o', '--opp-dir', metavar='DIR',
     help='Directory in which to save OPP files. Will be created if does not exist.')
 @click.option('-p', '--process-count', default=1, show_default=True, metavar='N', callback=validate_process_count,

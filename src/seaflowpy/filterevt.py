@@ -195,7 +195,7 @@ def do_filter(work):
             result["error"] = f"Unexpected error when parsing file {row['path']}: {e}"
             opp2_flag = FLAG_OPP2_EMPTY
         else:
-            if row_count > work["max_particles_per_file"]:
+            if work["max_particles_per_file"] and (row_count > work["max_particles_per_file"]):
                 result["error"] = f"{row_count} records in {row['path']} > limit ({work['max_particles_per_file']}), will not filter"
                 opp2_flag = FLAG_OPP2_EVT_HIGH
                 result["all_count"] = row_count
@@ -224,7 +224,7 @@ def do_filter(work):
             opp_df = particleops.select_focused(evt_df)
             opp_counts = opp_df[["q2.5", "q50", "q97.5"]].sum()
             result["opp_count"] = opp_counts.to_list()
-            if (opp_counts > work["max_opp_per_file"]).any():
+            if work["max_opp_per_file"] and (opp_counts > work["max_opp_per_file"]).any():
                 # Too many OPP, don't save to Parquet
                 result["error"] = f"{row['file_id']} has too many OPP (({result['opp_count']} > {work['max_opp_per_file']}).any()), will not save to Parquet"
                 opp2_flag = FLAG_OPP2_OPP_HIGH
