@@ -36,8 +36,8 @@ def curate(
     if ignore_dates is not None:
         vct = vct.loc[~vct["date"].isin(ignore_dates)]
     if refracs is not None:
-        vct["diam"] = np.NaN
-        vct["Qc"] = np.NaN
+        vct["diam"] = np.nan
+        vct["Qc"] = np.nan
         for pop in [c for c in refracs.columns if c != "cruise"]:
             idx = vct["pop"] == pop
             if idx.any():
