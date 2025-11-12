@@ -30,15 +30,24 @@ def vct_cmd():
     help="""Filtering quantile to choose.""")
 @click.option("-r", "--refracs", "refracs_path",
     type=click.Path(path_type=pathlib.Path, dir_okay=False, readable=True),
-    help="""CSV file with population-specific refractive index choices.""")
+    help="""CSV file with population-specific refractive index choices.
+         Mutually exclusive with --single-refrac.""")
+@click.option("-s", "--single-refrac",
+    type=click.Choice(["lwr", "mid", "upr"]),
+    help="""Use a single refractive index choice for all populations (e.g., 'mid').
+         Mutually exclusive with --refracs.""")
 @click.argument("files", nargs=-1, type=click.Path(exists=True))
-def curate_vct_cmd(dbpath, outdir, process_count, quantile, refracs_path, files):
-    """Curate VCT files by quantile, population refractive indices, and ignored dates"""
+def curate_vct_cmd(dbpath, outdir, process_count, quantile, refracs_path, single_refrac, files):
+    """Curate VCT files by quantile, refractive indices, and ignored dates"""
+    if refracs_path and single_refrac:
+        raise click.UsageError("Options --refracs and --single-refrac are mutually exclusive.")
     if files:
         files = util.expand_file_list(files)
         vct_paths = sorted([pathlib.Path(f) for f in files if f.endswith(".vct.parquet")])
         if refracs_path:
             refracs = pd.read_csv(refracs_path)
+        elif single_refrac:
+            refracs = single_refrac
         else:
             refracs = None
         if dbpath:
