@@ -1,6 +1,6 @@
 [project]
 name = "seaflowpy"
-version = "14.6.0"
+version = "14.6.1"
 description = "A Python library for SeaFlow data"
 license = "MIT"
 readme = "README.md"
@@ -17,6 +17,7 @@ dependencies = [
     "sqlalchemy>=2.0.38",
     "tqdm>=4.67.1",
     "tsdataformat>=3.1.1",
+    "xopen>=2.0.2",
     "zstandard>=0.23.0",
 ]
 [project.scripts]

@@ -3,6 +3,7 @@ import gzip
 import io
 import zlib
 from pathlib import Path
+import xopen
 
 import joblib
 import numpy as np
@@ -57,19 +58,8 @@ def file_open_r(path, fileobj=None):
         else:
             yield fileobj
     else:
-        if path.suffix == '.gz':
-            with io.open(path, 'rb') as fileobj:
-                zobj = zlib.decompressobj(wbits=zlib.MAX_WBITS|32)
-                data = zobj.decompress(fileobj.read())
-                yield io.BytesIO(data)
-        elif path.suffix == '.zst':
-            with io.open(path, 'rb') as fileobj:
-                dctx = zstandard.ZstdDecompressor()
-                stream_reader = dctx.stream_reader(fileobj)
-                yield stream_reader
-        else:
-            with open(path, 'rb') as fh:
-                yield fh
+        with xopen.xopen(path, "rb", threads=0) as fileobj:
+            yield fileobj
 
 
 @contextmanager
