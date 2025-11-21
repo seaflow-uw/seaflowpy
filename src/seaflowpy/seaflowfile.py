@@ -1,5 +1,6 @@
 import datetime
 import re
+from glob import glob
 from pathlib import Path
 
 import pandas as pd
@@ -194,7 +195,7 @@ def filtered_file_list(total_list, filter_list):
 
 def find_evt_files(root_dir):
     """Return a chronologically sorted list of EVT file paths in root_dir."""
-    files = [str(p) for p in Path(root_dir).rglob("*")]
+    files = [p for p in glob(f"{root_dir}/**/*", recursive=True)]
     files = keep_evt_files(files)
     return sorted_files(files)
 
