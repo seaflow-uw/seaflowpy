@@ -1,3 +1,4 @@
+from glob import glob
 from pathlib import Path
 
 
@@ -59,5 +60,5 @@ def expand_file_list(files_and_dirs: list[str]) -> list[str]:
     files = [f for f in files_and_dirs if Path(f).is_file()]
     dfiles = []
     for d in dirs:
-        dfiles = dfiles + [str(p) for p in Path(d).glob("**/*") if p.is_file()]
+        dfiles = dfiles + [p for p in glob(f"{d}/**/*", recursive=True) if Path(p).is_file()]
     return files + dfiles
