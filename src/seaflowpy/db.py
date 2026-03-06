@@ -383,11 +383,20 @@ def get_filter_params_lookup(dbpath, files_df):
     if len(filter_plan_df) > 1:
         for i in range(len(filter_plan_df) - 1):
             gte = files_df["date"] >= filter_plan_df.loc[i, "start_date"]
-            lte = files_df["date"] <= filter_plan_df.loc[i + 1, "start_date"]
+            lte = files_df["date"] < filter_plan_df.loc[i + 1, "start_date"]
             files_df.loc[(gte & lte), "filter_id"] = filter_plan_df.loc[i, "filter_id"]
     i = len(filter_plan_df) - 1
     gte = files_df["date"] >= filter_plan_df.loc[i, "start_date"]
     files_df.loc[gte, "filter_id"] = filter_plan_df.loc[i, "filter_id"]
+
+    uncovered = files_df[files_df["filter_id"].isna()]
+    if len(uncovered) > 0:
+        first_start_date = filter_plan_df.loc[0, "start_date"]
+        earliest_file_date = uncovered["date"].min()
+        raise errors.SeaFlowpyError(
+            f"File date {earliest_file_date} comes before the first filter_plan start_date "
+            f"{first_start_date}. Fix the filter_plan table before continuing."
+        )
 
     filter_params = {}
     for i, row in files_df.iterrows():

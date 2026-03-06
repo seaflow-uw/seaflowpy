@@ -407,3 +407,66 @@ def test_save_df_clear(test_data):
     got = sfp.db.read_table("opp", testdb)
     expect = pd.concat([df2, df3], ignore_index=True)
     pdt.assert_frame_equal(got, expect, check_dtype=False)
+
+
+# Filter IDs present in testcruise_paramsonly_one_param.db and testcruise_paramsonly_plan.db
+_FILTER_ID_1 = "2414efe1-a4ff-46da-a393-9180d6eab149"
+_FILTER_ID_2 = "ac874650-9b4b-4db1-8e3c-4e75aebfab6e"
+# Plan start dates: plan entry 0 → _FILTER_ID_1, plan entry 1 → _FILTER_ID_2
+_PLAN_START_1 = "2014-07-04T00:00:02+00:00"
+_PLAN_START_2 = "2014-07-04T00:03:02+00:00"
+
+
+@pytest.fixture()
+def filter_lookup_data(tmpdir):
+    return {
+        "db_one_param": shutil.copy("tests/testcruise_paramsonly_one_param.db", tmpdir / "one_param.db"),
+        "db_plan": shutil.copy("tests/testcruise_paramsonly_plan.db", tmpdir / "plan.db"),
+    }
+
+
+def _make_files_df(file_ids_and_dates):
+    """Build a minimal files_df for get_filter_params_lookup."""
+    return pd.DataFrame({
+        "file_id": [fid for fid, _ in file_ids_and_dates],
+        "path": [f"/fake/{fid}" for fid, _ in file_ids_and_dates],
+        "date": [sfp.time.parse_date(d) for _, d in file_ids_and_dates],
+    })
+
+
+def test_get_filter_params_lookup_one_plan_entry(filter_lookup_data):
+    """All files get the single filter_id when there is one plan entry."""
+    files_df = _make_files_df([
+        ("2014_185/2014-07-04T00-00-02+00-00", _PLAN_START_1),
+        ("2014_185/2014-07-04T01-00-00+00-00", "2014-07-04T01:00:00+00:00"),
+    ])
+    result = sfp.db.get_filter_params_lookup(filter_lookup_data["db_one_param"], files_df)
+    assert set(result.keys()) == {
+        "2014_185/2014-07-04T00-00-02+00-00",
+        "2014_185/2014-07-04T01-00-00+00-00",
+    }
+    for params_df in result.values():
+        assert params_df.at[0, "id"] == _FILTER_ID_1
+
+
+def test_get_filter_params_lookup_two_plan_entries(filter_lookup_data):
+    """Files are assigned the correct filter_id based on their date when
+    there are two plan entries."""
+    files_df = _make_files_df([
+        ("2014_185/2014-07-04T00-00-02+00-00", _PLAN_START_1),   # exactly at first boundary → id1
+        ("2014_185/2014-07-04T00-03-02+00-00", _PLAN_START_2),   # exactly at second boundary → id2
+        ("2014_185/2014-07-04T01-00-00+00-00", "2014-07-04T01:00:00+00:00"),  # after second → id2
+    ])
+    result = sfp.db.get_filter_params_lookup(filter_lookup_data["db_plan"], files_df)
+    assert result["2014_185/2014-07-04T00-00-02+00-00"].at[0, "id"] == _FILTER_ID_1
+    assert result["2014_185/2014-07-04T00-03-02+00-00"].at[0, "id"] == _FILTER_ID_2
+    assert result["2014_185/2014-07-04T01-00-00+00-00"].at[0, "id"] == _FILTER_ID_2
+
+
+def test_get_filter_params_lookup_before_first_start_date(filter_lookup_data):
+    """A file whose date precedes the first filter_plan start_date raises SeaFlowpyError."""
+    files_df = _make_files_df([
+        ("2014_185/2014-07-04T00-00-01+00-00", "2014-07-04T00:00:01+00:00"),  # 1 sec before first start
+    ])
+    with pytest.raises(sfp.errors.SeaFlowpyError, match="comes before the first filter_plan start_date"):
+        sfp.db.get_filter_params_lookup(filter_lookup_data["db_one_param"], files_df)
