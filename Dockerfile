@@ -2,6 +2,9 @@ ARG ARG_PYTHON_VERSION=3.13
 
 FROM python:${ARG_PYTHON_VERSION}-slim-bookworm
 
+ARG ARG_APP_VERSION
+RUN test -n "${ARG_APP_VERSION}" || { echo "ERROR: --build-arg ARG_APP_VERSION=<version> is required"; exit 1; }
+
 RUN apt-get update -qq \
     && apt-get install -qq -y git sqlite3 zst \
     && rm -rf /var/lib/apt/lists/* \
@@ -12,10 +15,9 @@ ENV VIRTUAL_ENV=/venv \
 RUN python -m venv "${VIRTUAL_ENV}"
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
-COPY build-requirements.txt requirements.txt
+COPY "build-requirements/build-requirements-${ARG_APP_VERSION}.txt" requirements.txt
 RUN pip install --no-cache-dir --compile -r requirements.txt
 
-ARG ARG_APP_VERSION
 COPY dist/seaflowpy-${ARG_APP_VERSION}-py3-none-any.whl dist/seaflowpy-${ARG_APP_VERSION}.tar.gz ./
 RUN pip install --disable-pip-version-check --no-cache-dir --compile seaflowpy-${ARG_APP_VERSION}-py3-none-any.whl \
     && mkdir seaflowpy-src \
