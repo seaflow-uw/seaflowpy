@@ -9,4 +9,4 @@ __pycache__/
 /build/
 /dist/
 /seaflowpy-dist/
-build-requirements/
+build-requirements.txt
