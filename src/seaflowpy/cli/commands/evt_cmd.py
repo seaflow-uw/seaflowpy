@@ -19,12 +19,6 @@ from seaflowpy import util
 from tqdm import tqdm
 
 
-def validate_file_fraction(ctx, param, value):
-    if value <= 0 or value > 1:
-        raise click.BadParameter('must be a number > 0 and <= 1.')
-    return value
-
-
 def validate_positive(ctx, param, value):
     if value is not None and value <= 0:
         raise click.BadParameter('must be a number > 0.')
@@ -67,10 +61,8 @@ def evt_cmd():
 @click.option('-o', '--outpath', type=click.Path(path_type=pathlib.Path), required=True,
     help="""Output path for parquet file with subsampled event data.""")
 @click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_positive,
-    help='Target number of events to keep.')
+    help='Target number of events to keep per file.')
 @click.option('--cutoffs-file', type=click.Path(readable=True, path_type=pathlib.Path))
-@click.option('-f', '--file-fraction', type=float, default=0.1, show_default=True, callback=validate_file_fraction,
-    help='Fraction of files to sample from, > 0 and <= 1. Using --multi sets this option to 1.')
 @click.option('--min-chl', type=int, default=0, show_default=True,
     help='Mininum chlorophyll (small) value.')
 @click.option('--min-fsc', type=int, default=0, show_default=True,
@@ -85,8 +77,8 @@ def evt_cmd():
     help="""Only subsample the most recent N hours of data. Unsets --max-date.
             If --min-date is also provided it will be used if it is more recent
             than <last date - N hours>.""")
-@click.option('--multi', is_flag=True, default=False, show_default=True,
-    help='Sample --count events from each input file separately, rather than --count events overall.')
+@click.option('--multi', is_flag=True, default=False, hidden=False,
+    help='Deprecated, has no effect. Sampling is always per-file.')
 @click.option('-n', '--noise-filter', is_flag=True, default=False, show_default=True,
     help='Apply noise filter before subsampling.')
 @click.option('-p', '--process-count', type=int, default=1, show_default=True, callback=validate_positive,
@@ -101,7 +93,7 @@ def evt_cmd():
 @click.option('-v', '--verbose', count=True,
     help='Show more information. Specify more than once to show more information.')
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
-def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc, min_pe,
+def sample_evt_cmd(outpath, cutoffs_file, count, min_chl, min_fsc, min_pe,
                    min_date, max_date, tail_hours, multi, noise_filter, process_count,
                    saturation_filter, seed, sfl_path, verbose, files):
     """
@@ -109,7 +101,7 @@ def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc
 
     The list of EVT files can be file paths or directory paths
     which will be searched for EVT files.
-    COUNT events will be randomly selected from all data.
+    COUNT events will be randomly selected from each input file.
     """
     if verbose == 0:
         loglevel = logging.WARNING
@@ -141,6 +133,16 @@ def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc
         sfl_df = None
     evt = seaflowfile.date_evt_files(files, sfl_df)
 
+    # Filter out files with no parsable timestamp
+    n_not_in_sfl = len(files) - len(evt) if sfl_df is not None else 0
+    n_undated = int(evt['date'].isna().sum())
+    if n_undated:
+        evt = evt[evt['date'].notna()]
+    if n_not_in_sfl:
+        logging.info("%d files ignored because they are not in the SFL file", n_not_in_sfl)
+    if n_undated:
+        logging.info("%d files ignored because they have no parsable timestamp", n_undated)
+
     # Select by time.
     # If paths don't have timestamps and SFL not provided, this step will always
     # filter out all files.
@@ -154,11 +156,7 @@ def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc
     if max_date is not None:
         evt = evt[evt.date <= max_date]
 
-    # Select fraction of files
-    if not multi:
-        chosen_files = sample.random_select(list(evt.path), file_fraction, seed)
-    else:
-        chosen_files = list(evt.path)
+    chosen_files = list(evt.path)
 
     outpath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -170,7 +168,7 @@ def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc
         min_chl=min_chl,
         min_fsc=min_fsc,
         min_pe=min_pe,
-        multi=multi,
+        multi=True,
         noise_filter=noise_filter,
         saturation_filter=saturation_filter,
         process_count=process_count,
@@ -211,6 +209,166 @@ def sample_evt_cmd(outpath, cutoffs_file, count, file_fraction, min_chl, min_fsc
     print("{} events after noise/sat/min filtering".format(sum([r["events_postfilter"] for r in results])), file=sys.stderr)
     print("{} events sampled".format(sum([r["events_postsampling"] for r in results])), file=sys.stderr)
 
+
+@evt_cmd.command('sample-hourly')
+@click.option('-o', '--outdir', type=click.Path(path_type=pathlib.Path), required=True,
+    help="""Output directory for per-hour parquet files with subsampled event data.""")
+@click.option('-c', '--count', type=int, default=100000, show_default=True, callback=validate_positive,
+    help='Target number of events to keep per file.')
+@click.option('--min-chl', type=int, default=0, show_default=True,
+    help='Mininum chlorophyll (small) value.')
+@click.option('--min-fsc', type=int, default=0, show_default=True,
+    help='Mininum forward scatter (small) value.')
+@click.option('--min-pe', type=int, default=0, show_default=True,
+    help='Mininum phycoerythrin value.')
+@click.option('--min-date', type=str, callback=validate_timestamp,
+    help='Minimum date of file to sample as ISO8601 timestamp.')
+@click.option('--max-date', type=str, callback=validate_timestamp,
+    help='Maximum date of file to sample as ISO8601 timestamp.')
+@click.option('-n', '--noise-filter', is_flag=True, default=False, show_default=True,
+    help='Apply noise filter before subsampling.')
+@click.option('-p', '--process-count', type=int, default=1, show_default=True, callback=validate_positive,
+    help='Number of processes to use.')
+@click.option('--saturation-filter', is_flag=True, default=False, show_default=True,
+    help='Apply saturation filter before subsampling.')
+@click.option('-s', '--seed', callback=validate_seed,
+    help='Integer seed for PRNG, otherwise system-dependent source of randomness is used to seed the PRNG.')
+@click.option('-S', '--sfl', 'sfl_path', type=click.Path(),
+    help="""SFL file that can be used to associate dates with EVT files. Useful when
+            sampling undated EVT files.""")
+@click.option('-v', '--verbose', count=True,
+    help='Show more information. Specify more than once to show more information.')
+@click.argument('files', nargs=-1, type=click.Path(exists=True))
+def sample_hourly_evt_cmd(outdir, count, min_chl, min_fsc, min_pe,
+                          min_date, max_date, noise_filter, process_count,
+                          saturation_filter, seed, sfl_path, verbose, files):
+    """
+    Sample a subset of events in EVT files, outputting one file per hour.
+
+    The list of EVT files can be file paths or directory paths
+    which will be searched for EVT files.
+    COUNT events will be randomly selected from each input file.
+    All input files must have parsable timestamps (via filename or SFL file).
+    """
+    if verbose == 0:
+        loglevel = logging.WARNING
+    elif verbose == 1:
+        loglevel = logging.INFO
+    else:
+        loglevel = logging.DEBUG
+    logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=loglevel)
+
+    logging.info(
+        "effective cutoffs are, min_fsc_small=%d, min_pe=%d, min_chl_small=%d",
+        min_fsc, min_pe, min_chl
+    )
+
+    # Get file to date mappings from SFL file
+    files = seaflowfile.keep_evt_files(util.expand_file_list(files))
+    files = seaflowfile.sorted_files(files)
+    if sfl_path:
+        sfl_df = sfl.read_file(sfl_path, convert_dates=True)
+        sfl_df = sfl.fix(sfl_df)  # ensure valid file_ids in file column
+    else:
+        sfl_df = None
+    evt = seaflowfile.date_evt_files(files, sfl_df)
+
+    # Filter out files with no parsable timestamp
+    n_not_in_sfl = len(files) - len(evt) if sfl_df is not None else 0
+    n_undated = int(evt['date'].isna().sum())
+    if n_undated:
+        evt = evt[evt['date'].notna()]
+    if n_not_in_sfl:
+        logging.info("%d files ignored because they are not in the SFL file", n_not_in_sfl)
+    if n_undated:
+        logging.info("%d files ignored because they have no parsable timestamp", n_undated)
+
+    # Select by time.
+    if min_date is not None:
+        evt = evt[evt.date >= min_date]
+    if max_date is not None:
+        evt = evt[evt.date <= max_date]
+
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    # Group files by floor-hour and sample each hour separately
+    all_results: list[dict] = []
+    all_errs: list = []
+    total_files = 0
+    files_sampled = 0
+
+    if len(evt):
+        evt = evt.copy()
+        evt['hour'] = evt['date'].dt.floor('h')
+        for hour, group in evt.groupby('hour', sort=True):
+            hour_files = list(group.path)
+            hour_file_ids = list(group.file_id)
+            total_files += len(hour_files)
+
+            hour_str = time.seaflow_rfc3339(hour.to_pydatetime()).replace(':', '-')
+            outfile = outdir / f"{hour_str}.parquet"
+
+            if pathlib.Path(outfile).exists():
+                old_df = pd.read_parquet(outfile)
+                old_file_ids = set(old_df["file_id"].unique())
+                extra_file_ids = set(hour_file_ids) - old_file_ids
+                if not extra_file_ids:
+                    logging.info("skipping hour %s with %d files, output file already exists and contains all files for that hour", hour_str, len(hour_files))
+                    continue
+                logging.info("sampling hour %s, output file already exists but is missing %d files for that hour", hour_str, len(extra_file_ids))
+
+            files_sampled += len(hour_files)
+
+            hour_results, hour_errs = sample.sample(
+                hour_files,
+                count,
+                outfile,
+                dates=dict(zip(hour_file_ids, list(group.date))),
+                min_chl=min_chl,
+                min_fsc=min_fsc,
+                min_pe=min_pe,
+                multi=True,
+                noise_filter=noise_filter,
+                saturation_filter=saturation_filter,
+                process_count=process_count,
+                seed=seed,
+            )
+            all_results.extend(hour_results)
+            all_errs.extend(hour_errs)
+
+    printed = False
+    if verbose:
+        if len(all_results):
+            print("\t".join(["file_ID", "events", "postfilter_events", "sampled_events", "message"]), file=sys.stderr)
+        for r in all_results:
+            vals = [r["file_id"], r["events"], r["events_postfilter"], r["events_postsampling"], r["msg"]]
+            print("\t".join([str(v) for v in vals]), file=sys.stderr)
+        printed = True
+    else:
+        if len(all_results):
+            print("\t".join(["file_ID", "events", "postfilter_events", "sampled_events", "message"]), file=sys.stderr)
+        for r in all_results:
+            if r["msg"]:
+                print("\t".join([r["file_id"], r["msg"]]), file=sys.stderr)
+                printed = True
+    if printed:
+        print("", file=sys.stderr)
+
+    if all_errs:
+        print("Errors encountered", file=sys.stderr)
+        for err in all_errs:
+            print(err, file=sys.stderr)
+        print("", file=sys.stderr)
+
+    if sfl_df is not None:
+        print("{} entries found in SFL file".format(len(sfl_df)), file=sys.stderr)
+    print("{} input files".format(len(files)), file=sys.stderr)
+    print("{} files within time window".format(len(evt)), file=sys.stderr)
+    print("{} selected files".format(total_files), file=sys.stderr)
+    print("{} sampled files".format(files_sampled), file=sys.stderr)
+    print("{} total events".format(sum([r["events"] for r in all_results])), file=sys.stderr)
+    print("{} events after noise/sat/min filtering".format(sum([r["events_postfilter"] for r in all_results])), file=sys.stderr)
+    print("{} events sampled".format(sum([r["events_postsampling"] for r in all_results])), file=sys.stderr)
 
 
 @evt_cmd.command('dates')
