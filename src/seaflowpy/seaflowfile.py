@@ -200,6 +200,11 @@ def find_evt_files(root_dir):
     return sorted_files(files)
 
 
+def keep_opp_files(files: list[str]) -> list[str]:
+    """Filter list of files to only keep OPP parquet files (ending with .opp.parquet)."""
+    return [f for f in files if f.endswith(".opp.parquet")]
+
+
 def keep_evt_files(files: list[str], require_exists: bool=True) -> list[str]:
     """Filter list of files to only keep EVT files."""
     files_list = []

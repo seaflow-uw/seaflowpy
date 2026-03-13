@@ -373,6 +373,19 @@ def test_keep_evt_files():
     with pytest.raises(FileNotFoundError):
         _ = sfp.seaflowfile.keep_evt_files(files)
 
+def test_keep_opp_files():
+    files = [
+        "cruise/2014_185/2014-07-04T00-00-02+00-00.10min.opp.parquet",
+        "cruise/2014_185/2014-07-04T01-00-02+00-00.10min.opp.parquet",
+        "cruise/2014_185/2014-07-04T00-00-02+00-00",
+        "cruise/2014_185/2014-07-04T00-00-02+00-00.parquet",
+        "not_opp_file",
+        "",
+    ]
+    result = sfp.seaflowfile.keep_opp_files(files)
+    assert result == files[:2]
+
+
 def test_find_evt_files():
     files = sfp.seaflowfile.find_evt_files("tests/testcruise_evt")
     answer = [
