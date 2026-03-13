@@ -305,7 +305,7 @@ def sample_hourly_evt_cmd(outdir, count, min_chl, min_fsc, min_pe,
             hour_file_ids = list(group.file_id)
             total_files += len(hour_files)
 
-            hour_str = time.seaflow_rfc3339(hour.to_pydatetime()).replace(':', '-')
+            hour_str = time.seaflow_rfc3339(cast(pd.Timestamp, hour).to_pydatetime()).replace(':', '-')
             outfile = outdir / f"{hour_str}.parquet"
 
             if pathlib.Path(outfile).exists():
