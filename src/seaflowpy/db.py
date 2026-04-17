@@ -400,7 +400,10 @@ def get_filter_params_lookup(dbpath, files_df):
 
     filter_params = {}
     for i, row in files_df.iterrows():
-        filter_params[row["file_id"]] = filter_df[filter_df["id"] == row["filter_id"]].reset_index(drop=True)
+        filter_entry = filter_df[filter_df["id"] == row["filter_id"]].reset_index(drop=True)
+        if filter_entry.empty:
+            raise errors.SeaFlowpyError(f"No filter parameters found in database for filter_id {row['filter_id']}")
+        filter_params[row["file_id"]] = filter_entry
 
     return filter_params
 
