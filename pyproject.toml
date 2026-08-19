@@ -1,6 +1,6 @@
 [project]
 name = "seaflowpy"
-version = "15.1.2"
+version = "15.1.3"
 description = "A Python library for SeaFlow data"
 license = "MIT"
 readme = "README.md"

@@ -283,6 +283,36 @@ class TestFilter:
         assert new_evt_df["q97.5"].sum() == 85
         assert len(sfp.particleops.select_focused(new_evt_df).index) == 426
 
+    def test_mark_focused_fast_unsorted_params_matches_sorted(self, evt_df, params):
+        """mark_focused_fast maps its numba results to q2.5/q50/q97.5 by
+        position, so it must internally sort by quantile rather than trusting
+        caller order. Regression test for a bug where out-of-order params
+        would silently mislabel the quantile columns."""
+        shuffled_params = params.iloc[[2, 0, 1]].reset_index(drop=True)
+        assert shuffled_params["quantile"].tolist() == [97.5, 2.5, 50.0]
+
+        sorted_df = sfp.particleops.mark_focused_fast(evt_df, params)
+        shuffled_df = sfp.particleops.mark_focused_fast(evt_df, shuffled_params)
+
+        for col in ("q2.5", "q50", "q97.5"):
+            npt.assert_array_equal(sorted_df[col].to_numpy(), shuffled_df[col].to_numpy())
+
+    def test_mark_focused_fast_wrong_quantile_count(self, evt_df, params):
+        """mark_focused_fast requires exactly one row per quantile (2.5, 50,
+        97.5); filter_np_jit hard-codes 3 quantiles and has no bounds
+        checking, so a wrong row count must be rejected up front."""
+        one_row_params = params[params["quantile"] == 50.0].reset_index(drop=True)
+        with pytest.raises(ValueError):
+            _df = sfp.particleops.mark_focused_fast(evt_df, one_row_params)
+
+    def test_mark_focused_fast_wrong_quantile_values(self, evt_df, params):
+        """mark_focused_fast must reject params whose quantile values aren't
+        exactly [2.5, 50.0, 97.5]."""
+        bad_params = params.copy()
+        bad_params["quantile"] = [1.0, 2.0, 3.0]
+        with pytest.raises(ValueError):
+            _df = sfp.particleops.mark_focused_fast(evt_df, bad_params)
+
     def test_noise_filter(self, evt_df):
         """Events with zeroes in all of D1, D2, and fsc_small are noise"""
         # There are events which could be considered noise (no signal in any of

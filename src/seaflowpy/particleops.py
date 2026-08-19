@@ -182,8 +182,18 @@ def mark_focused_fast(df, params, inplace=False):
     for k in param_keys:
         if k not in params.columns:
             raise ValueError(f"Missing filter parameter {k} in mark_focused")
-    # Make sure params have 0-based indexing
-    params = params.reset_index(drop=True)
+    # Make sure params have 0-based indexing, sorted by quantile ascending
+    params = params.sort_values("quantile").reset_index(drop=True)
+
+    # filter_np_jit hard-codes exactly 3 quantiles and maps its results to
+    # q2.5/q50/q97.5 by position, so that assumption must be verified here
+    # rather than trusted from caller ordering.
+    expected_quantiles = [2.5, 50.0, 97.5]
+    if params["quantile"].tolist() != expected_quantiles:
+        raise ValueError(
+            f"mark_focused_fast requires exactly one row per quantile "
+            f"{expected_quantiles}, got {params['quantile'].tolist()}"
+        )
 
     if not inplace:
         df = df.copy()
